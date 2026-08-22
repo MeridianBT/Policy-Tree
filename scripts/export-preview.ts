@@ -19,10 +19,8 @@ import { prisma } from "../lib/db.ts";
 import { loadSheet } from "../lib/sheet/query.ts";
 import type { ControlItemRow, GroupRow } from "../lib/sheet/types.ts";
 
-async function main() {
-  const model = await loadSheet({ levels: [1, 2, 3] });
-
-  const rows = model.rows.map((row) => {
+function serialise(model: Awaited<ReturnType<typeof loadSheet>>) {
+  return model.rows.map((row) => {
     if (row.kind === "CONTROL_ITEM") {
       const item = row as ControlItemRow;
       return {
@@ -65,17 +63,46 @@ async function main() {
       path: group.path,
     };
   });
+}
+
+/**
+ * One finished sheet per target basis, so a static view can switch between
+ * budget versions the way the application does. Achievement, the gap and the
+ * evaluation symbol are recomputed against each basis by the calculation
+ * module; the browser only ever picks which finished sheet to show.
+ */
+async function main() {
+  const latest = await loadSheet({ levels: [1, 2, 3] });
+
+  const bases: Array<{ id: string; label: string; rows: unknown }> = [
+    { id: "LATEST", label: "Latest forecast", rows: serialise(latest) },
+  ];
+
+  for (const version of latest.versions) {
+    if (version.isActual) continue;
+    const pinned = await loadSheet({ levels: [1, 2, 3], targetVersionId: version.id });
+    bases.push({
+      id: version.id,
+      label: version.lockedAt ? `${version.code} · locked` : version.code,
+      rows: serialise(pinned),
+    });
+  }
 
   const out = {
-    kiCode: model.kiCode,
-    kiStartYear: model.kiStartYear,
-    bands: model.bands,
-    dics: model.dics,
-    themes: model.themes,
-    rows,
+    kiCode: latest.kiCode,
+    kiStartYear: latest.kiStartYear,
+    bands: latest.bands,
+    dics: latest.dics,
+    themes: latest.themes,
+    bases,
   };
-  writeFileSync(process.argv[2], JSON.stringify(out));
-  console.log(`wrote ${process.argv[2]}: ${rows.length} rows, ${(JSON.stringify(out).length / 1024).toFixed(0)} KB`);
+
+  const json = JSON.stringify(out);
+  writeFileSync(process.argv[2], json);
+  console.log(
+    `wrote ${process.argv[2]}: ${bases.length} target bases ` +
+      `(${bases.map((b) => b.label).join(", ")}), ${(json.length / 1024).toFixed(0)} KB`,
+  );
 }
 
 main().then(() => prisma.$disconnect());
