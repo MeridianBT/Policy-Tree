@@ -36,11 +36,20 @@ Seeded accounts all use the password `hoshin`:
 
 ### Local development
 
+Needs Node 22 and a PostgreSQL 16 you can reach. The quickest way to get one is
+to start just the database from Compose and run the app on the host:
+
 ```bash
+docker compose up -d db                 # Postgres on localhost:5432
+
+cp .env.example .env                    # switch DATABASE_URL to the localhost line
 npm install
-npm run db:migrate && npm run db:seed
-npm run dev
+npm run db:migrate                      # applies migrations and generates the client
+npm run db:seed
+npm run dev                             # http://localhost:3000
 ```
+
+Sign in with `admin@example.com` / `hoshin`, which lands on the company sheet.
 
 ### Backups
 
