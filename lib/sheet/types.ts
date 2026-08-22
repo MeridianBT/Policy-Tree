@@ -15,6 +15,8 @@ export interface GroupRow {
   kind: "GOAL" | "THEME" | "OBJECTIVE";
   level: number;
   statement: string;
+  /** Level 1 Goals only: their position in the company's priority list. */
+  ordinal?: number | null;
   /** Ancestor group ids, outermost first. Drives collapse and the context bar. */
   path: string[];
   /** Control item ids beneath this group, for filtering and counts. */
@@ -28,6 +30,8 @@ export interface ControlItemRow {
   kind: "CONTROL_ITEM";
   code: string;
   name: string;
+  /** How the target and actual are measured, e.g. "Units sold", "% of sales". */
+  measuredAs: string;
   unit: Unit;
   decimalPlaces: number;
   direction: "HIGHER_BETTER" | "LOWER_BETTER";

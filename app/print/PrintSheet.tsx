@@ -9,6 +9,7 @@
 
 import type { SheetModel, ControlItemRow, GroupRow } from "@/lib/sheet/types";
 import { ALL_QUARTERS, sheetColumns } from "@/components/sheet/columns";
+import { groupHeading, indentSteps } from "@/components/sheet/outline";
 import { formatAchievement, formatValue } from "@/lib/calc/format";
 import { EvaluationSymbol } from "@/components/sheet/EvaluationSymbol";
 import "./print.css";
@@ -47,6 +48,7 @@ export function PrintSheet({
       <table>
         <colgroup>
           <col className="col-label" />
+          <col className="col-measure" />
           <col className="col-dic" />
           {columns.map((column) => (
             <col
@@ -64,7 +66,8 @@ export function PrintSheet({
 
         <thead>
           <tr>
-            <th className="col-label">Control Item</th>
+            <th className="col-label">Measures</th>
+            <th className="col-measure">Measured as</th>
             <th className="col-dic">DIC</th>
             {columns.map((column) => (
               <th
@@ -98,9 +101,11 @@ export function PrintSheet({
                         : "objective-row"
                   }
                 >
-                  <td colSpan={columns.length + 2} style={{ paddingLeft: `${1 + group.path.length * 3}mm` }}>
-                    {group.kind === "GOAL" ? `L${group.level} · ` : ""}
-                    {group.statement}
+                  <td
+                    colSpan={columns.length + 3}
+                    style={{ paddingLeft: `${1 + indentSteps(group) * 3.5}mm` }}
+                  >
+                    {groupHeading(group.statement, group.ordinal)}
                     {group.laddersTo ? `  ↳ ${group.laddersTo}` : ""}
                   </td>
                 </tr>
@@ -111,7 +116,8 @@ export function PrintSheet({
             const cellByKey = new Map(item.cells.map((cell) => [cell.key, cell]));
             return (
               <tr key={item.id}>
-                <td style={{ paddingLeft: `${1 + item.path.length * 3}mm` }}>{item.name}</td>
+                <td style={{ paddingLeft: `${1 + indentSteps(item) * 3.5}mm` }}>{item.name}</td>
+                <td className="col-measure">{item.measuredAs}</td>
                 <td>{item.dicCode}</td>
                 {columns.map((column) => {
                   const cell = cellByKey.get(column.key)!;

@@ -156,6 +156,7 @@ export async function loadSheet(options: LoadSheetOptions): Promise<SheetModel> 
 
   const rows: SheetRowModel[] = [];
   const groupById = new Map<string, GroupRow>();
+  let goalOrdinal = 0;
   const themes: Array<{ id: string; statement: string }> = [];
 
   /** Emit a group header and everything above it, once, in tree order. */
@@ -164,11 +165,13 @@ export async function loadSheet(options: LoadSheetOptions): Promise<SheetModel> 
       if (groupById.has(ancestorId)) continue;
       const node = nodeById.get(ancestorId);
       if (!node) continue;
+      const isGoal = node.kind === "GOAL" && node.level === 1;
       const group: GroupRow = {
         id: node.id,
         kind: node.kind === "GOAL" ? "GOAL" : node.kind === "THEME" ? "THEME" : "OBJECTIVE",
         level: node.level,
         statement: node.statement,
+        ordinal: isGoal ? ++goalOrdinal : null,
         path: ancestors(node.id),
         controlItemIds: [],
         laddersTo:
@@ -212,6 +215,7 @@ export async function loadSheet(options: LoadSheetOptions): Promise<SheetModel> 
         kind: "CONTROL_ITEM",
         code: item.code,
         name: item.name,
+        measuredAs: item.measuredAs ?? defaultMeasuredAs(item.unit),
         unit: item.unit,
         decimalPlaces: item.decimalPlaces,
         direction: item.direction,
@@ -245,6 +249,23 @@ export async function loadSheet(options: LoadSheetOptions): Promise<SheetModel> 
     dics: [...dicMap.entries()].map(([code, name]) => ({ code, name })).sort((a, b) => a.code.localeCompare(b.code)),
     themes,
   };
+}
+
+/**
+ * What to show in the "Measured as" column when nobody has filled it in. The
+ * unit is the only thing the system knows, so it says that rather than leaving
+ * the column blank.
+ */
+function defaultMeasuredAs(unit: string): string {
+  switch (unit) {
+    case "PERCENT": return "Percentage";
+    case "CURRENCY": return "Currency";
+    case "COUNT": return "Count";
+    case "RATIO": return "Ratio";
+    case "DAYS": return "Days";
+    case "INDEX": return "Index";
+    default: return "—";
+  }
 }
 
 /** Depth-first structural order: a node follows its parent and its earlier siblings. */

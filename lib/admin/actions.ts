@@ -234,6 +234,7 @@ export async function copyStructure(fromKiId: string, toKiId: string): Promise<A
               // by Ki when a structure is copied forward.
               code: `${item.code}@${target.code.replace(/\s+/g, "")}`,
               name: item.name,
+              measuredAs: item.measuredAs,
               unit: item.unit,
               direction: item.direction,
               achievementMethod: item.achievementMethod,
@@ -293,6 +294,7 @@ const controlItemSchema = z.object({
   nodeId: z.string(),
   code: z.string().min(1).regex(/^[A-Za-z0-9._@-]+$/, "Use letters, digits, dot, dash, underscore or @."),
   name: z.string().min(1),
+  measuredAs: z.string().trim().min(1).nullable(),
   unit: z.enum(["PERCENT", "CURRENCY", "COUNT", "RATIO", "DAYS", "INDEX"]),
   direction: z.enum(["HIGHER_BETTER", "LOWER_BETTER"]),
   achievementMethod: z.enum(["RATIO", "INVERSE"]),

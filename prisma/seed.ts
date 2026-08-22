@@ -144,6 +144,7 @@ async function main() {
         nodeId,
         code: spec.code,
         name: spec.name,
+        measuredAs: spec.measuredAs,
         unit: spec.unit,
         direction: spec.direction,
         achievementMethod: spec.achievementMethod,

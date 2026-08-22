@@ -25,6 +25,8 @@ export const PLAN_VERSIONS = [
 export type SeedControlItem = {
   code: string;
   name: string;
+  /** How the target and actual are measured, in the reviewer's own words. */
+  measuredAs: string;
   unit: "PERCENT" | "CURRENCY" | "COUNT" | "RATIO" | "DAYS" | "INDEX";
   direction: "HIGHER_BETTER" | "LOWER_BETTER";
   achievementMethod: "RATIO" | "INVERSE";
@@ -65,20 +67,20 @@ export const GOALS: SeedGoal[] = [
             statement: "Expand unit sales in priority segments",
             childTheme: "Grade mix and pricing discipline",
             controlItems: [
-              { code: "AUTO-VOL", name: "Vehicle sales volume", unit: "COUNT", direction: "HIGHER_BETTER", achievementMethod: "RATIO", aggregation: "SUM", decimalPlaces: 0, dic: "AUTO", monthlyTarget: 4200 },
-              { code: "AUTO-REV", name: "Vehicle sales revenue", unit: "CURRENCY", direction: "HIGHER_BETTER", achievementMethod: "RATIO", aggregation: "SUM", decimalPlaces: 0, dic: "AUTO", monthlyTarget: 186000 },
+              { code: "AUTO-VOL", name: "Vehicle sales volume", measuredAs: "Units sold", unit: "COUNT", direction: "HIGHER_BETTER", achievementMethod: "RATIO", aggregation: "SUM", decimalPlaces: 0, dic: "AUTO", monthlyTarget: 4200 },
+              { code: "AUTO-REV", name: "Vehicle sales revenue", measuredAs: "US$ 000, net of discount", unit: "CURRENCY", direction: "HIGHER_BETTER", achievementMethod: "RATIO", aggregation: "SUM", decimalPlaces: 0, dic: "AUTO", monthlyTarget: 186000 },
             ],
             children: [
               {
                 statement: "Lift the share of high-grade trims sold",
                 controlItems: [
-                  { code: "AUTO-MIX", name: "High-grade trim mix", unit: "PERCENT", direction: "HIGHER_BETTER", achievementMethod: "RATIO", aggregation: "AVERAGE", decimalPlaces: 1, dic: "AUTO", monthlyTarget: 34.5 },
+                  { code: "AUTO-MIX", name: "High-grade trim mix", measuredAs: "% of units sold", unit: "PERCENT", direction: "HIGHER_BETTER", achievementMethod: "RATIO", aggregation: "AVERAGE", decimalPlaces: 1, dic: "AUTO", monthlyTarget: 34.5 },
                 ],
               },
               {
                 statement: "Hold discount discipline across the dealer network",
                 controlItems: [
-                  { code: "AUTO-DISC", name: "Average discount per unit", unit: "CURRENCY", direction: "LOWER_BETTER", achievementMethod: "INVERSE", aggregation: "AVERAGE", decimalPlaces: 0, dic: "AUTO", monthlyTarget: 1150 },
+                  { code: "AUTO-DISC", name: "Average discount per unit", measuredAs: "US$ per unit", unit: "CURRENCY", direction: "LOWER_BETTER", achievementMethod: "INVERSE", aggregation: "AVERAGE", decimalPlaces: 0, dic: "AUTO", monthlyTarget: 1150 },
                 ],
               },
             ],
@@ -87,14 +89,14 @@ export const GOALS: SeedGoal[] = [
             statement: "Grow the parts and service revenue stream",
             childTheme: "Workshop throughput",
             controlItems: [
-              { code: "PSP-REV", name: "Parts and service revenue", unit: "CURRENCY", direction: "HIGHER_BETTER", achievementMethod: "RATIO", aggregation: "SUM", decimalPlaces: 0, dic: "PSP", monthlyTarget: 41500 },
-              { code: "PSP-ATT", name: "Service plan attachment rate", unit: "PERCENT", direction: "HIGHER_BETTER", achievementMethod: "RATIO", aggregation: "AVERAGE", decimalPlaces: 1, dic: "PSP", monthlyTarget: 62.0 },
+              { code: "PSP-REV", name: "Parts and service revenue", measuredAs: "US$ 000", unit: "CURRENCY", direction: "HIGHER_BETTER", achievementMethod: "RATIO", aggregation: "SUM", decimalPlaces: 0, dic: "PSP", monthlyTarget: 41500 },
+              { code: "PSP-ATT", name: "Service plan attachment rate", measuredAs: "% of vehicles delivered", unit: "PERCENT", direction: "HIGHER_BETTER", achievementMethod: "RATIO", aggregation: "AVERAGE", decimalPlaces: 1, dic: "PSP", monthlyTarget: 62.0 },
             ],
             children: [
               {
                 statement: "Shorten the workshop turnaround",
                 controlItems: [
-                  { code: "PSP-TAT", name: "Workshop turnaround time", unit: "DAYS", direction: "LOWER_BETTER", achievementMethod: "RATIO", aggregation: "AVERAGE", decimalPlaces: 1, dic: "PSP", monthlyTarget: 2.4 },
+                  { code: "PSP-TAT", name: "Workshop turnaround time", measuredAs: "Working days, job in to job out", unit: "DAYS", direction: "LOWER_BETTER", achievementMethod: "RATIO", aggregation: "AVERAGE", decimalPlaces: 1, dic: "PSP", monthlyTarget: 2.4 },
                 ],
               },
             ],
@@ -108,14 +110,14 @@ export const GOALS: SeedGoal[] = [
             statement: "Hold SG&A within the committed envelope",
             childTheme: "Unit cost reduction",
             controlItems: [
-              { code: "FRC-SGA", name: "SG&A spend", unit: "CURRENCY", direction: "LOWER_BETTER", achievementMethod: "INVERSE", aggregation: "SUM", decimalPlaces: 0, dic: "FRC", monthlyTarget: 28400 },
-              { code: "FRC-OPM", name: "Operating profit margin", unit: "PERCENT", direction: "HIGHER_BETTER", achievementMethod: "RATIO", aggregation: "AVERAGE", decimalPlaces: 1, dic: "FRC", monthlyTarget: 8.4 },
+              { code: "FRC-SGA", name: "SG&A spend", measuredAs: "US$ 000", unit: "CURRENCY", direction: "LOWER_BETTER", achievementMethod: "INVERSE", aggregation: "SUM", decimalPlaces: 0, dic: "FRC", monthlyTarget: 28400 },
+              { code: "FRC-OPM", name: "Operating profit margin", measuredAs: "% of net sales", unit: "PERCENT", direction: "HIGHER_BETTER", achievementMethod: "RATIO", aggregation: "AVERAGE", decimalPlaces: 1, dic: "FRC", monthlyTarget: 8.4 },
             ],
             children: [
               {
                 statement: "Reduce unit material cost through design and sourcing",
                 controlItems: [
-                  { code: "AUTO-MTL", name: "Material cost per unit", unit: "CURRENCY", direction: "LOWER_BETTER", achievementMethod: "RATIO", aggregation: "AVERAGE", decimalPlaces: 0, dic: "AUTO", monthlyTarget: 21800 },
+                  { code: "AUTO-MTL", name: "Material cost per unit", measuredAs: "US$ per unit built", unit: "CURRENCY", direction: "LOWER_BETTER", achievementMethod: "RATIO", aggregation: "AVERAGE", decimalPlaces: 0, dic: "AUTO", monthlyTarget: 21800 },
                 ],
               },
             ],
@@ -134,14 +136,14 @@ export const GOALS: SeedGoal[] = [
             statement: "Eliminate defects reaching the customer",
             childTheme: "Quality escalation control",
             controlItems: [
-              { code: "OX-PPM", name: "Customer-detected defects", unit: "COUNT", direction: "LOWER_BETTER", achievementMethod: "RATIO", aggregation: "SUM", decimalPlaces: 0, dic: "OX", monthlyTarget: 42 },
-              { code: "OX-FTQ", name: "First time quality", unit: "PERCENT", direction: "HIGHER_BETTER", achievementMethod: "RATIO", aggregation: "AVERAGE", decimalPlaces: 1, dic: "OX", monthlyTarget: 96.5 },
+              { code: "OX-PPM", name: "Customer-detected defects", measuredAs: "Defects per million delivered", unit: "COUNT", direction: "LOWER_BETTER", achievementMethod: "RATIO", aggregation: "SUM", decimalPlaces: 0, dic: "OX", monthlyTarget: 42 },
+              { code: "OX-FTQ", name: "First time quality", measuredAs: "% of units passing first time", unit: "PERCENT", direction: "HIGHER_BETTER", achievementMethod: "RATIO", aggregation: "AVERAGE", decimalPlaces: 1, dic: "OX", monthlyTarget: 96.5 },
             ],
             children: [
               {
                 statement: "Close every quality escalation within the standard",
                 controlItems: [
-                  { code: "OX-8D", name: "8D closure within 30 days", unit: "PERCENT", direction: "HIGHER_BETTER", achievementMethod: "RATIO", aggregation: "AVERAGE", decimalPlaces: 1, dic: "OX", monthlyTarget: 90.0 },
+                  { code: "OX-8D", name: "8D closure within 30 days", measuredAs: "% of escalations closed in 30 days", unit: "PERCENT", direction: "HIGHER_BETTER", achievementMethod: "RATIO", aggregation: "AVERAGE", decimalPlaces: 1, dic: "OX", monthlyTarget: 90.0 },
                 ],
               },
             ],
@@ -149,8 +151,8 @@ export const GOALS: SeedGoal[] = [
           {
             statement: "Deliver to the customer promise date",
             controlItems: [
-              { code: "OX-OTD", name: "On-time delivery", unit: "PERCENT", direction: "HIGHER_BETTER", achievementMethod: "RATIO", aggregation: "AVERAGE", decimalPlaces: 1, dic: "OX", monthlyTarget: 97.0 },
-              { code: "OX-INV", name: "Finished goods inventory", unit: "COUNT", direction: "LOWER_BETTER", achievementMethod: "RATIO", aggregation: "LATEST", decimalPlaces: 0, dic: "OX", monthlyTarget: 3100 },
+              { code: "OX-OTD", name: "On-time delivery", measuredAs: "% of orders on the promise date", unit: "PERCENT", direction: "HIGHER_BETTER", achievementMethod: "RATIO", aggregation: "AVERAGE", decimalPlaces: 1, dic: "OX", monthlyTarget: 97.0 },
+              { code: "OX-INV", name: "Finished goods inventory", measuredAs: "Units on hand at month end", unit: "COUNT", direction: "LOWER_BETTER", achievementMethod: "RATIO", aggregation: "LATEST", decimalPlaces: 0, dic: "OX", monthlyTarget: 3100 },
             ],
           },
         ],
@@ -161,15 +163,15 @@ export const GOALS: SeedGoal[] = [
           {
             statement: "Move core planning processes off spreadsheets",
             controlItems: [
-              { code: "BMD-MIG", name: "Processes migrated to platform", unit: "COUNT", direction: "HIGHER_BETTER", achievementMethod: "RATIO", aggregation: "SUM", decimalPlaces: 0, dic: "BMD", monthlyTarget: 2 },
-              { code: "BMD-ADO", name: "Platform weekly active usage", unit: "PERCENT", direction: "HIGHER_BETTER", achievementMethod: "RATIO", aggregation: "LATEST", decimalPlaces: 1, dic: "BMD", monthlyTarget: 72.0 },
+              { code: "BMD-MIG", name: "Processes migrated to platform", measuredAs: "Processes live on the platform", unit: "COUNT", direction: "HIGHER_BETTER", achievementMethod: "RATIO", aggregation: "SUM", decimalPlaces: 0, dic: "BMD", monthlyTarget: 2 },
+              { code: "BMD-ADO", name: "Platform weekly active usage", measuredAs: "% of named users active weekly", unit: "PERCENT", direction: "HIGHER_BETTER", achievementMethod: "RATIO", aggregation: "LATEST", decimalPlaces: 1, dic: "BMD", monthlyTarget: 72.0 },
             ],
           },
           {
             statement: "Keep the operating systems available to the plants",
             controlItems: [
-              { code: "BMD-UPT", name: "Core system availability", unit: "PERCENT", direction: "HIGHER_BETTER", achievementMethod: "RATIO", aggregation: "AVERAGE", decimalPlaces: 2, dic: "BMD", monthlyTarget: 99.5 },
-              { code: "BMD-INC", name: "Severity 1 incidents", unit: "COUNT", direction: "LOWER_BETTER", achievementMethod: "INVERSE", aggregation: "SUM", decimalPlaces: 0, dic: "BMD", monthlyTarget: 1 },
+              { code: "BMD-UPT", name: "Core system availability", measuredAs: "% of scheduled hours available", unit: "PERCENT", direction: "HIGHER_BETTER", achievementMethod: "RATIO", aggregation: "AVERAGE", decimalPlaces: 2, dic: "BMD", monthlyTarget: 99.5 },
+              { code: "BMD-INC", name: "Severity 1 incidents", measuredAs: "Severity 1 incidents raised", unit: "COUNT", direction: "LOWER_BETTER", achievementMethod: "INVERSE", aggregation: "SUM", decimalPlaces: 0, dic: "BMD", monthlyTarget: 1 },
             ],
           },
         ],
@@ -186,14 +188,14 @@ export const GOALS: SeedGoal[] = [
             statement: "Raise satisfaction across the ownership life",
             childTheme: "Service standard adherence",
             controlItems: [
-              { code: "CS-NPS", name: "Net promoter score", unit: "INDEX", direction: "HIGHER_BETTER", achievementMethod: "RATIO", aggregation: "AVERAGE", decimalPlaces: 0, dic: "CS", monthlyTarget: 48 },
-              { code: "CS-RES", name: "First contact resolution", unit: "PERCENT", direction: "HIGHER_BETTER", achievementMethod: "RATIO", aggregation: "AVERAGE", decimalPlaces: 1, dic: "CS", monthlyTarget: 78.0 },
+              { code: "CS-NPS", name: "Net promoter score", measuredAs: "Net promoter score, -100 to +100", unit: "INDEX", direction: "HIGHER_BETTER", achievementMethod: "RATIO", aggregation: "AVERAGE", decimalPlaces: 0, dic: "CS", monthlyTarget: 48 },
+              { code: "CS-RES", name: "First contact resolution", measuredAs: "% resolved on first contact", unit: "PERCENT", direction: "HIGHER_BETTER", achievementMethod: "RATIO", aggregation: "AVERAGE", decimalPlaces: 1, dic: "CS", monthlyTarget: 78.0 },
             ],
             children: [
               {
                 statement: "Answer the customer inside the service standard",
                 controlItems: [
-                  { code: "CS-AHT", name: "Average response time", unit: "DAYS", direction: "LOWER_BETTER", achievementMethod: "RATIO", aggregation: "AVERAGE", decimalPlaces: 2, dic: "CS", monthlyTarget: 0.5 },
+                  { code: "CS-AHT", name: "Average response time", measuredAs: "Working days to first response", unit: "DAYS", direction: "LOWER_BETTER", achievementMethod: "RATIO", aggregation: "AVERAGE", decimalPlaces: 2, dic: "CS", monthlyTarget: 0.5 },
                 ],
               },
             ],
@@ -206,9 +208,9 @@ export const GOALS: SeedGoal[] = [
           {
             statement: "Build an engaged and stable workforce",
             controlItems: [
-              { code: "FRC-ENG", name: "Employee engagement", unit: "PERCENT", direction: "HIGHER_BETTER", achievementMethod: "RATIO", aggregation: "AVERAGE", decimalPlaces: 1, dic: "FRC", monthlyTarget: 74.0 },
-              { code: "FRC-TRN", name: "Voluntary turnover", unit: "PERCENT", direction: "LOWER_BETTER", achievementMethod: "INVERSE", aggregation: "AVERAGE", decimalPlaces: 1, dic: "FRC", monthlyTarget: 8.5 },
-              { code: "FRC-HC", name: "Headcount", unit: "COUNT", direction: "HIGHER_BETTER", achievementMethod: "RATIO", aggregation: "LATEST", decimalPlaces: 0, dic: "FRC", monthlyTarget: 2450 },
+              { code: "FRC-ENG", name: "Employee engagement", measuredAs: "% favourable, engagement survey", unit: "PERCENT", direction: "HIGHER_BETTER", achievementMethod: "RATIO", aggregation: "AVERAGE", decimalPlaces: 1, dic: "FRC", monthlyTarget: 74.0 },
+              { code: "FRC-TRN", name: "Voluntary turnover", measuredAs: "% of headcount, annualised", unit: "PERCENT", direction: "LOWER_BETTER", achievementMethod: "INVERSE", aggregation: "AVERAGE", decimalPlaces: 1, dic: "FRC", monthlyTarget: 8.5 },
+              { code: "FRC-HC", name: "Headcount", measuredAs: "Employees at month end", unit: "COUNT", direction: "HIGHER_BETTER", achievementMethod: "RATIO", aggregation: "LATEST", decimalPlaces: 0, dic: "FRC", monthlyTarget: 2450 },
             ],
           },
         ],
@@ -238,15 +240,15 @@ export const LEVEL_4: SeedLevel4[] = [
         statement: "Raise showroom conversion in the top twenty dealers",
         laddersToControlItem: "AUTO-VOL",
         controlItems: [
-          { code: "AUTO-CONV", name: "Showroom conversion rate", unit: "PERCENT", direction: "HIGHER_BETTER", achievementMethod: "RATIO", aggregation: "AVERAGE", decimalPlaces: 1, dic: "AUTO", monthlyTarget: 21.0 },
-          { code: "AUTO-TEST", name: "Test drives booked", unit: "COUNT", direction: "HIGHER_BETTER", achievementMethod: "RATIO", aggregation: "SUM", decimalPlaces: 0, dic: "AUTO", monthlyTarget: 9800 },
+          { code: "AUTO-CONV", name: "Showroom conversion rate", measuredAs: "% of showroom visits converted", unit: "PERCENT", direction: "HIGHER_BETTER", achievementMethod: "RATIO", aggregation: "AVERAGE", decimalPlaces: 1, dic: "AUTO", monthlyTarget: 21.0 },
+          { code: "AUTO-TEST", name: "Test drives booked", measuredAs: "Test drives booked", unit: "COUNT", direction: "HIGHER_BETTER", achievementMethod: "RATIO", aggregation: "SUM", decimalPlaces: 0, dic: "AUTO", monthlyTarget: 9800 },
         ],
       },
       {
         statement: "Hold dealer stock inside the agreed days of supply",
         laddersToControlItem: "AUTO-VOL",
         controlItems: [
-          { code: "AUTO-DOS", name: "Dealer days of supply", unit: "DAYS", direction: "LOWER_BETTER", achievementMethod: "RATIO", aggregation: "LATEST", decimalPlaces: 0, dic: "AUTO", monthlyTarget: 45 },
+          { code: "AUTO-DOS", name: "Dealer days of supply", measuredAs: "Days of supply at month end", unit: "DAYS", direction: "LOWER_BETTER", achievementMethod: "RATIO", aggregation: "LATEST", decimalPlaces: 0, dic: "AUTO", monthlyTarget: 45 },
         ],
       },
     ],
@@ -259,8 +261,8 @@ export const LEVEL_4: SeedLevel4[] = [
         statement: "Sustain standard work adherence on every line",
         laddersToControlItem: "OX-FTQ",
         controlItems: [
-          { code: "OX-SWA", name: "Standard work adherence", unit: "PERCENT", direction: "HIGHER_BETTER", achievementMethod: "RATIO", aggregation: "AVERAGE", decimalPlaces: 1, dic: "OX", monthlyTarget: 93.0 },
-          { code: "OX-KAI", name: "Kaizen suggestions implemented", unit: "COUNT", direction: "HIGHER_BETTER", achievementMethod: "RATIO", aggregation: "SUM", decimalPlaces: 0, dic: "OX", monthlyTarget: 120 },
+          { code: "OX-SWA", name: "Standard work adherence", measuredAs: "% of audited operations compliant", unit: "PERCENT", direction: "HIGHER_BETTER", achievementMethod: "RATIO", aggregation: "AVERAGE", decimalPlaces: 1, dic: "OX", monthlyTarget: 93.0 },
+          { code: "OX-KAI", name: "Kaizen suggestions implemented", measuredAs: "Suggestions implemented", unit: "COUNT", direction: "HIGHER_BETTER", achievementMethod: "RATIO", aggregation: "SUM", decimalPlaces: 0, dic: "OX", monthlyTarget: 120 },
         ],
       },
     ],
@@ -273,7 +275,7 @@ export const LEVEL_4: SeedLevel4[] = [
         statement: "Reduce repeat contacts on the same case",
         laddersToControlItem: "CS-RES",
         controlItems: [
-          { code: "CS-RPT", name: "Repeat contact rate", unit: "PERCENT", direction: "LOWER_BETTER", achievementMethod: "RATIO", aggregation: "AVERAGE", decimalPlaces: 1, dic: "CS", monthlyTarget: 14.0 },
+          { code: "CS-RPT", name: "Repeat contact rate", measuredAs: "% of cases contacted again", unit: "PERCENT", direction: "LOWER_BETTER", achievementMethod: "RATIO", aggregation: "AVERAGE", decimalPlaces: 1, dic: "CS", monthlyTarget: 14.0 },
         ],
       },
     ],

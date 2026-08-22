@@ -44,6 +44,7 @@ export function ControlItemDetailView({ detail }: { detail: ControlItemDetail })
         <dl className="mt-2 flex flex-wrap gap-x-6 gap-y-1 text-[11px]">
           <Meta term="Ki" value={detail.kiCode} />
           <Meta term="Level" value={`L${detail.level}`} />
+          <Meta term="Measured as" value={detail.measuredAs} />
           <Meta term="DIC" value={`${detail.dicCode} — ${detail.dicName}`} />
           <Meta term="Responsible" value={detail.responsibleUserName ?? "Not assigned"} />
           <Meta term="Unit" value={detail.unit} />

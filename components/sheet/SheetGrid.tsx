@@ -20,6 +20,7 @@ import { ChevronDown, ChevronRight } from "lucide-react";
 import type { SheetModel, ControlItemRow, GroupRow, SheetRowModel } from "@/lib/sheet/types";
 import { columnClass, columnWidth, sheetColumns } from "./columns";
 import type { QuarterCode } from "@/lib/domain/period";
+import { groupHeading, indentPx } from "./outline";
 import { SheetCellView, rowHeightFor, type DisplayMode } from "./SheetCellView";
 import { EvaluationSymbol } from "./EvaluationSymbol";
 
@@ -110,7 +111,11 @@ export function SheetGrid({
   return (
     <div className="flex min-h-0 flex-1 flex-col border border-rule-strong bg-paper">
       <div ref={scrollRef} className="min-h-0 flex-1 overflow-auto" tabIndex={0}>
-        <div style={{ width: `calc(var(--label-width) + ${gridWidth}px)` }}>
+        <div
+          style={{
+            width: `calc(var(--label-width) + var(--measure-width) + ${gridWidth}px)`,
+          }}
+        >
           <ColumnHeader columns={columns} onToggleQuarter={onToggleQuarter} />
           <ContextBar context={context} />
 
@@ -205,10 +210,16 @@ function ColumnHeader({
   return (
     <div className="sticky top-0 z-30 flex border-b border-rule-strong bg-paper-band-strong">
       <div
-        className="sticky left-0 z-40 flex shrink-0 items-end border-r border-rule-strong bg-paper-band-strong px-2 py-1 text-[11px] font-medium text-ink-muted"
+        className="sticky left-0 z-40 flex shrink-0 items-end bg-paper-band-strong px-2 py-1 text-[11px] font-medium text-ink-muted"
         style={{ width: "var(--label-width)" }}
       >
-        Control Item
+        Measures
+      </div>
+      <div
+        className="sticky z-40 flex shrink-0 items-end border-r border-rule-strong bg-paper-band-strong px-2 py-1 text-[11px] font-medium text-ink-muted"
+        style={{ left: "var(--label-width)", width: "var(--measure-width)" }}
+      >
+        Measured as
       </div>
       {columns.map((column) =>
         column.kind === "QUARTER" ? (
@@ -254,7 +265,7 @@ function ContextBar({ context }: { context: string[] }) {
     <div className="sticky top-[26px] z-20 flex border-b border-rule bg-paper-sunken">
       <div
         className="sticky left-0 z-20 shrink-0 truncate border-r border-rule-strong bg-paper-sunken px-2 py-0.5 text-[10px] uppercase tracking-wide text-ink-faint"
-        style={{ width: "var(--label-width)" }}
+        style={{ width: "calc(var(--label-width) + var(--measure-width))" }}
       >
         Position
       </div>
@@ -287,7 +298,10 @@ function GroupRowView({
     <div className={`flex w-full items-center border-b border-rule ${tone}`} style={{ height: GROUP_ROW_HEIGHT }}>
       <div
         className={`sticky left-0 z-10 flex h-full shrink-0 items-center gap-1 border-r border-rule-strong pr-2 ${tone}`}
-        style={{ width: "var(--label-width)", paddingLeft: 4 + (row.path.length * 12) }}
+        style={{
+          width: "calc(var(--label-width) + var(--measure-width))",
+          paddingLeft: indentPx(row),
+        }}
       >
         <button
           type="button"
@@ -299,7 +313,7 @@ function GroupRowView({
           {collapsed ? <ChevronRight size={12} /> : <ChevronDown size={12} />}
         </button>
         <span className="truncate" title={row.statement}>
-          {row.kind === "GOAL" ? `L${row.level} · ${row.statement}` : row.statement}
+          {groupHeading(row.statement, row.ordinal)}
         </span>
       </div>
       {row.laddersTo ? (
@@ -339,9 +353,12 @@ function ControlItemRowView({
   return (
     <div className="group flex w-full border-b border-rule hover:bg-paper-sunken">
       <div
-        className="sticky left-0 z-10 flex h-full shrink-0 items-center gap-2 border-r border-rule-strong bg-paper px-2 group-hover:bg-paper-sunken"
-        style={{ width: "var(--label-width)", paddingLeft: 8 + row.path.length * 12 }}
+        className="sticky left-0 z-10 flex h-full shrink-0 items-center gap-2 bg-paper px-2 group-hover:bg-paper-sunken"
+        style={{ width: "var(--label-width)", paddingLeft: indentPx(row) }}
       >
+        {/* Stands in for the group rows' disclosure caret, so a Control Item
+            lands on the same vertical as a group at the same step. */}
+        <span className="size-4 shrink-0" aria-hidden />
         <Link
           href={`/control-item/${row.id}`}
           className="min-w-0 flex-1 truncate text-[12px] hover:underline"
@@ -349,15 +366,19 @@ function ControlItemRowView({
         >
           {row.name}
         </Link>
-        <span className="shrink-0 text-[10px] text-ink-faint" title={`Aggregation: ${row.aggregation}`}>
-          {unitTag(row.unit)}
-        </span>
         <span
           className="shrink-0 rounded-sm border border-rule px-1 text-[10px] text-ink-muted"
           title={`Division in charge: ${row.dicName}`}
         >
           {row.dicCode}
         </span>
+      </div>
+      <div
+        className="sticky z-10 flex h-full shrink-0 items-center border-r border-rule-strong bg-paper px-2 text-[11px] text-ink-muted group-hover:bg-paper-sunken"
+        style={{ left: "var(--label-width)", width: "var(--measure-width)" }}
+        title={`${row.measuredAs} · rolled up by ${row.aggregation.toLowerCase()}`}
+      >
+        <span className="truncate">{row.measuredAs}</span>
       </div>
 
       {columns.map((column) => {
@@ -395,17 +416,6 @@ function ControlItemRowView({
       })}
     </div>
   );
-}
-
-function unitTag(unit: ControlItemRow["unit"]): string {
-  switch (unit) {
-    case "PERCENT": return "%";
-    case "CURRENCY": return "$";
-    case "COUNT": return "no.";
-    case "RATIO": return "×";
-    case "DAYS": return "d";
-    case "INDEX": return "idx";
-  }
 }
 
 function BandLegend({ model }: { model: SheetModel }) {

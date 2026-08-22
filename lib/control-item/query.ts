@@ -33,6 +33,7 @@ export interface ControlItemDetail {
   id: string;
   code: string;
   name: string;
+  measuredAs: string;
   unit: string;
   direction: string;
   achievementMethod: string;
@@ -133,6 +134,7 @@ export async function loadControlItem(controlItemId: string): Promise<ControlIte
     id: item.id,
     code: item.code,
     name: item.name,
+    measuredAs: item.measuredAs ?? item.unit.toLowerCase(),
     unit: item.unit,
     direction: item.direction,
     achievementMethod: item.achievementMethod,

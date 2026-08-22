@@ -38,7 +38,8 @@
 .print-sheet .actual-line { display: flex; align-items: baseline; justify-content: flex-end; gap: 0.8mm; font-weight: 700; }
 .print-sheet .col-quarter { width: 18mm; background: #eee; }
 .print-sheet .col-ki { width: 22mm; background: #ddd; }
-.print-sheet .col-label { width: 62mm; }
+.print-sheet .col-label { width: 54mm; }
+.print-sheet .col-measure { width: 36mm; font-size: 5.5pt; color: #444; }
 .print-sheet .col-dic { width: 12mm; }
 
 .print-sheet .num {
@@ -79,9 +80,12 @@
 }
 
 .print-sheet thead th.col-label,
+.print-sheet thead th.col-measure,
 .print-sheet thead th.col-dic {
   text-align: left;
 }
+
+.print-sheet td.col-measure { text-align: left; }
 
 @media print {
   .no-print { display: none !important; }

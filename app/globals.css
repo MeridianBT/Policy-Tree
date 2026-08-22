@@ -23,7 +23,9 @@
 
 :root {
   --row-height: 26px;
-  --label-width: 260px;
+  /* The two frozen columns: the measure, and what it is measured as. */
+  --label-width: 246px;
+  --measure-width: 148px;
 }
 
 html,
