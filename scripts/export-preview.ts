@@ -30,6 +30,7 @@ async function main() {
         id: item.id,
         code: item.code,
         name: item.name,
+        measuredAs: item.measuredAs,
         unit: item.unit,
         dp: item.decimalPlaces,
         dir: item.direction,
@@ -60,6 +61,7 @@ async function main() {
       id: group.id,
       lvl: group.level,
       statement: group.statement,
+      ordinal: group.ordinal ?? null,
       path: group.path,
     };
   });
