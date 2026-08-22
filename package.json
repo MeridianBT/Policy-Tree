@@ -6,14 +6,17 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint",
+    "typecheck": "tsc --noEmit",
     "test": "vitest run",
+    "test:unit": "vitest run lib",
     "test:watch": "vitest",
+    "check:symbols": "node scripts/check-symbols.cjs",
     "db:migrate": "prisma migrate dev",
     "db:deploy": "prisma migrate deploy",
     "db:seed": "tsx prisma/seed.ts",
-    "db:reset": "prisma migrate reset --force",
-    "typecheck": "tsc --noEmit"
+    "db:reset": "prisma migrate reset --force && tsx prisma/seed.ts",
+    "db:studio": "prisma studio",
+    "backup": "./scripts/backup.sh"
   },
   "dependencies": {
     "@prisma/adapter-pg": "^7.9.1",
@@ -42,6 +45,7 @@
     "dotenv": "^17.4.2",
     "eslint": "^9.39.5",
     "eslint-config-next": "^16.3.2",
+    "playwright": "^1.62.1",
     "postcss": "^8.5.26",
     "prisma": "^7.9.1",
     "tailwindcss": "^4.3.3",

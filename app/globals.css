@@ -1,0 +1,79 @@
+@import "tailwindcss";
+
+/* Design tokens. See DESIGN.md. Anything not on this list does not exist. */
+@theme {
+  --color-paper: #ffffff;
+  --color-paper-sunken: #f7f7f6;
+  --color-paper-band: #f2f2f0;
+  --color-paper-band-strong: #e9e9e6;
+  --color-ink: #141413;
+  --color-ink-muted: #57564f;
+  --color-ink-faint: #8a887e;
+  --color-rule: #dfdeda;
+  --color-rule-strong: #b5b3ac;
+  --color-focus: #1d4ed8;
+
+  --font-sans: ui-sans-serif, -apple-system, "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+  --font-num: ui-monospace, "SF Mono", "Cascadia Mono", "Segoe UI Mono", "Roboto Mono", monospace;
+  /* CJK-adjacent glyphs: 〇 is U+3007 and needs a Japanese-capable face. */
+  --font-symbol: "Hiragino Kaku Gothic ProN", "Yu Gothic", "Yu Gothic UI",
+    "Noto Sans CJK JP", "Noto Sans JP", "Meiryo", "MS Gothic", "IPAGothic",
+    "TakaoGothic", "VL Gothic", "Segoe UI Symbol", sans-serif;
+}
+
+:root {
+  --row-height: 26px;
+  --label-width: 260px;
+}
+
+html,
+body {
+  background: var(--color-paper-sunken);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+  font-size: 13px;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Numbers are typography: tabular figures so columns align on the decimal. */
+.num {
+  font-family: var(--font-num);
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum" 1;
+  text-align: right;
+}
+
+.symbol {
+  font-family: var(--font-symbol);
+  font-variant-emoji: text;
+  line-height: 1;
+}
+
+/* Accessibility floor: focus is always visible and never removed. */
+:focus-visible {
+  outline: 2px solid var(--color-focus);
+  outline-offset: -1px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border-width: 0;
+}

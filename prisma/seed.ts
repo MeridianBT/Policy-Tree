@@ -264,7 +264,7 @@ async function main() {
               parentId: objectiveNode.id,
               level: 3,
               kind: "THEME",
-              statement: `${theme.statement} — deployment`,
+              statement: objective.childTheme ?? `${theme.statement} — deployment`,
               orgUnitId: company.id,
               sortOrder: 0,
             },

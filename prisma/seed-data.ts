@@ -38,6 +38,8 @@ export type SeedControlItem = {
 export type SeedObjective = {
   statement: string;
   controlItems: SeedControlItem[];
+  /** Heading for the Level 3 theme that carries the children. */
+  childTheme?: string;
   /** Level 3 objectives laddering into this one. */
   children?: SeedObjective[];
 };
@@ -61,6 +63,7 @@ export const GOALS: SeedGoal[] = [
         objectives: [
           {
             statement: "Expand unit sales in priority segments",
+            childTheme: "Grade mix and pricing discipline",
             controlItems: [
               { code: "AUTO-VOL", name: "Vehicle sales volume", unit: "COUNT", direction: "HIGHER_BETTER", achievementMethod: "RATIO", aggregation: "SUM", decimalPlaces: 0, dic: "AUTO", monthlyTarget: 4200 },
               { code: "AUTO-REV", name: "Vehicle sales revenue", unit: "CURRENCY", direction: "HIGHER_BETTER", achievementMethod: "RATIO", aggregation: "SUM", decimalPlaces: 0, dic: "AUTO", monthlyTarget: 186000 },
@@ -82,6 +85,7 @@ export const GOALS: SeedGoal[] = [
           },
           {
             statement: "Grow the parts and service revenue stream",
+            childTheme: "Workshop throughput",
             controlItems: [
               { code: "PSP-REV", name: "Parts and service revenue", unit: "CURRENCY", direction: "HIGHER_BETTER", achievementMethod: "RATIO", aggregation: "SUM", decimalPlaces: 0, dic: "PSP", monthlyTarget: 41500 },
               { code: "PSP-ATT", name: "Service plan attachment rate", unit: "PERCENT", direction: "HIGHER_BETTER", achievementMethod: "RATIO", aggregation: "AVERAGE", decimalPlaces: 1, dic: "PSP", monthlyTarget: 62.0 },
@@ -102,6 +106,7 @@ export const GOALS: SeedGoal[] = [
         objectives: [
           {
             statement: "Hold SG&A within the committed envelope",
+            childTheme: "Unit cost reduction",
             controlItems: [
               { code: "FRC-SGA", name: "SG&A spend", unit: "CURRENCY", direction: "LOWER_BETTER", achievementMethod: "INVERSE", aggregation: "SUM", decimalPlaces: 0, dic: "FRC", monthlyTarget: 28400 },
               { code: "FRC-OPM", name: "Operating profit margin", unit: "PERCENT", direction: "HIGHER_BETTER", achievementMethod: "RATIO", aggregation: "AVERAGE", decimalPlaces: 1, dic: "FRC", monthlyTarget: 8.4 },
@@ -127,6 +132,7 @@ export const GOALS: SeedGoal[] = [
         objectives: [
           {
             statement: "Eliminate defects reaching the customer",
+            childTheme: "Quality escalation control",
             controlItems: [
               { code: "OX-PPM", name: "Customer-detected defects", unit: "COUNT", direction: "LOWER_BETTER", achievementMethod: "RATIO", aggregation: "SUM", decimalPlaces: 0, dic: "OX", monthlyTarget: 42 },
               { code: "OX-FTQ", name: "First time quality", unit: "PERCENT", direction: "HIGHER_BETTER", achievementMethod: "RATIO", aggregation: "AVERAGE", decimalPlaces: 1, dic: "OX", monthlyTarget: 96.5 },
@@ -178,6 +184,7 @@ export const GOALS: SeedGoal[] = [
         objectives: [
           {
             statement: "Raise satisfaction across the ownership life",
+            childTheme: "Service standard adherence",
             controlItems: [
               { code: "CS-NPS", name: "Net promoter score", unit: "INDEX", direction: "HIGHER_BETTER", achievementMethod: "RATIO", aggregation: "AVERAGE", decimalPlaces: 0, dic: "CS", monthlyTarget: 48 },
               { code: "CS-RES", name: "First contact resolution", unit: "PERCENT", direction: "HIGHER_BETTER", achievementMethod: "RATIO", aggregation: "AVERAGE", decimalPlaces: 1, dic: "CS", monthlyTarget: 78.0 },
