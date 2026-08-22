@@ -5,7 +5,7 @@
  * and the three filters. Everything here is view state; nothing recalculates.
  */
 
-import { useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import Link from "next/link";
 import { Printer } from "lucide-react";
 import type { SheetModel } from "@/lib/sheet/types";
@@ -13,6 +13,8 @@ import { Button, MultiSelect, Segmented, Select } from "@/components/ui/primitiv
 import { SheetGrid, EMPTY_FILTERS, type SheetFilters } from "./SheetGrid";
 import { DISPLAY_MODES, type DisplayMode } from "./SheetCellView";
 import { EvaluationSymbol } from "./EvaluationSymbol";
+import { ALL_QUARTERS } from "./columns";
+import type { QuarterCode } from "@/lib/domain/period";
 
 export const LATEST_FORECAST = "LATEST";
 
@@ -44,6 +46,23 @@ export function SheetScreen({
 }) {
   const [displayMode, setDisplayMode] = useState<DisplayMode>("FULL");
   const [filters, setFilters] = useState<SheetFilters>(EMPTY_FILTERS);
+  // Quarters whose month columns are folded away. Purely a view state: the
+  // quarter figure is derived from the months either way.
+  const [condensedQuarters, setCondensedQuarters] = useState<QuarterCode[]>([]);
+
+  const allCondensed = condensedQuarters.length === ALL_QUARTERS.length;
+  // Folding quarters one at a time is a third state, and the toggle says so by
+  // showing neither option selected rather than claiming one of them.
+  const columnsMode: string =
+    condensedQuarters.length === 0 ? "MONTHS" : allCondensed ? "QUARTERS" : "MIXED";
+
+  const toggleQuarter = useCallback((quarter: QuarterCode) => {
+    setCondensedQuarters((previous) =>
+      previous.includes(quarter)
+        ? previous.filter((candidate) => candidate !== quarter)
+        : [...previous, quarter],
+    );
+  }, []);
 
   const forecastVersions = useMemo(
     () => model.versions.filter((version) => !version.isActual),
@@ -81,7 +100,7 @@ export function SheetScreen({
         </div>
         {printHref && (
           <Link
-            href={printHref}
+            href={allCondensed ? `${printHref}?columns=quarters` : printHref}
             target="_blank"
             className="flex items-center gap-1 rounded-sm border border-rule bg-paper px-2 py-1 text-[11px] text-ink hover:bg-paper-sunken"
           >
@@ -111,6 +130,18 @@ export function SheetScreen({
           value={displayMode}
           onChange={setDisplayMode}
           options={DISPLAY_MODES}
+        />
+
+        <Segmented
+          label="Columns"
+          value={columnsMode}
+          onChange={(value) =>
+            setCondensedQuarters(value === "QUARTERS" ? [...ALL_QUARTERS] : [])
+          }
+          options={[
+            { value: "MONTHS", label: "Months", hint: "Every month, with its quarter beside it" },
+            { value: "QUARTERS", label: "Quarters", hint: "Condense every quarter to its total" },
+          ]}
         />
 
         <span className="mx-1 h-4 w-px bg-rule" aria-hidden />
@@ -163,6 +194,8 @@ export function SheetScreen({
         filters={filters}
         compareModel={compareModel}
         compareVersionId={compareVersionId || null}
+        condensedQuarters={condensedQuarters}
+        onToggleQuarter={toggleQuarter}
       />
     </div>
   );

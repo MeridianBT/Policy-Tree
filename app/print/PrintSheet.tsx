@@ -8,7 +8,7 @@
  */
 
 import type { SheetModel, ControlItemRow, GroupRow } from "@/lib/sheet/types";
-import { sheetColumns } from "@/components/sheet/columns";
+import { ALL_QUARTERS, sheetColumns } from "@/components/sheet/columns";
 import { formatAchievement, formatValue } from "@/lib/calc/format";
 import { EvaluationSymbol } from "@/components/sheet/EvaluationSymbol";
 import "./print.css";
@@ -17,12 +17,17 @@ export function PrintSheet({
   model,
   title,
   versionLabel,
+  quartersOnly,
 }: {
   model: SheetModel;
   title: string;
   versionLabel: string;
+  /** Condense every quarter, for a review that reads at quarter level. */
+  quartersOnly?: boolean;
 }) {
-  const columns = sheetColumns(model.kiStartYear);
+  const columns = sheetColumns(model.kiStartYear, {
+    condensedQuarters: quartersOnly ? ALL_QUARTERS : [],
+  });
   const printedAt = new Date().toLocaleDateString("en-GB", {
     day: "2-digit",
     month: "short",
@@ -34,7 +39,8 @@ export function PrintSheet({
       <header className="mb-1 flex items-baseline justify-between">
         <h1 className="text-[11pt] font-bold">{title}</h1>
         <p className="text-[8pt]">
-          <strong>{model.kiCode}</strong> · {versionLabel} · printed {printedAt}
+          <strong>{model.kiCode}</strong> · {versionLabel} ·{" "}
+          {quartersOnly ? "quarters only" : "monthly"} · printed {printedAt}
         </p>
       </header>
 

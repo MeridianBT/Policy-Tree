@@ -19,6 +19,7 @@ import Link from "next/link";
 import { ChevronDown, ChevronRight } from "lucide-react";
 import type { SheetModel, ControlItemRow, GroupRow, SheetRowModel } from "@/lib/sheet/types";
 import { columnClass, columnWidth, sheetColumns } from "./columns";
+import type { QuarterCode } from "@/lib/domain/period";
 import { SheetCellView, rowHeightFor, type DisplayMode } from "./SheetCellView";
 import { EvaluationSymbol } from "./EvaluationSymbol";
 
@@ -38,18 +39,26 @@ export function SheetGrid({
   filters,
   compareVersionId,
   compareModel,
+  condensedQuarters,
+  onToggleQuarter,
 }: {
   model: SheetModel;
   displayMode: DisplayMode;
   filters: SheetFilters;
   compareVersionId?: string | null;
   compareModel?: SheetModel | null;
+  /** Quarters whose month columns are folded away. */
+  condensedQuarters: QuarterCode[];
+  onToggleQuarter: (quarter: QuarterCode) => void;
 }) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const [collapsed, setCollapsed] = useState<Set<string>>(() => new Set());
   const [topRowIndex, setTopRowIndex] = useState(0);
 
-  const columns = useMemo(() => sheetColumns(model.kiStartYear), [model.kiStartYear]);
+  const columns = useMemo(
+    () => sheetColumns(model.kiStartYear, { condensedQuarters }),
+    [model.kiStartYear, condensedQuarters],
+  );
   const gridWidth = useMemo(
     () => columns.reduce((total, column) => total + columnWidth(column.kind), 0),
     [columns],
@@ -102,7 +111,7 @@ export function SheetGrid({
     <div className="flex min-h-0 flex-1 flex-col border border-rule-strong bg-paper">
       <div ref={scrollRef} className="min-h-0 flex-1 overflow-auto" tabIndex={0}>
         <div style={{ width: `calc(var(--label-width) + ${gridWidth}px)` }}>
-          <ColumnHeader columns={columns} />
+          <ColumnHeader columns={columns} onToggleQuarter={onToggleQuarter} />
           <ContextBar context={context} />
 
           <div style={{ height: virtualizer.getTotalSize(), position: "relative" }}>
@@ -186,7 +195,13 @@ function contextFor(rows: SheetRowModel[], topIndex: number): string[] {
     .map((node) => (node as GroupRow).statement);
 }
 
-function ColumnHeader({ columns }: { columns: ReturnType<typeof sheetColumns> }) {
+function ColumnHeader({
+  columns,
+  onToggleQuarter,
+}: {
+  columns: ReturnType<typeof sheetColumns>;
+  onToggleQuarter: (quarter: QuarterCode) => void;
+}) {
   return (
     <div className="sticky top-0 z-30 flex border-b border-rule-strong bg-paper-band-strong">
       <div
@@ -195,17 +210,41 @@ function ColumnHeader({ columns }: { columns: ReturnType<typeof sheetColumns> })
       >
         Control Item
       </div>
-      {columns.map((column) => (
-        <div
-          key={column.key}
-          className={`flex shrink-0 items-end justify-end px-1.5 py-1 text-[11px] font-medium ${
-            column.kind === "MONTH" ? "text-ink-muted" : "text-ink"
-          } ${columnClass(column.kind)}`}
-          style={{ width: columnWidth(column.kind) }}
-        >
-          {column.label}
-        </div>
-      ))}
+      {columns.map((column) =>
+        column.kind === "QUARTER" ? (
+          <button
+            key={column.key}
+            type="button"
+            onClick={() => onToggleQuarter(column.quarter!)}
+            aria-expanded={!column.condensed}
+            title={
+              column.condensed
+                ? `Show the months of ${column.label}`
+                : `Condense ${column.label} to the quarter figure`
+            }
+            className={`flex shrink-0 items-end justify-end gap-1 px-1.5 py-1 text-[11px] font-medium text-ink hover:brightness-95 ${columnClass(
+              column.kind,
+              column.condensed,
+            )}`}
+            style={{ width: columnWidth(column.kind) }}
+          >
+            <span aria-hidden className="text-[9px] text-ink-muted">
+              {column.condensed ? "»" : "«"}
+            </span>
+            {column.label}
+          </button>
+        ) : (
+          <div
+            key={column.key}
+            className={`flex shrink-0 items-end justify-end px-1.5 py-1 text-[11px] font-medium ${
+              column.kind === "MONTH" ? "text-ink-muted" : "text-ink"
+            } ${columnClass(column.kind, column.condensed)}`}
+            style={{ width: columnWidth(column.kind) }}
+          >
+            {column.label}
+          </div>
+        ),
+      )}
     </div>
   );
 }
@@ -327,7 +366,10 @@ function ControlItemRowView({
         return (
           <div
             key={column.key}
-            className={`flex shrink-0 flex-col justify-center px-1.5 ${columnClass(column.kind)} group-hover:bg-paper-sunken`}
+            className={`flex shrink-0 flex-col justify-center px-1.5 ${columnClass(
+              column.kind,
+              column.condensed,
+            )} group-hover:bg-paper-sunken`}
             style={{ width: columnWidth(column.kind) }}
           >
             {cell && (

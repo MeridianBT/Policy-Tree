@@ -196,7 +196,7 @@ LDAP later means adding a provider there and mapping its claims onto
 
 | Route | What it is |
 |---|---|
-| `/sheet` | The company sheet, Levels 1–3, virtualised, with version selector, compare mode, four display densities and filters by DIC, Theme and evaluation symbol |
+| `/sheet` | The company sheet, Levels 1–3, virtualised, with version selector, compare mode, four display densities, condensable quarter columns and filters by DIC, Theme and evaluation symbol |
 | `/division/[code]` | The Level 4 division sheet, showing which Level 1–3 Objective each group ladders into |
 | `/my-entries` | Keyboard-driven monthly entry for everything the signed-in user owns, with an outstanding count |
 | `/control-item/[id]` | Trend chart with every version overlaid, stored cells including formulas as typed, and the full audit trail |
@@ -206,6 +206,15 @@ LDAP later means adding a provider there and mapping its claims onto
 
 Entry is `Tab` to move and save, `Enter` to save and drop a row, `Escape` to
 revert. No modal dialogs anywhere in that flow.
+
+The sheet outlines in both directions. Rows fold at Goal, Theme and Objective;
+columns fold by quarter — tap a quarter heading to condense its three months
+into the quarter figure, or use the Columns toggle to condense all four at once
+and read the whole Ki at quarter level. Condensing is a view concern and
+changes nothing that is computed: the quarter figure is derived from the
+monthly grain whether or not the months are on screen. A condensed sheet prints
+condensed — the Print view link carries the state as `?columns=quarters`, which
+gives a much less dense one-pager for a board reading.
 
 ## The evaluation symbols
 

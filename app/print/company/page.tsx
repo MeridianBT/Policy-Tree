@@ -8,7 +8,7 @@ export const dynamic = "force-dynamic";
 export default async function CompanyPrintPage({
   searchParams,
 }: {
-  searchParams: Promise<{ version?: string }>;
+  searchParams: Promise<{ version?: string; columns?: string }>;
 }) {
   await requireSession();
   const params = await searchParams;
@@ -24,6 +24,7 @@ export default async function CompanyPrintPage({
         model={model}
         title="Company sheet — Levels 1 to 3"
         versionLabel={pinned ? `Target: ${pinned}` : "Target: latest forecast"}
+        quartersOnly={params.columns === "quarters"}
       />
     </>
   );

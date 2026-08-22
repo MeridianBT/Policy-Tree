@@ -7,9 +7,16 @@ import { PrintChrome } from "../../PrintChrome";
 
 export const dynamic = "force-dynamic";
 
-export default async function DivisionPrintPage({ params }: { params: Promise<{ code: string }> }) {
+export default async function DivisionPrintPage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ code: string }>;
+  searchParams: Promise<{ columns?: string }>;
+}) {
   await requireSession();
   const { code } = await params;
+  const query = await searchParams;
   const orgUnit = await prisma.orgUnit.findUnique({ where: { code: code.toUpperCase() } });
   if (!orgUnit) notFound();
 
@@ -22,6 +29,7 @@ export default async function DivisionPrintPage({ params }: { params: Promise<{ 
         model={model}
         title={`${orgUnit.code} — ${orgUnit.name} · Level 4`}
         versionLabel="Target: latest forecast"
+        quartersOnly={query.columns === "quarters"}
       />
     </>
   );

@@ -75,6 +75,13 @@ mode. The grid is tight on purpose.
   stream, indented one step per level, each with a disclosure control.
 - **Column groups** — quarters and the Ki total are tinted a step darker and
   bounded with `--rule-strong`. They read as summaries, not as more months.
+- **Column outline** — a quarter heading is a disclosure that folds its three
+  month columns away, leaving the quarter standing in for them. A condensed
+  quarter takes the darker `--paper-band-strong` tint, so a column covering
+  three hidden months reads differently from one sitting beside them. The
+  Months/Quarters toggle drives all four at once and shows *neither* option
+  selected when quarters have been folded individually — a partial state the
+  control should admit to rather than round off.
 
 ## Display modes
 
