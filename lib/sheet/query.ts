@@ -159,38 +159,56 @@ export async function loadSheet(options: LoadSheetOptions): Promise<SheetModel> 
   let goalOrdinal = 0;
   const themes: Array<{ id: string; statement: string }> = [];
 
-  /** Emit a group header and everything above it, once, in tree order. */
-  function emitGroupChain(nodeId: string): void {
-    for (const ancestorId of [...ancestors(nodeId), nodeId]) {
-      if (groupById.has(ancestorId)) continue;
-      const node = nodeById.get(ancestorId);
-      if (!node) continue;
-      const isGoal = node.kind === "GOAL" && node.level === 1;
-      const group: GroupRow = {
-        id: node.id,
-        kind: node.kind === "GOAL" ? "GOAL" : node.kind === "THEME" ? "THEME" : "OBJECTIVE",
-        level: node.level,
-        statement: node.statement,
-        ordinal: isGoal ? ++goalOrdinal : null,
-        path: ancestors(node.id),
-        controlItemIds: [],
-        laddersTo:
-          node.kind === "OBJECTIVE" && !options.levels.includes(node.level - 1)
-            ? ladderTarget(node.id)
-            : null,
-      };
-      groupById.set(node.id, group);
-      rows.push(group as SheetRowModel);
-      if (node.kind === "THEME") themes.push({ id: node.id, statement: node.statement });
+  /**
+   * Every node that belongs on this sheet: those at the requested levels, plus
+   * the ancestors that place them. A Level 4 node also has to belong to the
+   * requested org units, or a division sheet would show its neighbours.
+   */
+  const inScope = new Set<string>();
+  for (const node of nodes) {
+    if (!options.levels.includes(node.level)) continue;
+    if (options.orgUnitIds && node.orgUnitId && !options.orgUnitIds.includes(node.orgUnitId)) {
+      continue;
     }
+    inScope.add(node.id);
+    for (const ancestorId of ancestors(node.id)) inScope.add(ancestorId);
   }
 
-  // Walk the tree in structural order so groups nest correctly.
+  function emitGroup(node: (typeof nodes)[number]): void {
+    if (groupById.has(node.id)) return;
+    const isGoal = node.kind === "GOAL" && node.level === 1;
+    const group: GroupRow = {
+      id: node.id,
+      kind: node.kind === "GOAL" ? "GOAL" : node.kind === "THEME" ? "THEME" : "OBJECTIVE",
+      level: node.level,
+      statement: node.statement,
+      ordinal: isGoal ? ++goalOrdinal : null,
+      path: ancestors(node.id),
+      controlItemIds: [],
+      laddersTo:
+        node.kind === "OBJECTIVE" && !options.levels.includes(node.level - 1)
+          ? ladderTarget(node.id)
+          : null,
+    };
+    groupById.set(node.id, group);
+    rows.push(group as SheetRowModel);
+    if (node.kind === "THEME") themes.push({ id: node.id, statement: node.statement });
+  }
+
+  /*
+   * Walk the tree in structural order so groups nest correctly, and emit every
+   * group in scope whether or not it carries a measure yet. An Objective with
+   * no Control Item is a real hole in the deployment and the sheet should show
+   * it; it is also the only way a structure can be built up from nothing,
+   * since you cannot add a measure to a row you cannot see.
+   */
   const ordered = [...nodes].sort(compareNodes(nodeById));
   for (const node of ordered) {
+    if (!inScope.has(node.id)) continue;
+    emitGroup(node);
+
     const items = itemsByNode.get(node.id);
     if (!items?.length) continue;
-    emitGroupChain(node.id);
     const path = [...ancestors(node.id), node.id];
 
     for (const item of items) {
@@ -235,8 +253,13 @@ export async function loadSheet(options: LoadSheetOptions): Promise<SheetModel> 
     }
   }
 
-  const dicMap = new Map<string, string>();
-  for (const item of controlItems) dicMap.set(item.dicOrgUnit.code, item.dicOrgUnit.name);
+  // Every division, not merely those already carrying a Control Item — a new
+  // measure has to be assignable to a division that has none yet.
+  const divisions = await prisma.orgUnit.findMany({
+    where: { type: { in: ["DIVISION", "DEPARTMENT"] } },
+    orderBy: { sortOrder: "asc" },
+    select: { id: true, code: true, name: true },
+  });
 
   return {
     kiCode: ki.code,
@@ -246,7 +269,7 @@ export async function loadSheet(options: LoadSheetOptions): Promise<SheetModel> 
     versions,
     bands,
     rows,
-    dics: [...dicMap.entries()].map(([code, name]) => ({ code, name })).sort((a, b) => a.code.localeCompare(b.code)),
+    dics: divisions,
     themes,
   };
 }

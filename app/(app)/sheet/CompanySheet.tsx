@@ -7,12 +7,30 @@ import { SheetScreen, LATEST_FORECAST } from "@/components/sheet/SheetScreen";
 
 const LEVELS = [1, 2, 3];
 
-export function CompanySheet({ initialModel }: { initialModel: SheetModel }) {
+export function CompanySheet({
+  initialModel,
+  canEditStructure,
+}: {
+  initialModel: SheetModel;
+  canEditStructure?: boolean;
+}) {
   const [model, setModel] = useState(initialModel);
   const [compareModel, setCompareModel] = useState<SheetModel | null>(null);
   const [targetVersionId, setTargetVersionId] = useState(LATEST_FORECAST);
   const [compareVersionId, setCompareVersionId] = useState("");
   const [pending, startTransition] = useTransition();
+
+  /** Re-read the sheet after the structure changes under it. */
+  const reload = useCallback(() => {
+    startTransition(async () => {
+      setModel(
+        await fetchSheet({
+          levels: LEVELS,
+          targetVersionId: targetVersionId === LATEST_FORECAST ? null : targetVersionId,
+        }),
+      );
+    });
+  }, [targetVersionId]);
 
   const changeTarget = useCallback((value: string) => {
     setTargetVersionId(value);
@@ -44,11 +62,14 @@ export function CompanySheet({ initialModel }: { initialModel: SheetModel }) {
       title="Company sheet — Levels 1 to 3"
       subtitle="Targets resolve to the latest forecast unless a version is pinned"
       printHref="/print/company"
+      exportHref="/api/export"
       loading={pending}
       targetVersionId={targetVersionId}
       compareVersionId={compareVersionId}
       onTargetVersionChange={changeTarget}
       onCompareVersionChange={changeCompare}
+      canEditStructure={canEditStructure}
+      onStructureChanged={reload}
     />
   );
 }

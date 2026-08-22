@@ -203,6 +203,7 @@ LDAP later means adding a provider there and mapping its claims onto
 | `/print/company` | A3 landscape, print-only |
 | `/admin` | Ki setup, version locking, structure builder, copy-from-previous-Ki, evaluation scale, users |
 | `/symbols` | Symbol rendering check for a platform you are deploying to |
+| `/api/export` | Excel download of the current sheet (`?division=CODE` for a Level 4 sheet, `?version=ID` to pin the target basis) |
 
 Entry is `Tab` to move and save, `Enter` to save and drop a row, `Escape` to
 revert. No modal dialogs anywhere in that flow.
@@ -215,6 +216,45 @@ changes nothing that is computed: the quarter figure is derived from the
 monthly grain whether or not the months are on screen. A condensed sheet prints
 condensed — the Print view link carries the state as `?columns=quarters`, which
 gives a much less dense one-pager for a board reading.
+
+### Editing the structure from the sheet
+
+An ADMIN can add, rename and remove Goals, Themes, Objectives and Control Items
+directly on the company sheet — "Edit structure" in the toolbar reveals a
+`+` / rename / delete on every row, without leaving the sheet or opening the
+admin structure builder. Nothing asks for a level or a kind: the server derives
+both from the parent (a Goal takes a Theme, a Theme takes an Objective, an
+Objective takes a deeper Theme or a Control Item), so the only decision left is
+what to call the new row.
+
+Deletion is destructive — a Goal carries every Theme, Objective, Control Item
+and stored figure beneath it — so it runs in two steps. The first click reports
+exactly what would be lost ("removes 7 rows beneath it, 7 Control Items, 315
+stored figures"); only a second, explicit confirmation removes anything. The
+same two-step confirmation guards deleting a Control Item that already has data
+keyed against it. `lib/structure/actions.ts` is the only place any of this
+happens, and every call re-checks the ADMIN role on the server regardless of
+what the toolbar shows.
+
+### Exporting to Excel
+
+"Export to Excel" downloads the sheet currently on screen — same rows, same
+target basis, same filtering by DIC and Theme are not applied to the export
+(it always contains everything you are allowed to see) but the pinned target
+version travels with it. The workbook has three tabs:
+
+- **Sheet** mirrors the screen: target above actual above achievement, quarters
+  and the Ki total tinted the same as on screen, the evaluation legend at the
+  foot.
+- **Data** is the same figures in long format — one row per Control Item per
+  period — for pivoting.
+- **Evaluation** lists the band boundaries in force for this export.
+
+Numbers are written as numbers with `decimal_places` respected exactly, never
+as pre-formatted strings; an empty cell stays empty rather than becoming a
+zero, matching the em-dash rule on screen. `lib/export/workbook.ts` builds the
+workbook from the same `SheetModel` the grid renders — there is no second
+formatting path to drift from the first.
 
 ## The evaluation symbols
 

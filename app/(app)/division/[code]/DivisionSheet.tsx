@@ -75,6 +75,7 @@ export function DivisionSheet({
       title={`${divisionCode} — ${divisionName}`}
       subtitle="Level 4 · each Objective ladders into a Level 1–3 Objective"
       printHref={`/print/division/${divisionCode}`}
+      exportHref={`/api/export?division=${divisionCode}`}
       loading={pending}
       targetVersionId={targetVersionId}
       compareVersionId={compareVersionId}

@@ -21,6 +21,7 @@ import type { SheetModel, ControlItemRow, GroupRow, SheetRowModel } from "@/lib/
 import { columnClass, columnWidth, sheetColumns } from "./columns";
 import type { QuarterCode } from "@/lib/domain/period";
 import { groupHeading, indentPx } from "./outline";
+import { InlineRename, RowActions, type DicOption } from "./StructureControls";
 import { SheetCellView, rowHeightFor, type DisplayMode } from "./SheetCellView";
 import { EvaluationSymbol } from "./EvaluationSymbol";
 
@@ -34,6 +35,19 @@ export interface SheetFilters {
 
 export const EMPTY_FILTERS: SheetFilters = { dics: [], themeIds: [], symbols: [] };
 
+export interface EditingHandlers {
+  dics: DicOption[];
+  renamingId: string | null;
+  onStartRename: (id: string) => void;
+  onCancelRename: () => void;
+  onRenameNode: (id: string, statement: string) => void;
+  onRenameControlItem: (id: string, name: string) => void;
+  onAddChild: (parentId: string, kind: "THEME" | "OBJECTIVE") => void;
+  onAddMeasure: (nodeId: string) => void;
+  onDeleteNode: (id: string) => void;
+  onDeleteControlItem: (id: string) => void;
+}
+
 export function SheetGrid({
   model,
   displayMode,
@@ -42,6 +56,7 @@ export function SheetGrid({
   compareModel,
   condensedQuarters,
   onToggleQuarter,
+  editing,
 }: {
   model: SheetModel;
   displayMode: DisplayMode;
@@ -51,6 +66,8 @@ export function SheetGrid({
   /** Quarters whose month columns are folded away. */
   condensedQuarters: QuarterCode[];
   onToggleQuarter: (quarter: QuarterCode) => void;
+  /** Structure-editing hooks, absent when not in edit mode. */
+  editing?: EditingHandlers;
 }) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const [collapsed, setCollapsed] = useState<Set<string>>(() => new Set());
@@ -139,6 +156,7 @@ export function SheetGrid({
                       }
                       columns={columns}
                       displayMode={displayMode}
+                      editing={editing}
                     />
                   ) : (
                     <GroupRowView
@@ -146,6 +164,7 @@ export function SheetGrid({
                       collapsed={collapsed.has(row.id)}
                       onToggle={() => toggle(row.id)}
                       width={gridWidth}
+                      editing={editing}
                     />
                   )}
                 </div>
@@ -281,11 +300,13 @@ function GroupRowView({
   collapsed,
   onToggle,
   width,
+  editing,
 }: {
   row: GroupRow;
   collapsed: boolean;
   onToggle: () => void;
   width: number;
+  editing?: EditingHandlers;
 }) {
   const tone =
     row.kind === "GOAL"
@@ -312,9 +333,32 @@ function GroupRowView({
         >
           {collapsed ? <ChevronRight size={12} /> : <ChevronDown size={12} />}
         </button>
-        <span className="truncate" title={row.statement}>
-          {groupHeading(row.statement, row.ordinal)}
-        </span>
+        {editing?.renamingId === row.id ? (
+          <InlineRename
+            initial={row.statement}
+            onCommit={(value) => editing.onRenameNode(row.id, value)}
+            onCancel={editing.onCancelRename}
+          />
+        ) : (
+          <span className="min-w-0 flex-1 truncate" title={row.statement}>
+            {groupHeading(row.statement, row.ordinal)}
+          </span>
+        )}
+        {editing && editing.renamingId !== row.id && (
+          <RowActions
+            /* Every group can take a child: a Goal takes Themes, a Theme takes
+               Objectives, an Objective takes a deeper Theme. */
+            canAddChild
+            childLabel={row.kind === "THEME" ? "objective" : "theme"}
+            canAddMeasure={row.kind === "OBJECTIVE"}
+            onAddChild={() =>
+              editing.onAddChild(row.id, row.kind === "THEME" ? "OBJECTIVE" : "THEME")
+            }
+            onAddMeasure={() => editing.onAddMeasure(row.id)}
+            onRename={() => editing.onStartRename(row.id)}
+            onDelete={() => editing.onDeleteNode(row.id)}
+          />
+        )}
       </div>
       {row.laddersTo ? (
         <div
@@ -337,12 +381,14 @@ function ControlItemRowView({
   compareVersionCode,
   columns,
   displayMode,
+  editing,
 }: {
   row: ControlItemRow;
   compare: ControlItemRow | null;
   compareVersionCode: string | null;
   columns: ReturnType<typeof sheetColumns>;
   displayMode: DisplayMode;
+  editing?: EditingHandlers;
 }) {
   const cellByKey = useMemo(() => new Map(row.cells.map((cell) => [cell.key, cell])), [row.cells]);
   const compareByKey = useMemo(
@@ -359,19 +405,39 @@ function ControlItemRowView({
         {/* Stands in for the group rows' disclosure caret, so a Control Item
             lands on the same vertical as a group at the same step. */}
         <span className="size-4 shrink-0" aria-hidden />
-        <Link
-          href={`/control-item/${row.id}`}
-          className="min-w-0 flex-1 truncate text-[12px] hover:underline"
-          title={`${row.name} (${row.code})`}
-        >
-          {row.name}
-        </Link>
-        <span
-          className="shrink-0 rounded-sm border border-rule px-1 text-[10px] text-ink-muted"
-          title={`Division in charge: ${row.dicName}`}
-        >
-          {row.dicCode}
-        </span>
+        {editing?.renamingId === row.id ? (
+          <InlineRename
+            initial={row.name}
+            onCommit={(value) => editing.onRenameControlItem(row.id, value)}
+            onCancel={editing.onCancelRename}
+          />
+        ) : (
+          <Link
+            href={`/control-item/${row.id}`}
+            className="min-w-0 flex-1 truncate text-[12px] hover:underline"
+            title={`${row.name} (${row.code})`}
+          >
+            {row.name}
+          </Link>
+        )}
+        {editing && editing.renamingId !== row.id ? (
+          <RowActions
+            canAddChild={false}
+            childLabel=""
+            canAddMeasure={false}
+            onAddChild={() => {}}
+            onAddMeasure={() => {}}
+            onRename={() => editing.onStartRename(row.id)}
+            onDelete={() => editing.onDeleteControlItem(row.id)}
+          />
+        ) : (
+          <span
+            className="shrink-0 rounded-sm border border-rule px-1 text-[10px] text-ink-muted"
+            title={`Division in charge: ${row.dicName}`}
+          >
+            {row.dicCode}
+          </span>
+        )}
       </div>
       <div
         className="sticky z-10 flex h-full shrink-0 items-center border-r border-rule-strong bg-paper px-2 text-[11px] text-ink-muted group-hover:bg-paper-sunken"

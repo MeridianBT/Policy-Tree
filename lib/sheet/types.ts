@@ -58,8 +58,8 @@ export interface SheetModel {
   versions: VersionSpec[];
   bands: EvaluationBandSpec[];
   rows: SheetRowModel[];
-  /** Distinct DIC codes present, for the filter control. */
-  dics: Array<{ code: string; name: string }>;
+  /** Distinct DICs present, for the filter control and the add-measure form. */
+  dics: Array<{ id: string; code: string; name: string }>;
   /** Theme statements present, for the filter control. */
   themes: Array<{ id: string; statement: string }>;
 }
