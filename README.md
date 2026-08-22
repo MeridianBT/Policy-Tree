@@ -220,6 +220,15 @@ npm run check:symbols     # rasterises each glyph and compares against a tofu bo
 Open `/symbols` in the browser for a visual check of the stack and each
 candidate face individually.
 
+The check rasterises each glyph and compares it against a private-use codepoint
+that no font covers, so a missing glyph fails rather than silently drawing a
+box. It also flags a colour emoji substitution by looking for chroma in
+black-filled text — but that half of the check can only fire on a machine that
+actually has a colour emoji font installed, so run it on the Windows and macOS
+machines you deploy to rather than only in CI. Symbol rendering has been
+verified here on Linux Chromium and in the printed PDF; Windows Chrome and
+macOS Safari need a run on those platforms.
+
 ## Tests
 
 ```bash
@@ -238,6 +247,19 @@ npm run test:unit     # the pure modules only, no database needed
 
 The integration suite needs `DATABASE_URL` and runs serially against a real
 database. It creates and removes its own throwaway Ki.
+
+There is also a hand-verification pass, automated:
+
+```bash
+npm run db:seed && npm run check:acceptance && npm run db:seed
+```
+
+It walks the seeded Ki through the real modules and prints a pass or fail line
+per check — SUM/AVERAGE/LATEST roll-up against the live sheet, an SG&A
+underspend reading above 100% with a favourable gap, a zero target giving an em
+dash rather than `Infinity`, the 105.0%/95.0% band boundaries, and a locked
+2QFC refusing every role while still rendering in compare mode. It writes to the
+current Ki, so run it on a development database and re-seed afterwards.
 
 ## Deliberately not built
 

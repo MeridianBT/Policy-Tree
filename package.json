@@ -16,7 +16,8 @@
     "db:seed": "tsx prisma/seed.ts",
     "db:reset": "prisma migrate reset --force && tsx prisma/seed.ts",
     "db:studio": "prisma studio",
-    "backup": "./scripts/backup.sh"
+    "backup": "./scripts/backup.sh",
+    "check:acceptance": "tsx scripts/accept-check.ts"
   },
   "dependencies": {
     "@prisma/adapter-pg": "^7.9.1",
