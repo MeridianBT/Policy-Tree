@@ -14,12 +14,18 @@ import { SheetGrid, EMPTY_FILTERS, type EditingHandlers, type SheetFilters } fro
 import {
   DeleteConfirm,
   InlineAdd,
+  InlineAddDepartment,
   InlineAddMeasure,
   useStructureAction,
+  type DicOption,
 } from "./StructureControls";
+import type { EditingUser } from "./permissions";
 import {
   addControlItem,
+  addDepartmentBranch,
+  addDepartmentObjective,
   addNode,
+  assignableDics,
   deleteControlItem,
   deleteNode,
   renameControlItem,
@@ -47,8 +53,9 @@ export function SheetScreen({
   targetVersionId,
   onTargetVersionChange,
   onCompareVersionChange,
-  canEditStructure,
+  currentUser,
   onStructureChanged,
+  viewToggle,
 }: {
   model: SheetModel;
   title: string;
@@ -63,22 +70,57 @@ export function SheetScreen({
   targetVersionId: string;
   onTargetVersionChange: (value: string) => void;
   onCompareVersionChange: (value: string) => void;
-  /** ADMIN only. The server re-checks the role on every structure call. */
-  canEditStructure?: boolean;
+  /**
+   * Signed-in user, for deciding which structure-edit affordances to draw.
+   * ADMIN sees everything; OWNER sees only what their own org unit covers at
+   * Level 4; VIEWER sees none of it. The server re-checks every call
+   * regardless of what this shows.
+   */
+  currentUser?: EditingUser;
   onStructureChanged?: () => void;
+  /** An optional Company/+Departments toggle, rendered in the toolbar. */
+  viewToggle?: React.ReactNode;
 }) {
   const [displayMode, setDisplayMode] = useState<DisplayMode>("FULL");
   const [filters, setFilters] = useState<SheetFilters>(EMPTY_FILTERS);
+  // Narrows the DIC picker to one Division and its Departments, so choosing
+  // "Departments in a Division" or "just the Department" is two clicks
+  // instead of hand-picking every department code. Only meaningful once
+  // Level 4 rows are on the sheet at all - a plain Level 1-3 view has no
+  // departments to narrow to.
+  const [divisionScope, setDivisionScope] = useState("");
+  const hasDepartments = useMemo(() => model.dics.some((dic) => dic.type === "DEPARTMENT"), [model.dics]);
+  const divisionOptions = useMemo(
+    () => model.dics.filter((dic) => dic.type === "DIVISION"),
+    [model.dics],
+  );
+  const scopedDicOptions = useMemo(
+    () =>
+      divisionScope
+        ? model.dics.filter((dic) => dic.code === divisionScope || dic.parentCode === divisionScope)
+        : model.dics,
+    [model.dics, divisionScope],
+  );
+  // Picking a Division and leaving every department chip unselected reads as
+  // "this division, in full" - itself plus every department beneath it -
+  // rather than as an empty, no-op filter.
+  const effectiveFilters = useMemo<SheetFilters>(() => {
+    if (filters.dics.length || !divisionScope) return filters;
+    return { ...filters, dics: scopedDicOptions.map((dic) => dic.code) };
+  }, [filters, divisionScope, scopedDicOptions]);
   // Quarters whose month columns are folded away. Purely a view state: the
   // quarter figure is derived from the months either way.
   const [condensedQuarters, setCondensedQuarters] = useState<QuarterCode[]>([]);
 
   const allCondensed = condensedQuarters.length === ALL_QUARTERS.length;
 
+  const canEditStructure = Boolean(currentUser && currentUser.role !== "VIEWER");
   const [editMode, setEditMode] = useState(false);
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [adding, setAdding] = useState<
     | { kind: "NODE"; parentId: string | null; label: string; under: string }
+    | { kind: "DEPARTMENT_BRANCH"; parentObjectiveId: string; under: string }
+    | { kind: "DEPARTMENT_OBJECTIVE"; parentThemeId: string; under: string }
     | { kind: "MEASURE"; parentId: string; under: string }
     | null
   >(null);
@@ -86,6 +128,26 @@ export function SheetScreen({
     { kind: "NODE" | "MEASURE"; id: string; message: string; impact: DeletionImpact | null } | null
   >(null);
   const { pending: saving, result, setResult, run } = useStructureAction();
+
+  // The full division/department list is only appropriate for an ADMIN. An
+  // OWNER may only file a new Level 4 branch or Control Item under their own
+  // org unit, so both the "add department" and "add measure" pickers use a
+  // narrower list, fetched once - scoped server-side, not merely hidden - the
+  // moment edit mode turns on for them.
+  const [scopedDics, setScopedDics] = useState<DicOption[] | null>(null);
+  const isAdmin = currentUser?.role === "ADMIN";
+  const formDics = isAdmin ? model.dics : scopedDics;
+
+  const enterEditMode = useCallback(async () => {
+    setEditMode(true);
+    setAdding(null);
+    setDeleting(null);
+    setRenamingId(null);
+    setResult(null);
+    if (currentUser && currentUser.role !== "ADMIN" && scopedDics === null) {
+      setScopedDics(await assignableDics());
+    }
+  }, [currentUser, scopedDics, setResult]);
 
   const labelFor = (id: string) => {
     const row = model.rows.find((candidate) => candidate.id === id);
@@ -112,8 +174,9 @@ export function SheetScreen({
   }
 
   const editing: EditingHandlers | undefined =
-    canEditStructure && editMode
+    canEditStructure && editMode && currentUser
       ? {
+          user: currentUser,
           dics: model.dics,
           renamingId,
           onStartRename: setRenamingId,
@@ -121,12 +184,27 @@ export function SheetScreen({
           onRenameNode: (id, statement) => run(() => renameNode({ id, statement }), afterChange),
           onRenameControlItem: (id, statement) =>
             run(() => renameControlItem({ id, statement }), afterChange),
-          onAddChild: (parentId, kind) =>
+          onAddChild: (parentId, kind) => {
+            // A Level 4 Theme's continuation is its own Objective, scoped to
+            // whoever owns that branch; everything above Level 4 is a plain,
+            // ADMIN-only continuation of the company-wide tree.
+            const parentRow = model.rows.find((row) => row.id === parentId);
+            if (parentRow && parentRow.level === 4 && parentRow.kind !== "CONTROL_ITEM") {
+              setAdding({ kind: "DEPARTMENT_OBJECTIVE", parentThemeId: parentId, under: labelFor(parentId) });
+              return;
+            }
             setAdding({
               kind: "NODE",
               parentId,
               label: kind === "OBJECTIVE" ? "objective" : "theme",
               under: labelFor(parentId),
+            });
+          },
+          onAddDepartment: (parentObjectiveId) =>
+            setAdding({
+              kind: "DEPARTMENT_BRANCH",
+              parentObjectiveId,
+              under: labelFor(parentObjectiveId),
             }),
           onAddMeasure: (nodeId) => setAdding({ kind: "MEASURE", parentId: nodeId, under: labelFor(nodeId) }),
           onDeleteNode: (id) => requestDelete("NODE", id),
@@ -221,6 +299,9 @@ export function SheetScreen({
 
         <span className="mx-1 h-4 w-px bg-rule" aria-hidden />
 
+        {viewToggle}
+        {viewToggle && <span className="mx-1 h-4 w-px bg-rule" aria-hidden />}
+
         <Segmented
           label="Display mode"
           value={displayMode}
@@ -242,10 +323,29 @@ export function SheetScreen({
 
         <span className="mx-1 h-4 w-px bg-rule" aria-hidden />
 
+        {hasDepartments && (
+          <Select
+            label="Division"
+            value={divisionScope}
+            options={[
+              { value: "", label: "All divisions" },
+              ...divisionOptions.map((dic) => ({ value: dic.code, label: `${dic.code} — ${dic.name}` })),
+            ]}
+            onChange={(value) => {
+              setDivisionScope(value);
+              // A stale department pick from a different division would sit
+              // there silently narrowing the sheet to nothing.
+              setFilters((previous) => ({ ...previous, dics: [] }));
+            }}
+          />
+        )}
         <MultiSelect
-          label="DIC"
+          label={hasDepartments && divisionScope ? "Department" : "DIC"}
           selected={filters.dics}
-          options={model.dics.map((dic) => ({ value: dic.code, label: `${dic.code} — ${dic.name}` }))}
+          options={scopedDicOptions.map((dic) => ({
+            value: dic.code,
+            label: dic.type === "DEPARTMENT" ? `${dic.parentCode} / ${dic.code} — ${dic.name}` : `${dic.code} — ${dic.name}`,
+          }))}
           onChange={(dics) => setFilters((previous) => ({ ...previous, dics }))}
         />
         <MultiSelect
@@ -276,17 +376,21 @@ export function SheetScreen({
             <Button
               variant={editMode ? "primary" : "default"}
               onClick={() => {
-                setEditMode((previous) => !previous);
-                setAdding(null);
-                setDeleting(null);
-                setRenamingId(null);
-                setResult(null);
+                if (editMode) {
+                  setEditMode(false);
+                  setAdding(null);
+                  setDeleting(null);
+                  setRenamingId(null);
+                  setResult(null);
+                } else {
+                  void enterEditMode();
+                }
               }}
               title="Add, rename and remove rows directly on the sheet"
             >
               {editMode ? "Done editing" : "Edit structure"}
             </Button>
-            {editMode && (
+            {editMode && currentUser?.role === "ADMIN" && (
               <Button
                 onClick={() =>
                   setAdding({ kind: "NODE", parentId: null, label: "goal", under: model.kiCode })
@@ -298,8 +402,17 @@ export function SheetScreen({
           </>
         )}
 
-        {(filters.dics.length || filters.themeIds.length || filters.symbols.length) > 0 && (
-          <Button variant="quiet" onClick={() => setFilters(EMPTY_FILTERS)}>
+        {(filters.dics.length > 0 ||
+          filters.themeIds.length > 0 ||
+          filters.symbols.length > 0 ||
+          divisionScope !== "") && (
+          <Button
+            variant="quiet"
+            onClick={() => {
+              setFilters(EMPTY_FILTERS);
+              setDivisionScope("");
+            }}
+          >
             Clear filters
           </Button>
         )}
@@ -366,14 +479,76 @@ export function SheetScreen({
         </div>
       )}
 
+      {adding?.kind === "DEPARTMENT_OBJECTIVE" && (
+        <div className="border border-rule bg-paper">
+          <p className="border-b border-rule px-3 py-1 text-[11px] text-ink-muted">
+            Adding an objective under <strong>{adding.under}</strong>
+          </p>
+          <InlineAdd
+            label="objective"
+            indent={12}
+            onCommit={(statement) =>
+              run(
+                () => addDepartmentObjective({ kiId: model.kiId, parentThemeId: adding.parentThemeId, statement }),
+                afterChange,
+              )
+            }
+            onCancel={() => setAdding(null)}
+          />
+        </div>
+      )}
+
+      {adding?.kind === "DEPARTMENT_BRANCH" && (
+        <div className="border border-rule bg-paper">
+          <p className="border-b border-rule px-3 py-1 text-[11px] text-ink-muted">
+            Adding a Level 4 department branch under <strong>{adding.under}</strong>
+          </p>
+          {formDics === null ? (
+            <p className="px-3 py-2 text-[11px] text-ink-faint">Loading divisions…</p>
+          ) : formDics.length === 0 ? (
+            <p className="px-3 py-2 text-[11px] text-ink-faint">
+              You are not assigned to a division or department, so there is nothing to file this
+              under. Ask an admin to set your org unit.
+            </p>
+          ) : (
+            <InlineAddDepartment
+              indent={12}
+              dics={formDics}
+              pending={saving}
+              onCommit={(values) =>
+                run(
+                  () =>
+                    addDepartmentBranch({
+                      kiId: model.kiId,
+                      parentObjectiveId: adding.parentObjectiveId,
+                      orgUnitId: values.orgUnitId,
+                      statement: values.statement,
+                    }),
+                  afterChange,
+                )
+              }
+              onCancel={() => setAdding(null)}
+            />
+          )}
+        </div>
+      )}
+
       {adding?.kind === "MEASURE" && (
         <div className="border border-rule bg-paper">
           <p className="border-b border-rule px-3 py-1 text-[11px] text-ink-muted">
             Adding a measure under <strong>{adding.under}</strong>
           </p>
+          {formDics === null ? (
+            <p className="px-3 py-2 text-[11px] text-ink-faint">Loading divisions…</p>
+          ) : formDics.length === 0 ? (
+            <p className="px-3 py-2 text-[11px] text-ink-faint">
+              You are not assigned to a division or department, so there is nothing to file this
+              under. Ask an admin to set your org unit.
+            </p>
+          ) : (
           <InlineAddMeasure
             indent={12}
-            dics={model.dics}
+            dics={formDics}
             pending={saving}
             onCommit={(values) =>
               run(
@@ -393,13 +568,14 @@ export function SheetScreen({
             }
             onCancel={() => setAdding(null)}
           />
+          )}
         </div>
       )}
 
       <SheetGrid
         model={model}
         displayMode={displayMode}
-        filters={filters}
+        filters={effectiveFilters}
         compareModel={compareModel}
         compareVersionId={compareVersionId || null}
         condensedQuarters={condensedQuarters}

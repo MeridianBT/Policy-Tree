@@ -91,6 +91,19 @@ mode. The grid is tight on purpose.
   seventeen data columns changes, so switching modes never disturbs a reader's
   place on the sheet. A new row is typed in place, inline, at the depth it will
   occupy — never a modal, matching the entry screen's own rule.
+- **Two shades of "add"** — a plain `+` continues the tree at the level the
+  server derives from the parent; a second, distinct `L4+` badge sits beside it
+  on a Level 2/3 Objective and means something different — start a Level 4
+  branch, which needs an org unit chosen, not merely a level derived. The two
+  never collapse into one control: conflating "continue the company structure"
+  with "start a division's own branch" would make it too easy to create a
+  Level 4 node with nobody owning it, which the server refuses outright for
+  exactly that reason.
+- **Row actions disappear rather than disable** — a Level 1-3 row shows no
+  pencil or trash to an OWNER at all, rather than showing them greyed out.
+  A row nobody present can act on some rows and not others is normal on this
+  sheet (that is the whole point of scoping to a department); a disabled
+  icon would read as a bug to fix, not as a boundary to respect.
 
 ## Display modes
 

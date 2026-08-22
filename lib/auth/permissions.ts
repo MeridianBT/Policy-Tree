@@ -68,3 +68,44 @@ export async function orgUnitSubtree(orgUnitId: string): Promise<string[]> {
   }
   return ids;
 }
+
+// ------------------------------------------------------------ Structure edits
+
+/**
+ * Whether a user may add, rename or remove a piece of the plan structure.
+ *
+ * ADMIN  - anything, at any level
+ * OWNER  - Level 4 only, and only within their own org unit or a department
+ *          beneath it. A division or department lead runs their own corner of
+ *          the deployment; the company-wide Levels 1-3 stay ADMIN territory,
+ *          because they are what every division ladders into and a local edit
+ *          there would move the ground under everyone else.
+ * VIEWER - never
+ *
+ * `orgUnitId` is the org unit the row in question belongs to (a Level 4 node's
+ * own `orgUnitId`, or a Control Item's `dicOrgUnitId`). Absent, an OWNER cannot
+ * act - there is nothing to scope the edit to.
+ */
+export async function canEditStructureAt(
+  user: AuthenticatedUser,
+  level: number,
+  orgUnitId: string | null,
+): Promise<boolean> {
+  if (user.role === "ADMIN") return true;
+  if (user.role !== "OWNER") return false;
+  if (level < 4) return false;
+  if (!user.orgUnitId || !orgUnitId) return false;
+  return orgUnitCovers(user.orgUnitId, orgUnitId);
+}
+
+/**
+ * Which org units a user may file a new Level 4 branch or Control Item under.
+ * ADMIN sees every Division and Department; an OWNER sees only their own org
+ * unit and whatever sits beneath it, which is what keeps a division lead from
+ * quietly filing a measure under someone else's department.
+ */
+export async function assignableOrgUnitIds(user: AuthenticatedUser): Promise<string[] | "ALL"> {
+  if (user.role === "ADMIN") return "ALL";
+  if (user.role !== "OWNER" || !user.orgUnitId) return [];
+  return orgUnitSubtree(user.orgUnitId);
+}

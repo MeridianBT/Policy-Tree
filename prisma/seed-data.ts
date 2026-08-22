@@ -13,6 +13,19 @@ export const DIVISIONS = [
   { code: "FRC", name: "FRC" },
 ] as const;
 
+/**
+ * Departments sit beneath a Division. A Level 4 branch may be filed against
+ * either - a Division deploying something itself, or one of its Departments -
+ * which is what the Division/Department filter on the sheet narrows between.
+ */
+export const DEPARTMENTS = [
+  { code: "AUTO-SALES", name: "Dealer Sales", division: "AUTO" },
+  { code: "AUTO-STOCK", name: "Stock & Logistics", division: "AUTO" },
+  { code: "OX-ASSY", name: "Final Assembly", division: "OX" },
+  { code: "OX-PAINT", name: "Paint Shop", division: "OX" },
+  { code: "CS-CONTACT", name: "Contact Centre", division: "CS" },
+] as const;
+
 export const PLAN_VERSIONS = [
   { code: "OB", label: "Original Budget", sequence: 1, isActual: false },
   { code: "PRB", label: "Press Release Budget", sequence: 2, isActual: false },
@@ -222,6 +235,8 @@ export const GOALS: SeedGoal[] = [
 /** Level 4 structure, one division sheet, laddering into Level 1-3 objectives. */
 export type SeedLevel4 = {
   division: string;
+  /** Files the branch under a Department rather than the Division itself. */
+  department?: string;
   theme: string;
   objectives: Array<{
     statement: string;
@@ -234,6 +249,7 @@ export type SeedLevel4 = {
 export const LEVEL_4: SeedLevel4[] = [
   {
     division: "AUTO",
+    department: "AUTO-SALES",
     theme: "Dealer network performance",
     objectives: [
       {
@@ -255,6 +271,7 @@ export const LEVEL_4: SeedLevel4[] = [
   },
   {
     division: "OX",
+    department: "OX-ASSY",
     theme: "Plant operating discipline",
     objectives: [
       {
@@ -269,6 +286,7 @@ export const LEVEL_4: SeedLevel4[] = [
   },
   {
     division: "CS",
+    department: "CS-CONTACT",
     theme: "Contact centre capability",
     objectives: [
       {

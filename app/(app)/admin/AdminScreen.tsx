@@ -5,7 +5,7 @@
  * builder, copy-from-previous-Ki, the evaluation scale, and users.
  */
 
-import { useState, useTransition } from "react";
+import { Fragment, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Lock, LockOpen } from "lucide-react";
 import type { EvaluationBandSpec } from "@/lib/calc/types";
@@ -14,9 +14,11 @@ import { EvaluationSymbol } from "@/components/sheet/EvaluationSymbol";
 import {
   copyStructure,
   createControlItem,
+  createDepartment,
   createKi,
   createNode,
   createUser,
+  deleteDepartment,
   saveBands,
   setCurrentKi,
   setUserActive,
@@ -39,7 +41,7 @@ interface KiRow {
   }>;
 }
 
-interface OrgUnitRow { id: string; code: string; name: string; type: string }
+interface OrgUnitRow { id: string; code: string; name: string; type: string; parentId: string | null }
 interface UserRow {
   id: string;
   name: string;
@@ -338,7 +340,70 @@ export function AdminScreen({
           </form>
         </Panel>
 
-        <Panel title="Users" hint="Accountability (DIC) and data entry (responsible) are separate. A division lead can key anything in their own org unit.">
+        <Panel
+          title="Departments"
+          hint="The pick list every Control Item and Level 4 branch is filed under. A department can only be removed once nothing points at it any more."
+        >
+          <table className="w-full border-collapse text-[12px]">
+            <tbody>
+              {orgUnits
+                .filter((unit) => unit.type === "DIVISION")
+                .map((division) => (
+                  <Fragment key={division.id}>
+                    <tr className="border-b border-rule bg-paper-sunken">
+                      <td className="py-1.5 pl-1 font-medium" colSpan={2}>
+                        {division.code} — {division.name}
+                      </td>
+                    </tr>
+                    {orgUnits
+                      .filter((unit) => unit.type === "DEPARTMENT" && unit.parentId === division.id)
+                      .map((department) => (
+                        <tr key={department.id} className="border-b border-rule">
+                          <td className="py-1.5 pl-4">
+                            {department.code} — {department.name}
+                          </td>
+                          <td className="py-1.5 text-right">
+                            <Button onClick={() => run(() => deleteDepartment(department.id))}>Remove</Button>
+                          </td>
+                        </tr>
+                      ))}
+                  </Fragment>
+                ))}
+            </tbody>
+          </table>
+
+          <form
+            className="mt-3 flex flex-wrap items-end gap-2 border-t border-rule pt-3"
+            action={(formData) =>
+              run(() =>
+                createDepartment({
+                  divisionId: String(formData.get("divisionId")),
+                  code: String(formData.get("code")),
+                  name: String(formData.get("name")),
+                }),
+              )
+            }
+          >
+            <Field label="Division">
+              <select name="divisionId" className={inputClass}>
+                {orgUnits
+                  .filter((unit) => unit.type === "DIVISION")
+                  .map((division) => (
+                    <option key={division.id} value={division.id}>{division.code} — {division.name}</option>
+                  ))}
+              </select>
+            </Field>
+            <Field label="Code">
+              <input name="code" required className={inputClass} placeholder="AUTO-D2" />
+            </Field>
+            <Field label="Name">
+              <input name="name" required className={inputClass} placeholder="Powertrain Engineering" />
+            </Field>
+            <Button type="submit" variant="primary">Add department</Button>
+          </form>
+        </Panel>
+
+                <Panel title="Users" hint="Accountability (DIC) and data entry (responsible) are separate. A division lead can key anything in their own org unit.">
           <table className="w-full border-collapse text-[12px]">
             <tbody>
               {users.map((user) => (

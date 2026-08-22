@@ -21,6 +21,8 @@ export interface DicOption {
   id: string;
   code: string;
   name: string;
+  type: "DIVISION" | "DEPARTMENT";
+  parentCode: string | null;
 }
 
 const ICON_BUTTON =
@@ -29,25 +31,45 @@ const ICON_BUTTON =
 export function RowActions({
   canAddChild,
   childLabel,
+  canAddDepartment,
   canAddMeasure,
+  canRename,
+  canDelete,
   onAddChild,
+  onAddDepartment,
   onAddMeasure,
   onRename,
   onDelete,
 }: {
   canAddChild: boolean;
   childLabel: string;
+  /** Level 2/3 Objective rows only: start a Level 4 branch here. */
+  canAddDepartment?: boolean;
   canAddMeasure: boolean;
+  canRename: boolean;
+  canDelete: boolean;
   onAddChild: () => void;
+  onAddDepartment?: () => void;
   onAddMeasure: () => void;
   onRename: () => void;
   onDelete: () => void;
 }) {
+  if (!canAddChild && !canAddDepartment && !canAddMeasure && !canRename && !canDelete) return null;
   return (
     <span className="flex shrink-0 items-center gap-0.5">
       {canAddChild && (
         <button type="button" className={ICON_BUTTON} onClick={onAddChild} title={`Add ${childLabel.toLowerCase()}`}>
           <Plus size={12} />
+        </button>
+      )}
+      {canAddDepartment && (
+        <button
+          type="button"
+          className={`${ICON_BUTTON} text-[8px] font-medium`}
+          onClick={onAddDepartment}
+          title="Add department branch (Level 4)"
+        >
+          L4+
         </button>
       )}
       {canAddMeasure && (
@@ -60,12 +82,16 @@ export function RowActions({
           M+
         </button>
       )}
-      <button type="button" className={ICON_BUTTON} onClick={onRename} title="Rename">
-        <Pencil size={11} />
-      </button>
-      <button type="button" className={ICON_BUTTON} onClick={onDelete} title="Delete">
-        <Trash2 size={11} />
-      </button>
+      {canRename && (
+        <button type="button" className={ICON_BUTTON} onClick={onRename} title="Rename">
+          <Pencil size={11} />
+        </button>
+      )}
+      {canDelete && (
+        <button type="button" className={ICON_BUTTON} onClick={onDelete} title="Delete">
+          <Trash2 size={11} />
+        </button>
+      )}
     </span>
   );
 }
@@ -141,6 +167,77 @@ export function InlineAdd({
       </button>
       <button type="button" className={ICON_BUTTON} onClick={onCancel} title="Cancel">
         <X size={12} />
+      </button>
+    </div>
+  );
+}
+
+/**
+ * A new Level 4 branch: which org unit it belongs to, plus its statement.
+ * This is the one form an OWNER can open on a company-wide Level 2 or 3
+ * Objective - the org unit picker is what the server actually scopes, and
+ * `dics` here has already been narrowed to what the signed-in user may choose.
+ */
+export function InlineAddDepartment({
+  indent,
+  dics,
+  onCommit,
+  onCancel,
+  pending,
+}: {
+  indent: number;
+  dics: DicOption[];
+  onCommit: (values: { orgUnitId: string; statement: string }) => void;
+  onCancel: () => void;
+  pending: boolean;
+}) {
+  const [orgUnitId, setOrgUnitId] = useState(dics[0]?.id ?? "");
+  const [statement, setStatement] = useState("");
+
+  return (
+    <div
+      className="flex flex-wrap items-end gap-2 border-b border-rule bg-paper-sunken py-2 pr-3"
+      style={{ paddingLeft: indent }}
+    >
+      <span className="shrink-0 text-[10px] uppercase tracking-wide text-ink-faint">Add department</span>
+      <Labelled label="Division / department">
+        <select
+          value={orgUnitId}
+          onChange={(event) => setOrgUnitId(event.target.value)}
+          className="border border-rule bg-paper px-1.5 py-1 text-[11px]"
+        >
+          {dics.map((dic) => (
+            <option key={dic.id} value={dic.id}>
+              {dic.type === "DEPARTMENT" ? `${dic.parentCode} — ${dic.code}` : dic.code} · {dic.name}
+            </option>
+          ))}
+        </select>
+      </Labelled>
+      <Labelled label="Statement">
+        <input
+          autoFocus
+          value={statement}
+          onChange={(event) => setStatement(event.target.value)}
+          placeholder="What this division/department is deploying here"
+          className="w-72 border border-rule bg-paper px-1.5 py-1 text-[11px]"
+          onKeyDown={(event) => {
+            if (event.key === "Enter" && statement.trim() && orgUnitId) {
+              onCommit({ orgUnitId, statement: statement.trim() });
+            }
+            if (event.key === "Escape") onCancel();
+          }}
+        />
+      </Labelled>
+      <button
+        type="button"
+        disabled={!statement.trim() || !orgUnitId || pending}
+        onClick={() => onCommit({ orgUnitId, statement: statement.trim() })}
+        className="rounded-sm bg-ink px-2.5 py-1 text-[11px] text-paper disabled:opacity-50"
+      >
+        {pending ? "Adding…" : "Add"}
+      </button>
+      <button type="button" onClick={onCancel} className="px-2 py-1 text-[11px] text-ink-muted underline">
+        Cancel
       </button>
     </div>
   );

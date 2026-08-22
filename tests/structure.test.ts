@@ -1,0 +1,457 @@
+/**
+ * Integration tests for the structure-edit server actions, against a real
+ * database. These are the highest-risk new code in the platform: every one of
+ * them decides whether a division or department lead may touch a piece of the
+ * plan, and getting that wrong either locks someone out of their own
+ * department or lets them edit someone else's.
+ *
+ * The actions call `requireSession`/`requireRole` internally rather than
+ * taking a user as a parameter (unlike `saveEntry`), because they are
+ * "use server" actions meant to be invoked from a request. That boundary is
+ * mocked here to return a fixture user under test; every downstream call -
+ * the Prisma writes, the org-unit-coverage check, the two-step delete
+ * confirmation - runs for real, against real Postgres.
+ */
+
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { createFixture, prisma, type Fixture } from "./fixture";
+import type { AuthenticatedUser } from "@/lib/auth/types";
+
+let currentUser: AuthenticatedUser;
+
+vi.mock("next/cache", () => ({ revalidatePath: () => {} }));
+
+// lib/auth/session.ts pulls in next-auth's Node config, which needs a live
+// request context Vitest does not have. The mock is built from the pieces
+// that do not - lib/auth/permissions.ts and lib/auth/errors.ts are plain
+// Prisma-backed functions - so canEditStructureAt and assignableOrgUnitIds
+// stay real while only the session boundary itself is stood in for.
+vi.mock("@/lib/auth/session", async () => {
+  const permissions = await import("@/lib/auth/permissions");
+  const errors = await import("@/lib/auth/errors");
+  return {
+    ...permissions,
+    ...errors,
+    requireSession: async () => currentUser,
+    requireRole: async (...roles: string[]) => {
+      if (!roles.includes(currentUser.role)) {
+        throw new errors.NotPermittedError(`This action needs the ${roles.join(" or ")} role.`);
+      }
+      return currentUser;
+    },
+  };
+});
+
+const {
+  addControlItem,
+  addDepartmentBranch,
+  addDepartmentObjective,
+  addNode,
+  assignableDics,
+  deleteControlItem,
+  deleteNode,
+  renameNode,
+} = await import("@/lib/structure/actions");
+const { createDepartment, deleteDepartment } = await import("@/lib/admin/actions");
+
+function asUser(user: AuthenticatedUser) {
+  currentUser = user;
+}
+
+let codeCounter = 0;
+/** A department code under the 20-character limit, unique per test run. */
+function shortCode(prefix: string): string {
+  return `${prefix}-${(codeCounter++).toString(36)}${Date.now().toString(36).slice(-4)}`.toUpperCase();
+}
+
+let fx: Fixture;
+// Departments created mid-test via createDepartment aren't tracked by the
+// shared fixture's own cleanup, and deleting a Division only SETs their
+// parent_id NULL rather than removing them - so they're tracked here and
+// swept before the fixture (and its divisions) go away.
+const createdDepartmentIds: string[] = [];
+
+beforeAll(async () => {
+  fx = await createFixture();
+});
+
+afterAll(async () => {
+  if (createdDepartmentIds.length) {
+    await prisma.orgUnit.deleteMany({ where: { id: { in: createdDepartmentIds } } });
+  }
+  await fx.cleanup();
+  await prisma.$disconnect();
+});
+
+beforeEach(() => {
+  asUser(fx.users.admin);
+});
+
+describe("company-wide structure (Levels 1-3)", () => {
+  it("lets an ADMIN add a Theme under the Goal", async () => {
+    const result = await addNode({ kiId: fx.kiId, parentId: fx.nodes.goal, statement: "Another theme" });
+    expect(result.ok).toBe(true);
+  });
+
+  it("refuses an OWNER touching Levels 1-3, even one who owns a Level 4 branch elsewhere", async () => {
+    asUser(fx.users.alphaLead);
+    const result = await addNode({ kiId: fx.kiId, parentId: fx.nodes.goal, statement: "Sneaky theme" });
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.message).toMatch(/admin/i);
+  });
+
+  it("refuses a VIEWER outright", async () => {
+    asUser(fx.users.viewer);
+    const result = await addNode({ kiId: fx.kiId, parentId: fx.nodes.goal, statement: "Viewer theme" });
+    expect(result.ok).toBe(false);
+  });
+
+  it("never lets a continuation from a Level 3 Objective create an orphaned Level 4 node", async () => {
+    // Build down to a Level 3 Objective, then confirm addNode refuses to
+    // continue past it - that step must go through addDepartmentBranch, which
+    // always carries an org unit.
+    const l3Theme = await addNode({ kiId: fx.kiId, parentId: fx.nodes.objective, statement: "L3 theme" });
+    expect(l3Theme.ok && l3Theme.id).toBeTruthy();
+    const l3ThemeId = (l3Theme as { id: string }).id;
+    const l3Objective = await addNode({ kiId: fx.kiId, parentId: l3ThemeId, statement: "L3 objective" });
+    expect(l3Objective.ok && l3Objective.id).toBeTruthy();
+    const l3ObjectiveId = (l3Objective as { id: string }).id;
+
+    const node = await prisma.node.findUniqueOrThrow({ where: { id: l3ObjectiveId } });
+    expect(node.level).toBe(3);
+
+    const noFurtherChild = await addNode({ kiId: fx.kiId, parentId: l3ObjectiveId, statement: "orphan" });
+    expect(noFurtherChild).toEqual({ ok: false, message: "Nothing can be added under that row." });
+  });
+});
+
+describe("addDepartmentBranch - the department-lead path", () => {
+  it("lets a division lead ladder a Level 4 branch off the company objective", async () => {
+    asUser(fx.users.alphaLead);
+    const result = await addDepartmentBranch({
+      kiId: fx.kiId,
+      parentObjectiveId: fx.nodes.objective,
+      orgUnitId: fx.orgUnits.alpha,
+      statement: "Alpha's own deployment",
+    });
+    expect(result.ok).toBe(true);
+    if (result.ok && result.id) {
+      const node = await prisma.node.findUniqueOrThrow({ where: { id: result.id } });
+      expect(node.level).toBe(4);
+      expect(node.kind).toBe("THEME");
+      expect(node.orgUnitId).toBe(fx.orgUnits.alpha);
+    }
+  });
+
+  it("lets a division lead file the branch under one of their own departments instead", async () => {
+    asUser(fx.users.alphaLead);
+    const result = await addDepartmentBranch({
+      kiId: fx.kiId,
+      parentObjectiveId: fx.nodes.objective,
+      orgUnitId: fx.orgUnits.alphaDept,
+      statement: "Alpha Dept's own deployment",
+    });
+    expect(result.ok).toBe(true);
+  });
+
+  it("refuses a division lead filing a branch under a different division", async () => {
+    asUser(fx.users.alphaLead);
+    const result = await addDepartmentBranch({
+      kiId: fx.kiId,
+      parentObjectiveId: fx.nodes.objective,
+      orgUnitId: fx.orgUnits.beta,
+      statement: "Should not be allowed",
+    });
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.message).toMatch(/your own/i);
+  });
+
+  it("lets an ADMIN file a branch under any division", async () => {
+    const result = await addDepartmentBranch({
+      kiId: fx.kiId,
+      parentObjectiveId: fx.nodes.objective,
+      orgUnitId: fx.orgUnits.beta,
+      statement: "Admin filing for Beta",
+    });
+    expect(result.ok).toBe(true);
+  });
+
+  it("refuses a branch off a Level 4 Objective - there is nothing deeper to ladder from", async () => {
+    asUser(fx.users.alphaLead);
+    const branch = await addDepartmentBranch({
+      kiId: fx.kiId,
+      parentObjectiveId: fx.nodes.objective,
+      orgUnitId: fx.orgUnits.alpha,
+      statement: "For depth test",
+    });
+    const branchId = (branch as { id: string }).id;
+    const objective = await addDepartmentObjective({
+      kiId: fx.kiId,
+      parentThemeId: branchId,
+      statement: "Depth objective",
+    });
+    expect(objective.ok).toBe(true);
+    const objectiveId = (objective as { id: string }).id;
+
+    const tooDeep = await addDepartmentBranch({
+      kiId: fx.kiId,
+      parentObjectiveId: objectiveId,
+      orgUnitId: fx.orgUnits.alpha,
+      statement: "Too deep",
+    });
+    expect(tooDeep).toEqual({
+      ok: false,
+      message: "A department branch ladders from a Level 2 or 3 Objective.",
+    });
+  });
+});
+
+describe("editing an existing Level 4 branch", () => {
+  let branchId: string;
+  let objectiveId: string;
+
+  beforeAll(async () => {
+    asUser(fx.users.alphaLead);
+    const branch = await addDepartmentBranch({
+      kiId: fx.kiId,
+      parentObjectiveId: fx.nodes.objective,
+      orgUnitId: fx.orgUnits.alpha,
+      statement: "Editable branch",
+    });
+    branchId = (branch as { id: string }).id;
+    const objective = await addDepartmentObjective({
+      kiId: fx.kiId,
+      parentThemeId: branchId,
+      statement: "Editable objective",
+    });
+    objectiveId = (objective as { id: string }).id;
+  });
+
+  it("lets the owning division lead add an Objective under their own branch", async () => {
+    asUser(fx.users.alphaLead);
+    const result = await addDepartmentObjective({
+      kiId: fx.kiId,
+      parentThemeId: branchId,
+      statement: "A second objective",
+    });
+    expect(result.ok).toBe(true);
+  });
+
+  it("refuses a different division's lead adding to it", async () => {
+    asUser(fx.users.betaLead);
+    const result = await addDepartmentObjective({
+      kiId: fx.kiId,
+      parentThemeId: branchId,
+      statement: "Should not land here",
+    });
+    expect(result.ok).toBe(false);
+  });
+
+  it("lets the owning lead add a Control Item, scoped to their own DIC", async () => {
+    asUser(fx.users.alphaLead);
+    const result = await addControlItem({
+      nodeId: objectiveId,
+      name: "Alpha's own measure",
+      measuredAs: "Widgets",
+      unit: "COUNT",
+      direction: "HIGHER_BETTER",
+      aggregation: "SUM",
+      decimalPlaces: 0,
+      dicOrgUnitId: fx.orgUnits.alpha,
+    });
+    expect(result.ok).toBe(true);
+  });
+
+  it("refuses that same lead assigning the Control Item to another division's DIC", async () => {
+    asUser(fx.users.alphaLead);
+    const result = await addControlItem({
+      nodeId: objectiveId,
+      name: "Should be refused",
+      measuredAs: "Widgets",
+      unit: "COUNT",
+      direction: "HIGHER_BETTER",
+      aggregation: "SUM",
+      decimalPlaces: 0,
+      dicOrgUnitId: fx.orgUnits.beta,
+    });
+    expect(result.ok).toBe(false);
+  });
+
+  it("chooses INVERSE achievement automatically for a lower-is-better measure", async () => {
+    asUser(fx.users.alphaLead);
+    const result = await addControlItem({
+      nodeId: objectiveId,
+      name: "Cost measure",
+      measuredAs: "US$",
+      unit: "CURRENCY",
+      direction: "LOWER_BETTER",
+      aggregation: "SUM",
+      decimalPlaces: 0,
+      dicOrgUnitId: fx.orgUnits.alpha,
+    });
+    expect(result.ok).toBe(true);
+    if (result.ok && result.id) {
+      const item = await prisma.controlItem.findUniqueOrThrow({ where: { id: result.id } });
+      expect(item.achievementMethod).toBe("INVERSE");
+    }
+  });
+
+  it("lets the owning lead rename their own branch, refuses a stranger", async () => {
+    asUser(fx.users.betaLead);
+    expect((await renameNode({ id: branchId, statement: "Hijacked" })).ok).toBe(false);
+
+    asUser(fx.users.alphaLead);
+    expect((await renameNode({ id: branchId, statement: "Renamed by owner" })).ok).toBe(true);
+  });
+});
+
+describe("assignableDics", () => {
+  it("gives ADMIN every division and department", async () => {
+    asUser(fx.users.admin);
+    const dics = await assignableDics();
+    const codes = dics.map((d) => d.id);
+    expect(codes).toContain(fx.orgUnits.alpha);
+    expect(codes).toContain(fx.orgUnits.beta);
+  });
+
+  it("gives a division lead only their own division and its departments", async () => {
+    asUser(fx.users.alphaLead);
+    const dics = await assignableDics();
+    const ids = dics.map((d) => d.id);
+    expect(ids).toContain(fx.orgUnits.alpha);
+    expect(ids).toContain(fx.orgUnits.alphaDept);
+    expect(ids).not.toContain(fx.orgUnits.beta);
+  });
+
+  it("gives a VIEWER nothing to assign", async () => {
+    asUser(fx.users.viewer);
+    expect(await assignableDics()).toEqual([]);
+  });
+});
+
+describe("deleting a Level 4 branch - two-step confirmation, scoped", () => {
+  it("refuses a stranger even the confirmation step", async () => {
+    asUser(fx.users.alphaLead);
+    const branch = await addDepartmentBranch({
+      kiId: fx.kiId,
+      parentObjectiveId: fx.nodes.objective,
+      orgUnitId: fx.orgUnits.alpha,
+      statement: "To be deleted",
+    });
+    const id = (branch as { id: string }).id;
+
+    asUser(fx.users.betaLead);
+    const attempt = await deleteNode({ id, confirm: false });
+    expect(attempt.ok).toBe(false);
+
+    // A refusal on scope grounds never carries "needsConfirmation" - that
+    // would leak how much data sits behind a branch this user cannot touch.
+    expect("needsConfirmation" in attempt).toBe(false);
+  });
+
+  it("reports the impact to the owner, then deletes only on confirmation", async () => {
+    asUser(fx.users.alphaLead);
+    const branch = await addDepartmentBranch({
+      kiId: fx.kiId,
+      parentObjectiveId: fx.nodes.objective,
+      orgUnitId: fx.orgUnits.alpha,
+      statement: "Branch with a child",
+    });
+    const branchId = (branch as { id: string }).id;
+    await addDepartmentObjective({ kiId: fx.kiId, parentThemeId: branchId, statement: "Child objective" });
+
+    const firstCall = await deleteNode({ id: branchId, confirm: false });
+    expect(firstCall.ok).toBe(false);
+    expect("needsConfirmation" in firstCall && firstCall.needsConfirmation).toBe(true);
+
+    const stillThere = await prisma.node.findUnique({ where: { id: branchId } });
+    expect(stillThere).not.toBeNull();
+
+    const confirmed = await deleteNode({ id: branchId, confirm: true });
+    expect(confirmed.ok).toBe(true);
+
+    const gone = await prisma.node.findUnique({ where: { id: branchId } });
+    expect(gone).toBeNull();
+  });
+});
+
+describe("Control Item deletion, scoped the same way", () => {
+  it("refuses a stranger, lets the owner delete their own", async () => {
+    asUser(fx.users.alphaLead);
+    const branch = await addDepartmentBranch({
+      kiId: fx.kiId,
+      parentObjectiveId: fx.nodes.objective,
+      orgUnitId: fx.orgUnits.alpha,
+      statement: "For item deletion",
+    });
+    const objective = await addDepartmentObjective({
+      kiId: fx.kiId,
+      parentThemeId: (branch as { id: string }).id,
+      statement: "Objective for item deletion",
+    });
+    const item = await addControlItem({
+      nodeId: (objective as { id: string }).id,
+      name: "Disposable measure",
+      measuredAs: "Units",
+      unit: "COUNT",
+      direction: "HIGHER_BETTER",
+      aggregation: "SUM",
+      decimalPlaces: 0,
+      dicOrgUnitId: fx.orgUnits.alpha,
+    });
+    const itemId = (item as { id: string }).id;
+
+    asUser(fx.users.betaLead);
+    expect((await deleteControlItem({ id: itemId, confirm: false })).ok).toBe(false);
+
+    asUser(fx.users.alphaLead);
+    expect((await deleteControlItem({ id: itemId, confirm: false })).ok).toBe(true);
+  });
+});
+
+describe("department (org unit) management - ADMIN only, never cascades", () => {
+  it("creates a department under a division", async () => {
+    const result = await createDepartment({
+      divisionId: fx.orgUnits.alpha,
+      code: shortCode("D2"),
+      name: "Second Alpha Department",
+    });
+    expect(result.ok).toBe(true);
+    const department = await prisma.orgUnit.findFirstOrThrow({
+      where: { name: "Second Alpha Department" },
+    });
+    createdDepartmentIds.push(department.id);
+  });
+
+  it("refuses a division lead - this is org-chart housekeeping, ADMIN only", async () => {
+    asUser(fx.users.alphaLead);
+    const result = await createDepartment({
+      divisionId: fx.orgUnits.alpha,
+      code: shortCode("SNEAKY"),
+      name: "Should not be created",
+    });
+    expect(result.ok).toBe(false);
+  });
+
+  it("deletes an empty department cleanly", async () => {
+    const code = shortCode("TEMP");
+    const created = await createDepartment({ divisionId: fx.orgUnits.alpha, code, name: "Temp" });
+    expect(created.ok).toBe(true);
+
+    const department = await prisma.orgUnit.findUniqueOrThrow({ where: { code } });
+    const deleted = await deleteDepartment(department.id);
+    expect(deleted.ok).toBe(true);
+    expect(await prisma.orgUnit.findUnique({ where: { id: department.id } })).toBeNull();
+  });
+
+  it("refuses to delete a department that a Level 4 node still points at", async () => {
+    // alphaDept carries the "D" Control Item from the fixture (dicOrgUnitId).
+    const result = await deleteDepartment(fx.orgUnits.alphaDept);
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.message).toMatch(/pointing at it/);
+
+    // And it must still exist - refused, not silently orphaned via SET NULL.
+    const stillThere = await prisma.orgUnit.findUnique({ where: { id: fx.orgUnits.alphaDept } });
+    expect(stillThere).not.toBeNull();
+  });
+});

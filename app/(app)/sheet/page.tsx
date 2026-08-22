@@ -6,7 +6,13 @@ export const dynamic = "force-dynamic";
 
 export default async function SheetPage() {
   const user = await requireSession();
-  // Levels 1-3 together form the single company page. Level 4 is the drill-down.
+  // Levels 1-3 together form the single company page; the "+ Departments"
+  // toggle folds Level 4 in on demand, so it starts on the company view.
   const model = await loadSheet({ levels: [1, 2, 3] });
-  return <CompanySheet initialModel={model} canEditStructure={user.role === "ADMIN"} />;
+  return (
+    <CompanySheet
+      initialModel={model}
+      currentUser={{ role: user.role, orgUnitId: user.orgUnitId }}
+    />
+  );
 }

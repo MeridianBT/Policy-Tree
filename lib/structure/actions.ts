@@ -3,24 +3,35 @@
 /**
  * Editing the plan structure from the sheet itself.
  *
- * Two rules shape this module.
+ * Two rules shape the ADMIN half of this module.
  *
- * The kind and level of a new node are *derived*, never asked for. A child of a
- * Goal is a Theme one level down; a child of a Theme is an Objective at the
- * same level; a child of an Objective is a Theme one level down. So the UI
- * offers "Add theme" or "Add objective" where each is valid and never presents
- * a level picker, which is what made the admin structure builder tedious.
+ * The kind and level of a new node are *derived*, never asked for, for a plain
+ * continuation of the tree: a child of a Goal is a Theme one level down; a
+ * child of a Theme is an Objective at the same level. So "Add theme" or "Add
+ * objective" appears wherever it is valid and never presents a level picker.
  *
  * Deleting is destructive and says so. A node carries its descendants, their
- * Control Items and every figure ever keyed against them. Delete therefore runs
- * in two steps: the first call reports exactly what would be lost, and only a
- * second call carrying that acknowledgement removes anything.
+ * Control Items and every figure ever keyed against them. Delete therefore
+ * runs in two steps: the first call reports exactly what would be lost, and
+ * only a second call carrying that acknowledgement removes anything.
+ *
+ * The OWNER half is a separate, narrower path: a division or department lead
+ * may start a Level 4 branch under any Level 2 or 3 Objective in the company -
+ * "against any of the L3 measures" is the whole point of laddering - but only
+ * ever scoped to their own org unit. They can never touch Levels 1-3, and
+ * every call re-derives that scope from `dic_org_unit_id` / `org_unit_id`
+ * rather than trusting anything the client sends.
  */
 
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { prisma } from "@/lib/db";
-import { requireRole } from "@/lib/auth/session";
+import {
+  assignableOrgUnitIds,
+  canEditStructureAt,
+  requireSession,
+  type AuthenticatedUser,
+} from "@/lib/auth/session";
 
 export type StructureResult =
   | { ok: true; message: string; id?: string }
@@ -40,15 +51,20 @@ function fail(error: unknown): StructureResult {
   return { ok: false, message: error instanceof Error ? error.message : "That did not work." };
 }
 
+class NotPermitted extends Error {}
+
 function revalidate() {
   revalidatePath("/sheet");
   revalidatePath("/admin");
+  revalidatePath("/division", "layout");
 }
 
-/** What kind of child a node can carry, and at what level. */
-export async function childOptions(parentId: string | null): Promise<
-  Array<{ kind: "GOAL" | "THEME" | "OBJECTIVE"; level: number; label: string }>
-> {
+// ------------------------------------------------------------------ Reading
+
+/** What kind of child a node can carry, continuing the tree at its own level. */
+export async function childOptions(
+  parentId: string | null,
+): Promise<Array<{ kind: "GOAL" | "THEME" | "OBJECTIVE"; level: number; label: string }>> {
   if (!parentId) return [{ kind: "GOAL", level: 1, label: "Goal" }];
 
   const parent = await prisma.node.findUnique({
@@ -63,11 +79,18 @@ export async function childOptions(parentId: string | null): Promise<
     case "THEME":
       return [{ kind: "OBJECTIVE", level: parent.level, label: "Objective" }];
     case "OBJECTIVE":
-      // An Objective carries Control Items, and may also carry a deeper Theme
-      // that deploys it further down the organisation.
-      return [{ kind: "THEME", level: parent.level + 1, label: "Theme" }];
+      // Only Level 2 continues the company-wide breakdown to a Level 3 Theme.
+      // A Level 3 Objective's next step is always a Level 4 department branch,
+      // which must carry an org unit and therefore goes through
+      // addDepartmentBranch, never this plain continuation - a Theme created
+      // here with no org unit would be a Level 4 node belonging to nobody.
+      // Level 4 is as deep as the model goes: an Objective there carries only
+      // Control Items.
+      return parent.level === 2 ? [{ kind: "THEME", level: 3, label: "Theme" }] : [];
   }
 }
+
+// -------------------------------------------------------------------- Nodes
 
 const addNodeSchema = z.object({
   kiId: z.string().min(1),
@@ -75,14 +98,23 @@ const addNodeSchema = z.object({
   statement: z.string().trim().min(1, "Give the row a statement.").max(300),
 });
 
+/** The plain continuation of the tree: a Goal, Theme or Objective, ADMIN only. */
 export async function addNode(input: unknown): Promise<StructureResult> {
   try {
-    await requireRole("ADMIN");
+    const user = await requireSession();
     const { kiId, parentId, statement } = addNodeSchema.parse(input);
+
+    if (user.role !== "ADMIN") {
+      throw new NotPermitted("Only an admin can extend the company structure (Levels 1 to 3).");
+    }
 
     const options = await childOptions(parentId);
     const target = options[0];
     if (!target) return { ok: false, message: "Nothing can be added under that row." };
+
+    const parentNode = parentId
+      ? await prisma.node.findUnique({ where: { id: parentId }, select: { orgUnitId: true } })
+      : null;
 
     const siblings = await prisma.node.count({ where: { kiId, parentId } });
     const created = await prisma.node.create({
@@ -92,6 +124,10 @@ export async function addNode(input: unknown): Promise<StructureResult> {
         kind: target.kind,
         level: target.level,
         statement,
+        // A Theme or Objective inherits its parent's org unit scope (null for
+        // the company-wide Levels 1-3), so it stays consistent if a Level 4
+        // branch is later added beneath it.
+        orgUnitId: parentNode?.orgUnitId ?? null,
         sortOrder: siblings,
       },
     });
@@ -99,7 +135,110 @@ export async function addNode(input: unknown): Promise<StructureResult> {
     revalidate();
     return { ok: true, message: `${target.label} added.`, id: created.id };
   } catch (error) {
-    return fail(error);
+    return permissionAware(error);
+  }
+}
+
+const addDepartmentBranchSchema = z.object({
+  kiId: z.string().min(1),
+  /** A Level 2 or 3 Objective - "any of the L3 measures" ladders from here. */
+  parentObjectiveId: z.string().min(1),
+  orgUnitId: z.string().min(1, "Choose which division or department this belongs to."),
+  statement: z.string().trim().min(1, "Give the row a statement.").max(300),
+});
+
+/**
+ * Starts (or continues) a Level 4 branch under a Level 2 or 3 Objective. This
+ * is the one structure edit an OWNER may perform on their own, always scoped
+ * to their own org unit or a department beneath it.
+ */
+export async function addDepartmentBranch(input: unknown): Promise<StructureResult> {
+  try {
+    const user = await requireSession();
+    const { kiId, parentObjectiveId, orgUnitId, statement } = addDepartmentBranchSchema.parse(input);
+
+    if (!(await canEditStructureAt(user, 4, orgUnitId))) {
+      throw new NotPermitted(
+        user.role === "OWNER"
+          ? "You can only add a department branch under your own division or department."
+          : "You do not have permission to add a department branch.",
+      );
+    }
+
+    const parent = await prisma.node.findUnique({
+      where: { id: parentObjectiveId },
+      select: { kind: true, level: true },
+    });
+    if (!parent || parent.kind !== "OBJECTIVE" || parent.level >= 4) {
+      return {
+        ok: false,
+        message: "A department branch ladders from a Level 2 or 3 Objective.",
+      };
+    }
+
+    const siblings = await prisma.node.count({ where: { kiId, parentId: parentObjectiveId } });
+    const created = await prisma.node.create({
+      data: {
+        kiId,
+        parentId: parentObjectiveId,
+        kind: "THEME",
+        level: 4,
+        statement,
+        orgUnitId,
+        sortOrder: siblings,
+      },
+    });
+
+    revalidate();
+    return { ok: true, message: "Department branch added.", id: created.id };
+  } catch (error) {
+    return permissionAware(error);
+  }
+}
+
+const addDepartmentObjectiveSchema = z.object({
+  kiId: z.string().min(1),
+  /** The Level 4 Theme this Objective sits under. */
+  parentThemeId: z.string().min(1),
+  statement: z.string().trim().min(1, "Give the row a statement.").max(300),
+});
+
+/** An Objective under an existing Level 4 Theme, same scope rule as the branch. */
+export async function addDepartmentObjective(input: unknown): Promise<StructureResult> {
+  try {
+    const user = await requireSession();
+    const { kiId, parentThemeId, statement } = addDepartmentObjectiveSchema.parse(input);
+
+    const parent = await prisma.node.findUnique({
+      where: { id: parentThemeId },
+      select: { kind: true, level: true, orgUnitId: true },
+    });
+    if (!parent || parent.kind !== "THEME" || parent.level !== 4) {
+      return { ok: false, message: "That row cannot carry an Objective." };
+    }
+    if (!(await canEditStructureAt(user, 4, parent.orgUnitId))) {
+      throw new NotPermitted(
+        "You can only add to a department branch that belongs to your own division or department.",
+      );
+    }
+
+    const siblings = await prisma.node.count({ where: { kiId, parentId: parentThemeId } });
+    const created = await prisma.node.create({
+      data: {
+        kiId,
+        parentId: parentThemeId,
+        kind: "OBJECTIVE",
+        level: 4,
+        statement,
+        orgUnitId: parent.orgUnitId,
+        sortOrder: siblings,
+      },
+    });
+
+    revalidate();
+    return { ok: true, message: "Objective added.", id: created.id };
+  } catch (error) {
+    return permissionAware(error);
   }
 }
 
@@ -110,26 +249,57 @@ const renameSchema = z.object({
 
 export async function renameNode(input: unknown): Promise<StructureResult> {
   try {
-    await requireRole("ADMIN");
+    const user = await requireSession();
     const { id, statement } = renameSchema.parse(input);
+
+    const node = await prisma.node.findUnique({ where: { id }, select: { level: true, orgUnitId: true } });
+    if (!node) return { ok: false, message: "That row no longer exists." };
+    if (!(await canEditStructureAt(user, node.level, node.orgUnitId))) {
+      throw new NotPermitted();
+    }
+
     await prisma.node.update({ where: { id }, data: { statement } });
     revalidate();
     return { ok: true, message: "Renamed." };
   } catch (error) {
-    return fail(error);
+    return permissionAware(error);
   }
 }
 
 export async function renameControlItem(input: unknown): Promise<StructureResult> {
   try {
-    await requireRole("ADMIN");
+    const user = await requireSession();
     const { id, statement } = renameSchema.parse(input);
+
+    const item = await prisma.controlItem.findUnique({
+      where: { id },
+      select: { node: { select: { level: true } }, dicOrgUnitId: true },
+    });
+    if (!item) return { ok: false, message: "That Control Item no longer exists." };
+    if (!(await canControlItemScope(user, item.node.level, item.dicOrgUnitId))) {
+      throw new NotPermitted();
+    }
+
     await prisma.controlItem.update({ where: { id }, data: { name: statement } });
     revalidate();
     return { ok: true, message: "Renamed." };
   } catch (error) {
-    return fail(error);
+    return permissionAware(error);
   }
+}
+
+/**
+ * ADMIN may rename any Control Item's name. An OWNER may only rename one at
+ * Level 4 within their own org unit - the same rule as everything else here,
+ * plus the Level-1-3 Control Items ADMIN alone may touch.
+ */
+async function canControlItemScope(
+  user: AuthenticatedUser,
+  level: number,
+  dicOrgUnitId: string,
+): Promise<boolean> {
+  if (user.role === "ADMIN") return true;
+  return canEditStructureAt(user, level, dicOrgUnitId);
 }
 
 /** Everything that would go with a node: itself, its descendants, their data. */
@@ -169,14 +339,17 @@ const deleteSchema = z.object({
 
 export async function deleteNode(input: unknown): Promise<StructureResult> {
   try {
-    await requireRole("ADMIN");
+    const user = await requireSession();
     const { id, confirm } = deleteSchema.parse(input);
 
     const node = await prisma.node.findUnique({
       where: { id },
-      select: { statement: true, kind: true },
+      select: { statement: true, kind: true, level: true, orgUnitId: true },
     });
     if (!node) return { ok: false, message: "That row no longer exists." };
+    if (!(await canEditStructureAt(user, node.level, node.orgUnitId))) {
+      throw new NotPermitted();
+    }
 
     const impact = await measureNodeDeletion(id);
 
@@ -200,20 +373,23 @@ export async function deleteNode(input: unknown): Promise<StructureResult> {
           : "Deleted.",
     };
   } catch (error) {
-    return fail(error);
+    return permissionAware(error);
   }
 }
 
 export async function deleteControlItem(input: unknown): Promise<StructureResult> {
   try {
-    await requireRole("ADMIN");
+    const user = await requireSession();
     const { id, confirm } = deleteSchema.parse(input);
 
     const item = await prisma.controlItem.findUnique({
       where: { id },
-      select: { name: true },
+      select: { name: true, dicOrgUnitId: true, node: { select: { level: true } } },
     });
     if (!item) return { ok: false, message: "That Control Item no longer exists." };
+    if (!(await canControlItemScope(user, item.node.level, item.dicOrgUnitId))) {
+      throw new NotPermitted();
+    }
 
     const entries = await prisma.entry.count({ where: { controlItemId: id } });
 
@@ -234,7 +410,7 @@ export async function deleteControlItem(input: unknown): Promise<StructureResult
     revalidate();
     return { ok: true, message: `Deleted "${item.name}".` };
   } catch (error) {
-    return fail(error);
+    return permissionAware(error);
   }
 }
 
@@ -252,6 +428,8 @@ function describeImpact(statement: string, impact: DeletionImpact): string {
   return `Deleting "${quoted}" also removes ${parts.join(", ")}. That cannot be undone.`;
 }
 
+// ------------------------------------------------------------ Control Items
+
 const addControlItemSchema = z.object({
   nodeId: z.string().min(1),
   name: z.string().trim().min(1, "Give the measure a name.").max(200),
@@ -265,16 +443,25 @@ const addControlItemSchema = z.object({
 
 export async function addControlItem(input: unknown): Promise<StructureResult> {
   try {
-    await requireRole("ADMIN");
+    const user = await requireSession();
     const data = addControlItemSchema.parse(input);
 
     const node = await prisma.node.findUnique({
       where: { id: data.nodeId },
-      select: { kind: true, kiId: true },
+      select: { kind: true, kiId: true, level: true },
     });
     if (!node) return { ok: false, message: "That row no longer exists." };
     if (node.kind !== "OBJECTIVE") {
       return { ok: false, message: "A Control Item must sit under an Objective." };
+    }
+
+    // The DIC is what actually determines scope here, not the node's own org
+    // unit: a Control Item's accountable division is chosen at creation, and
+    // an OWNER may only choose one within their own reach.
+    if (node.level === 4) {
+      if (!(await canEditStructureAt(user, 4, data.dicOrgUnitId))) throw new NotPermitted();
+    } else if (user.role !== "ADMIN") {
+      throw new NotPermitted("Only an admin can add a Control Item to the company structure.");
     }
 
     // INVERSE is a cost-item convention; the plain ratio is the only meaningful
@@ -301,7 +488,7 @@ export async function addControlItem(input: unknown): Promise<StructureResult> {
     revalidate();
     return { ok: true, message: `${data.name} added.`, id: created.id };
   } catch (error) {
-    return fail(error);
+    return permissionAware(error);
   }
 }
 
@@ -323,4 +510,66 @@ async function uniqueCode(name: string): Promise<string> {
     if (!taken) return candidate;
   }
   return `${base}-${Date.now().toString(36).toUpperCase()}`;
+}
+
+// --------------------------------------------------------------------- Read
+
+/**
+ * Which org units the signed-in user may file a new Level 4 branch or Control
+ * Item under. The add-department form uses this to build its picker instead
+ * of showing every division in the company to someone who may only use one.
+ */
+export interface AssignableDic {
+  id: string;
+  code: string;
+  name: string;
+  type: "DIVISION" | "DEPARTMENT";
+  parentCode: string | null;
+}
+
+export async function assignableDics(): Promise<AssignableDic[]> {
+  const user = await requireSession();
+  const scope = await assignableOrgUnitIds(user);
+  if (scope !== "ALL" && scope.length === 0) return [];
+
+  const rows = await prisma.orgUnit.findMany({
+    where: {
+      type: { in: ["DIVISION", "DEPARTMENT"] },
+      ...(scope === "ALL" ? {} : { id: { in: scope } }),
+    },
+    orderBy: [{ type: "asc" }, { sortOrder: "asc" }],
+    select: { id: true, code: true, name: true, type: true, parentId: true },
+  });
+
+  const codeById = new Map(rows.map((row) => [row.id, row.code]));
+  // A Department's own parent Division may sit outside the OWNER's scope in
+  // theory, but never in practice - a Department's parent is always the
+  // Division that contains it, and covering the Department implies covering
+  // the Division. Fetched separately only if that ever stops holding.
+  const missingParents = rows.filter((row) => row.parentId && !codeById.has(row.parentId));
+  if (missingParents.length) {
+    const parents = await prisma.orgUnit.findMany({
+      where: { id: { in: missingParents.map((row) => row.parentId!) } },
+      select: { id: true, code: true },
+    });
+    for (const parent of parents) codeById.set(parent.id, parent.code);
+  }
+
+  return rows.map((row) => ({
+    id: row.id,
+    code: row.code,
+    name: row.name,
+    type: row.type as "DIVISION" | "DEPARTMENT",
+    parentCode: row.type === "DEPARTMENT" && row.parentId ? codeById.get(row.parentId) ?? null : null,
+  }));
+}
+
+function permissionAware(error: unknown): StructureResult {
+  if (error instanceof NotPermitted) {
+    return {
+      ok: false,
+      message: error.message || "You do not have permission to do that.",
+    };
+  }
+  return fail(error);
 }

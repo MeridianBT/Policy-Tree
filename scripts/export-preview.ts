@@ -29,6 +29,7 @@ function serialise(model: Awaited<ReturnType<typeof loadSheet>>) {
         code: item.code,
         name: item.name,
         measuredAs: item.measuredAs,
+        dicId: item.dicOrgUnitId,
         unit: item.unit,
         dp: item.decimalPlaces,
         dir: item.direction,
@@ -60,6 +61,7 @@ function serialise(model: Awaited<ReturnType<typeof loadSheet>>) {
       lvl: group.level,
       statement: group.statement,
       ordinal: group.ordinal ?? null,
+      orgUnitId: group.orgUnitId ?? null,
       path: group.path,
     };
   });
@@ -71,8 +73,12 @@ function serialise(model: Awaited<ReturnType<typeof loadSheet>>) {
  * evaluation symbol are recomputed against each basis by the calculation
  * module; the browser only ever picks which finished sheet to show.
  */
+const LEVELS = [1, 2, 3, 4];
+
 async function main() {
-  const latest = await loadSheet({ levels: [1, 2, 3] });
+  // Levels 1-4: the expanded view, with every department branch folded in
+  // under the Objective it ladders into.
+  const latest = await loadSheet({ levels: LEVELS });
 
   const bases: Array<{ id: string; label: string; rows: unknown }> = [
     { id: "LATEST", label: "Latest forecast", rows: serialise(latest) },
@@ -80,7 +86,7 @@ async function main() {
 
   for (const version of latest.versions) {
     if (version.isActual) continue;
-    const pinned = await loadSheet({ levels: [1, 2, 3], targetVersionId: version.id });
+    const pinned = await loadSheet({ levels: LEVELS, targetVersionId: version.id });
     bases.push({
       id: version.id,
       label: version.lockedAt ? `${version.code} · locked` : version.code,

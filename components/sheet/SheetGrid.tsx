@@ -22,6 +22,7 @@ import { columnClass, columnWidth, sheetColumns } from "./columns";
 import type { QuarterCode } from "@/lib/domain/period";
 import { groupHeading, indentPx } from "./outline";
 import { InlineRename, RowActions, type DicOption } from "./StructureControls";
+import { canAddDepartmentBranch, canEditStructureAt, type EditingUser } from "./permissions";
 import { SheetCellView, rowHeightFor, type DisplayMode } from "./SheetCellView";
 import { EvaluationSymbol } from "./EvaluationSymbol";
 
@@ -36,6 +37,7 @@ export interface SheetFilters {
 export const EMPTY_FILTERS: SheetFilters = { dics: [], themeIds: [], symbols: [] };
 
 export interface EditingHandlers {
+  user: EditingUser;
   dics: DicOption[];
   renamingId: string | null;
   onStartRename: (id: string) => void;
@@ -43,6 +45,7 @@ export interface EditingHandlers {
   onRenameNode: (id: string, statement: string) => void;
   onRenameControlItem: (id: string, name: string) => void;
   onAddChild: (parentId: string, kind: "THEME" | "OBJECTIVE") => void;
+  onAddDepartment: (parentObjectiveId: string) => void;
   onAddMeasure: (nodeId: string) => void;
   onDeleteNode: (id: string) => void;
   onDeleteControlItem: (id: string) => void;
@@ -344,21 +347,36 @@ function GroupRowView({
             {groupHeading(row.statement, row.ordinal)}
           </span>
         )}
-        {editing && editing.renamingId !== row.id && (
-          <RowActions
-            /* Every group can take a child: a Goal takes Themes, a Theme takes
-               Objectives, an Objective takes a deeper Theme. */
-            canAddChild
-            childLabel={row.kind === "THEME" ? "objective" : "theme"}
-            canAddMeasure={row.kind === "OBJECTIVE"}
-            onAddChild={() =>
-              editing.onAddChild(row.id, row.kind === "THEME" ? "OBJECTIVE" : "THEME")
-            }
-            onAddMeasure={() => editing.onAddMeasure(row.id)}
-            onRename={() => editing.onStartRename(row.id)}
-            onDelete={() => editing.onDeleteNode(row.id)}
-          />
-        )}
+        {editing && editing.renamingId !== row.id && (() => {
+          const owns = canEditStructureAt(editing.user, editing.dics, row.level, row.orgUnitId);
+          const isAdmin = editing.user.role === "ADMIN";
+          // A plain continuation only exists for a Goal, a Theme, or a Level 2
+          // Objective (its Level 3 Theme); everything deeper is a department
+          // branch, added separately below. Continuation of the company-wide
+          // tree stays ADMIN-only; a Level 4 Theme's own continuation (its
+          // Objective) is scoped to whoever owns that branch.
+          const childContinues =
+            row.kind !== "OBJECTIVE" || row.level === 2;
+          const canAddChild =
+            row.level < 4 ? isAdmin && childContinues : owns && childContinues;
+          return (
+            <RowActions
+              canAddChild={canAddChild}
+              childLabel={row.kind === "THEME" ? "objective" : "theme"}
+              canAddDepartment={canAddDepartmentBranch(editing.user, row)}
+              canAddMeasure={row.kind === "OBJECTIVE" && (row.level < 4 ? isAdmin : owns)}
+              canRename={row.level < 4 ? isAdmin : owns}
+              canDelete={row.level < 4 ? isAdmin : owns}
+              onAddChild={() =>
+                editing.onAddChild(row.id, row.kind === "THEME" ? "OBJECTIVE" : "THEME")
+              }
+              onAddDepartment={() => editing.onAddDepartment(row.id)}
+              onAddMeasure={() => editing.onAddMeasure(row.id)}
+              onRename={() => editing.onStartRename(row.id)}
+              onDelete={() => editing.onDeleteNode(row.id)}
+            />
+          );
+        })()}
       </div>
       {row.laddersTo ? (
         <div
@@ -420,11 +438,17 @@ function ControlItemRowView({
             {row.name}
           </Link>
         )}
-        {editing && editing.renamingId !== row.id ? (
+        {editing &&
+        editing.renamingId !== row.id &&
+        (row.level < 4
+          ? editing.user.role === "ADMIN"
+          : canEditStructureAt(editing.user, editing.dics, row.level, row.dicOrgUnitId)) ? (
           <RowActions
             canAddChild={false}
             childLabel=""
             canAddMeasure={false}
+            canRename
+            canDelete
             onAddChild={() => {}}
             onAddMeasure={() => {}}
             onRename={() => editing.onStartRename(row.id)}

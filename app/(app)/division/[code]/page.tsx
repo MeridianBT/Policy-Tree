@@ -7,7 +7,7 @@ import { DivisionSheet } from "./DivisionSheet";
 export const dynamic = "force-dynamic";
 
 export default async function DivisionPage({ params }: { params: Promise<{ code: string }> }) {
-  await requireSession();
+  const user = await requireSession();
   const { code } = await params;
 
   const orgUnit = await prisma.orgUnit.findUnique({ where: { code: code.toUpperCase() } });
@@ -23,6 +23,7 @@ export default async function DivisionPage({ params }: { params: Promise<{ code:
       orgUnitIds={orgUnitIds}
       divisionCode={orgUnit.code}
       divisionName={orgUnit.name}
+      currentUser={{ role: user.role, orgUnitId: user.orgUnitId }}
     />
   );
 }

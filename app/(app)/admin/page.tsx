@@ -50,6 +50,7 @@ export default async function AdminPage() {
         code: unit.code,
         name: unit.name,
         type: unit.type,
+        parentId: unit.parentId,
       }))}
       users={users.map((user) => ({
         id: user.id,

@@ -4,6 +4,7 @@ import { useCallback, useState, useTransition } from "react";
 import type { SheetModel } from "@/lib/sheet/types";
 import { fetchSheet } from "@/lib/sheet/actions";
 import { SheetScreen, LATEST_FORECAST } from "@/components/sheet/SheetScreen";
+import type { EditingUser } from "@/components/sheet/permissions";
 
 const LEVELS = [4];
 
@@ -12,11 +13,13 @@ export function DivisionSheet({
   orgUnitIds,
   divisionCode,
   divisionName,
+  currentUser,
 }: {
   initialModel: SheetModel;
   orgUnitIds: string[];
   divisionCode: string;
   divisionName: string;
+  currentUser?: EditingUser;
 }) {
   const [model, setModel] = useState(initialModel);
   const [compareModel, setCompareModel] = useState<SheetModel | null>(null);
@@ -61,9 +64,20 @@ export function DivisionSheet({
           {divisionCode} — {divisionName}
         </h1>
         <p className="mt-2 max-w-lg text-[12px] text-ink-muted">
-          This division has no Level 4 Control Items in {model.kiCode}. Its company-level Control
+          This division has no Level 4 structure in {model.kiCode} yet. Its company-level Control
           Items appear on the company sheet, filtered by DIC.
         </p>
+        {currentUser && currentUser.role !== "VIEWER" && (
+          <p className="mt-2 max-w-lg text-[12px] text-ink-muted">
+            To start one, open the{" "}
+            <a href="/sheet" className="underline hover:text-ink">
+              company sheet
+            </a>
+            , switch its view to &ldquo;+ Departments&rdquo;, turn on &ldquo;Edit structure&rdquo;, and
+            use the <span className="num text-[10px]">L4+</span> button on the Objective this
+            division&apos;s work ladders into.
+          </p>
+        )}
       </div>
     );
   }
@@ -81,6 +95,7 @@ export function DivisionSheet({
       compareVersionId={compareVersionId}
       onTargetVersionChange={changeTarget}
       onCompareVersionChange={changeCompare}
+      currentUser={currentUser}
     />
   );
 }

@@ -23,6 +23,8 @@ export interface GroupRow {
   controlItemIds: string[];
   /** Level 4 only: the Level 1-3 Objective this group ladders into. */
   laddersTo?: string | null;
+  /** The org unit this row belongs to, for scoped structure editing. */
+  orgUnitId?: string | null;
 }
 
 export interface ControlItemRow {
@@ -38,6 +40,7 @@ export interface ControlItemRow {
   aggregation: "SUM" | "AVERAGE" | "LATEST";
   dicCode: string;
   dicName: string;
+  dicOrgUnitId: string;
   responsibleUserName: string | null;
   level: number;
   path: string[];
@@ -58,8 +61,20 @@ export interface SheetModel {
   versions: VersionSpec[];
   bands: EvaluationBandSpec[];
   rows: SheetRowModel[];
-  /** Distinct DICs present, for the filter control and the add-measure form. */
-  dics: Array<{ id: string; code: string; name: string }>;
+  /**
+   * Every Division and Department, for the filter control, the add-measure
+   * form and the "add department" branch. Flat, with `parentCode` carrying
+   * the hierarchy: a Department's parentCode is its Division's code, so the
+   * client can filter "this division and everything beneath it" without a
+   * second round trip.
+   */
+  dics: Array<{
+    id: string;
+    code: string;
+    name: string;
+    type: "DIVISION" | "DEPARTMENT";
+    parentCode: string | null;
+  }>;
   /** Theme statements present, for the filter control. */
   themes: Array<{ id: string; statement: string }>;
 }

@@ -180,6 +180,11 @@ A locked version is read-only for **every** role including `ADMIN`. There is no
 override: a closed version is the record of what was committed, and editing it
 would rewrite history.
 
+This table covers *entries* — the numbers keyed into a Control Item. Editing
+the *plan structure itself* (adding a Theme, a Level 4 branch, a whole Control
+Item) is a separate, narrower permission, covered under "Editing the structure
+from the sheet" below.
+
 Accountability and data entry are separate fields. `dic_org_unit_id` is the
 accountable Division or Department and is required; `responsible_user_id` is the
 individual who keys the number in and is optional.
@@ -196,8 +201,8 @@ LDAP later means adding a provider there and mapping its claims onto
 
 | Route | What it is |
 |---|---|
-| `/sheet` | The company sheet, Levels 1–3, virtualised, with version selector, compare mode, four display densities, condensable quarter columns and filters by DIC, Theme and evaluation symbol |
-| `/division/[code]` | The Level 4 division sheet, showing which Level 1–3 Objective each group ladders into |
+| `/sheet` | The company sheet — Levels 1–3 by default, with a View toggle folding every Level 4 branch in under its Objective. Virtualised, with version selector, compare mode, four display densities, condensable quarter columns, a Division/Department scope and filters by DIC, Theme and evaluation symbol. ADMIN and OWNER (division/department leads) can edit the structure directly here |
+| `/division/[code]` | The same Level 4 sheet, pre-scoped to one division and its departments — a narrower, single-division view of what "+ Departments" on the company sheet shows for everyone |
 | `/my-entries` | Keyboard-driven monthly entry for everything the signed-in user owns, with an outstanding count |
 | `/control-item/[id]` | Trend chart with every version overlaid, stored cells including formulas as typed, and the full audit trail |
 | `/print/company` | A3 landscape, print-only |
@@ -222,19 +227,74 @@ gives a much less dense one-pager for a board reading.
 An ADMIN can add, rename and remove Goals, Themes, Objectives and Control Items
 directly on the company sheet — "Edit structure" in the toolbar reveals a
 `+` / rename / delete on every row, without leaving the sheet or opening the
-admin structure builder. Nothing asks for a level or a kind: the server derives
-both from the parent (a Goal takes a Theme, a Theme takes an Objective, an
-Objective takes a deeper Theme or a Control Item), so the only decision left is
-what to call the new row.
+admin structure builder. Nothing asks for a level or a kind for a plain
+continuation: the server derives both from the parent (a Goal takes a Theme, a
+Theme takes an Objective, a Level 2 Objective takes a Level 3 Theme), so the
+only decision left is what to call the new row.
 
 Deletion is destructive — a Goal carries every Theme, Objective, Control Item
 and stored figure beneath it — so it runs in two steps. The first click reports
 exactly what would be lost ("removes 7 rows beneath it, 7 Control Items, 315
 stored figures"); only a second, explicit confirmation removes anything. The
 same two-step confirmation guards deleting a Control Item that already has data
-keyed against it. `lib/structure/actions.ts` is the only place any of this
-happens, and every call re-checks the ADMIN role on the server regardless of
-what the toolbar shows.
+keyed against it.
+
+#### Level 4, and who may touch it
+
+`lib/structure/actions.ts` draws one hard line: **Levels 1-3 are ADMIN-only.**
+They are what every division ladders into, so a local edit there would move
+the ground under everyone else. **Level 4 is different** — a division or
+department lead (`OWNER`, with their `org_unit_id` set to that division or
+department) may build their own corner of the deployment without an admin in
+the loop:
+
+- **"L4+"** appears on every Level 2 or 3 Objective, for ADMIN and OWNER alike
+  — the Objective itself is company-wide and owned by nobody, so anyone
+  permitted to add Level 4 work may open the form there. What the form
+  actually restricts is *which* division or department the new branch is filed
+  under: an OWNER's picker only ever offers their own org unit and whatever
+  sits beneath it (`assignableDics()`, scoped server-side, never merely
+  hidden). "Against any of the L3 measures" is the point of this button — a
+  department lead ladders their own deployment from wherever it belongs in the
+  company structure, not only from rows that happen to already carry their
+  division's DIC.
+- Once a branch exists, its owning lead can extend it — add an Objective under
+  their Theme, add a Control Item under their Objective, rename or delete any
+  of it — the same way an ADMIN can, but never outside their own org unit or a
+  department beneath it. `components/sheet/permissions.ts` mirrors this rule
+  client-side to decide which pencils and trash cans to draw; every action
+  re-derives the real answer from the database regardless of what the toolbar
+  showed.
+- A plain continuation from a Level 3 Objective is refused outright, even for
+  an ADMIN — the next step from Level 3 is always a Level 4 branch, and that
+  must carry an org unit. A Theme created by the generic "add child" path
+  would belong to nobody.
+
+#### The Division/Department view
+
+The company sheet's **View** toggle folds Level 4 in on demand: "Company"
+shows Levels 1-3 exactly as before, "+ Departments" nests every Level 4 branch
+directly beneath the Level 1-3 Objective it ladders into — no separate page,
+no second fetch to reconcile. Once departments are on the sheet, a **Division**
+selector narrows the DIC filter to one division and everything beneath it in
+one click ("Departments in a Division"), and picking a specific department
+chip narrows it to just that ("just the Department"). The per-division
+`/division/[code]` page still exists for a narrower, single-division view with
+the same editing rights.
+
+#### Managing the pick list
+
+Divisions are seeded; Departments are not fixed — Admin → Departments lets an
+ADMIN add one under an existing division (a code and a name) or remove one,
+which is what populates the DIC picker everywhere else on the sheet. Removing
+a department never cascades: Postgres's default behaviour on an optional
+foreign key is to silently `SET NULL` rather than block, which for a
+department would strip a Level 4 branch of the department it belongs to, or
+quietly unassign a user, instead of stopping the deletion. `deleteDepartment`
+counts every Level 4 row, Control Item and user still pointing at it first and
+refuses outright if any exist — there is no "delete anyway" override here,
+because an org unit is an identity other rows depend on, not plan content with
+a value of its own.
 
 ### Exporting to Excel
 
@@ -290,21 +350,37 @@ macOS Safari need a run on those platforms.
 ## Tests
 
 ```bash
-npm test              # 131 tests
+npm test              # 192 tests
 npm run test:unit     # the pure modules only, no database needed
 ```
 
 - `lib/calc/calc.test.ts` — roll-up, baseline resolution, achievement, gap,
   bands, row assembly, formatting
+- `lib/calc/outline.test.ts`, `lib/calc/columns.test.ts` — row/column outline
+  geometry: level-based indentation, Goal numbering, quarter condensing
+- `lib/calc/structure-permissions.test.ts` — the client-side permission mirror
+  that decides which pencils and trash cans to draw, checked against every
+  role/level/org-unit combination
 - `lib/formula/formula.test.ts` — tokeniser, precedence, nesting, ranges, cycle
   detection, topological order, missing references, division by zero, and that
   a JavaScript payload is a syntax error rather than code
 - `tests/engine.test.ts` — integration against a real PostgreSQL: cached
   recompute, deep recompute chains, cycle rejection by name, locked-version
   enforcement for every role, the permission matrix, and the audit trail
+- `tests/structure.test.ts` — integration against a real PostgreSQL for the
+  structure-edit actions: a division lead laddering a Level 4 branch off a
+  company-wide Objective, scoped strictly to their own org unit; the two-step
+  delete confirmation refusing even to reveal its impact to someone outside
+  that scope; and department deletion refusing outright — never cascading —
+  the moment anything still points at it
 
-The integration suite needs `DATABASE_URL` and runs serially against a real
-database. It creates and removes its own throwaway Ki.
+The integration suites need `DATABASE_URL` and run serially against a real
+database. Each creates and removes its own throwaway Ki (`tests/fixture.ts`).
+`tests/structure.test.ts` mocks only the session boundary (`requireSession`/
+`requireRole`), because those actions call `auth()` internally rather than
+taking a user as a parameter; the permission logic itself — `canEditStructureAt`,
+`assignableOrgUnitIds` — runs for real, against the real database, for every
+test.
 
 There is also a hand-verification pass, automated:
 

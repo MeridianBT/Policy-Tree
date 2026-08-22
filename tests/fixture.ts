@@ -21,6 +21,8 @@ export interface Fixture {
   items: Record<string, string>;
   orgUnits: Record<string, string>;
   users: Record<string, AuthenticatedUser>;
+  /** Level 1/2 nodes, for tests exercising the structure-edit actions. */
+  nodes: { goal: string; theme: string; objective: string };
   cleanup: () => Promise<void>;
 }
 
@@ -141,6 +143,7 @@ export async function createFixture(): Promise<Fixture> {
     items,
     orgUnits: { company: company.id, alpha: alpha.id, beta: beta.id, alphaDept: alphaDept.id },
     users,
+    nodes: { goal: goal.id, theme: theme.id, objective: objective.id },
     async cleanup() {
       await prisma.ki.delete({ where: { id: ki.id } });
       await prisma.appUser.deleteMany({ where: { id: { in: Object.values(users).map((u) => u.id) } } });

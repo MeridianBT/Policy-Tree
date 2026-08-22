@@ -189,6 +189,7 @@ export async function loadSheet(options: LoadSheetOptions): Promise<SheetModel> 
         node.kind === "OBJECTIVE" && !options.levels.includes(node.level - 1)
           ? ladderTarget(node.id)
           : null,
+      orgUnitId: node.orgUnitId ?? null,
     };
     groupById.set(node.id, group);
     rows.push(group as SheetRowModel);
@@ -240,6 +241,7 @@ export async function loadSheet(options: LoadSheetOptions): Promise<SheetModel> 
         aggregation: item.aggregation,
         dicCode: item.dicOrgUnit.code,
         dicName: item.dicOrgUnit.name,
+        dicOrgUnitId: item.dicOrgUnitId,
         responsibleUserName: item.responsibleUser?.name ?? null,
         level: node.level,
         path,
@@ -253,13 +255,16 @@ export async function loadSheet(options: LoadSheetOptions): Promise<SheetModel> 
     }
   }
 
-  // Every division, not merely those already carrying a Control Item — a new
-  // measure has to be assignable to a division that has none yet.
-  const divisions = await prisma.orgUnit.findMany({
+  // Every division and department, not merely those already carrying a
+  // Control Item - a new measure has to be assignable to one that has none
+  // yet, and a department leader needs to see their own division listed even
+  // before they have added their first Level 4 branch to it.
+  const orgUnitRows = await prisma.orgUnit.findMany({
     where: { type: { in: ["DIVISION", "DEPARTMENT"] } },
-    orderBy: { sortOrder: "asc" },
-    select: { id: true, code: true, name: true },
+    orderBy: [{ type: "asc" }, { sortOrder: "asc" }],
+    select: { id: true, code: true, name: true, type: true, parentId: true },
   });
+  const orgUnitCodeById = new Map(orgUnitRows.map((unit) => [unit.id, unit.code]));
 
   return {
     kiCode: ki.code,
@@ -269,7 +274,14 @@ export async function loadSheet(options: LoadSheetOptions): Promise<SheetModel> 
     versions,
     bands,
     rows,
-    dics: divisions,
+    dics: orgUnitRows.map((unit) => ({
+      id: unit.id,
+      code: unit.code,
+      name: unit.name,
+      type: unit.type as "DIVISION" | "DEPARTMENT",
+      parentCode:
+        unit.type === "DEPARTMENT" && unit.parentId ? orgUnitCodeById.get(unit.parentId) ?? null : null,
+    })),
     themes,
   };
 }

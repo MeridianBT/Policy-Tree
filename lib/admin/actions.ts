@@ -382,3 +382,104 @@ async function ancestorChain(nodeId: string) {
   }
   return chain;
 }
+
+// ------------------------------------------------------------- Departments
+
+const createDepartmentSchema = z.object({
+  divisionId: z.string().min(1, "Choose which division this department sits under."),
+  code: z
+    .string()
+    .trim()
+    .min(1, "Give the department a code.")
+    .max(20)
+    .regex(/^[A-Za-z0-9._-]+$/, "Use letters, digits, dot, dash or underscore."),
+  name: z.string().trim().min(1, "Give the department a name.").max(120),
+});
+
+/** Adds a Department to the pick list, filed under an existing Division. */
+export async function createDepartment(input: unknown): Promise<AdminResult> {
+  try {
+    await requireRole("ADMIN");
+    const data = createDepartmentSchema.parse(input);
+
+    const division = await prisma.orgUnit.findUnique({ where: { id: data.divisionId } });
+    if (!division || division.type !== "DIVISION") {
+      return { ok: false, message: "Choose a division to file the department under." };
+    }
+
+    const code = data.code.toUpperCase();
+    if (await prisma.orgUnit.findUnique({ where: { code } })) {
+      return { ok: false, message: `${code} is already in use.` };
+    }
+
+    const siblings = await prisma.orgUnit.count({ where: { parentId: division.id } });
+    await prisma.orgUnit.create({
+      data: {
+        code,
+        name: data.name,
+        type: "DEPARTMENT",
+        parentId: division.id,
+        sortOrder: siblings,
+      },
+    });
+
+    revalidatePath("/admin");
+    revalidatePath("/sheet");
+    return { ok: true, message: `${code} added under ${division.code}.` };
+  } catch (error) {
+    return fail(error);
+  }
+}
+
+/**
+ * Removes a Department from the pick list.
+ *
+ * This never cascades. Postgres's default action on an optional foreign key
+ * is SET NULL, which for `node.org_unit_id` or `app_user.org_unit_id` would
+ * silently strip a Level 4 branch of the department it belongs to, or unassign
+ * a user, rather than stop the deletion - exactly the kind of quiet data loss
+ * this module exists to prevent. So every reference is counted first, and the
+ * deletion is refused outright, with no override, until the department is
+ * genuinely empty: no Level 4 rows, no Control Items, no users left pointing
+ * at it. There is nothing to "delete anyway" here, because an org unit is an
+ * identity other rows depend on, not plan content with a value of its own.
+ */
+export async function deleteDepartment(id: string): Promise<AdminResult> {
+  try {
+    await requireRole("ADMIN");
+
+    const department = await prisma.orgUnit.findUnique({ where: { id } });
+    if (!department) return { ok: false, message: "That department no longer exists." };
+    if (department.type !== "DEPARTMENT") {
+      return { ok: false, message: "Only a Department can be removed here." };
+    }
+
+    const [nodes, controlItems, users] = await Promise.all([
+      prisma.node.count({ where: { orgUnitId: id } }),
+      prisma.controlItem.count({ where: { dicOrgUnitId: id } }),
+      prisma.appUser.count({ where: { orgUnitId: id } }),
+    ]);
+
+    const blockers: string[] = [];
+    if (nodes > 0) blockers.push(`${nodes} Level 4 row${nodes === 1 ? "" : "s"}`);
+    if (controlItems > 0) blockers.push(`${controlItems} Control Item${controlItems === 1 ? "" : "s"}`);
+    if (users > 0) blockers.push(`${users} user${users === 1 ? "" : "s"}`);
+
+    if (blockers.length > 0) {
+      return {
+        ok: false,
+        message:
+          `${department.code} still has ${blockers.join(", ")} pointing at it. ` +
+          "Move or remove those first - deleting the department itself would leave them belonging " +
+          "to nothing rather than actually removing anything.",
+      };
+    }
+
+    await prisma.orgUnit.delete({ where: { id } });
+    revalidatePath("/admin");
+    revalidatePath("/sheet");
+    return { ok: true, message: `${department.code} removed.` };
+  } catch (error) {
+    return fail(error);
+  }
+}

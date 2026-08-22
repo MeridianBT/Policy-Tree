@@ -14,7 +14,13 @@ import type { AuthenticatedUser, Role } from "./types";
 
 export type { AuthenticatedUser, Role };
 export { NotAuthenticatedError, NotPermittedError };
-export { canEditControlItem, orgUnitCovers, orgUnitSubtree } from "./permissions";
+export {
+  canEditControlItem,
+  canEditStructureAt,
+  assignableOrgUnitIds,
+  orgUnitCovers,
+  orgUnitSubtree,
+} from "./permissions";
 
 export async function getCurrentUser(): Promise<AuthenticatedUser | null> {
   const session = await auth();

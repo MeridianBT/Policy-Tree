@@ -12,7 +12,14 @@ import { PrismaClient } from "../generated/prisma/client.ts";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { kiMonths, periodToDate, fiscalMonthIndex } from "../lib/domain/period.ts";
 import { DEFAULT_BANDS } from "../lib/calc/bands.ts";
-import { DIVISIONS, GOALS, LEVEL_4, PLAN_VERSIONS, type SeedControlItem } from "./seed-data.ts";
+import {
+  DEPARTMENTS,
+  DIVISIONS,
+  GOALS,
+  LEVEL_4,
+  PLAN_VERSIONS,
+  type SeedControlItem,
+} from "./seed-data.ts";
 
 const KI_START_YEAR = 2026;
 const KI_CODE = `Ki ${KI_START_YEAR}`;
@@ -66,7 +73,28 @@ async function main() {
     });
     divisionByCode.set(division.code, record);
   }
-  console.log(`  org units: company + ${DIVISIONS.length} divisions`);
+  // Departments sit beneath a Division; a Level 4 branch may be filed against
+  // either, which is what the Division/Department filter narrows between.
+  const orgUnitByCode = new Map(divisionByCode);
+  for (const [index, department] of DEPARTMENTS.entries()) {
+    const parent = divisionByCode.get(department.division);
+    if (!parent) throw new Error(`Unknown division ${department.division}`);
+    const record = await prisma.orgUnit.upsert({
+      where: { code: department.code },
+      update: { name: department.name, parentId: parent.id, sortOrder: index },
+      create: {
+        code: department.code,
+        name: department.name,
+        type: "DEPARTMENT",
+        parentId: parent.id,
+        sortOrder: index,
+      },
+    });
+    orgUnitByCode.set(department.code, record);
+  }
+  console.log(
+    `  org units: company + ${DIVISIONS.length} divisions + ${DEPARTMENTS.length} departments`,
+  );
 
   // ---- Users ------------------------------------------------------------
   const passwordHash = await bcrypt.hash("hoshin", 10);
@@ -76,6 +104,10 @@ async function main() {
     { email: "ox.lead@example.com", name: "OX Division Lead", role: "OWNER" as const, org: "OX" },
     { email: "cs.lead@example.com", name: "CS Division Lead", role: "OWNER" as const, org: "CS" },
     { email: "frc.lead@example.com", name: "FRC Division Lead", role: "OWNER" as const, org: "FRC" },
+    // Department leads: same OWNER role, but scoped to a single department, so
+    // their reach is narrower than the division lead above them.
+    { email: "assembly.lead@example.com", name: "Final Assembly Lead", role: "OWNER" as const, org: "OX-ASSY" },
+    { email: "dealer.lead@example.com", name: "Dealer Sales Lead", role: "OWNER" as const, org: "AUTO-SALES" },
     { email: "viewer@example.com", name: "Review Attendee", role: "VIEWER" as const, org: null },
   ];
   const userByOrg = new Map<string, string>();
@@ -88,7 +120,7 @@ async function main() {
         name: user.name,
         role: user.role,
         passwordHash,
-        orgUnitId: user.org ? divisionByCode.get(user.org)!.id : company.id,
+        orgUnitId: user.org ? orgUnitByCode.get(user.org)!.id : company.id,
       },
     });
     if (user.org) userByOrg.set(user.org, record.id);
@@ -138,7 +170,10 @@ async function main() {
     nodeId: string,
     spec: SeedControlItem,
     sortOrder: number,
+    /** Files the measure against a Department rather than its Division. */
+    dicCode?: string,
   ): Promise<void> {
+    const dic = dicCode ?? spec.dic;
     const controlItem = await prisma.controlItem.create({
       data: {
         nodeId,
@@ -150,8 +185,8 @@ async function main() {
         achievementMethod: spec.achievementMethod,
         aggregation: spec.aggregation,
         decimalPlaces: spec.decimalPlaces,
-        dicOrgUnitId: divisionByCode.get(spec.dic)!.id,
-        responsibleUserId: userByOrg.get(spec.dic) ?? null,
+        dicOrgUnitId: orgUnitByCode.get(dic)!.id,
+        responsibleUserId: userByOrg.get(dic) ?? userByOrg.get(spec.dic) ?? null,
         sortOrder,
       },
     });
@@ -294,7 +329,9 @@ async function main() {
 
   // ---- Level 4 division sheets -----------------------------------------
   for (const [divisionIndex, level4] of LEVEL_4.entries()) {
-    const orgUnitId = divisionByCode.get(level4.division)!.id;
+    // A branch belongs to its Department when one is named, otherwise to the
+    // Division itself - both are valid places for Level 4 work to sit.
+    const orgUnitId = orgUnitByCode.get(level4.department ?? level4.division)!.id;
     for (const [objectiveIndex, objective] of level4.objectives.entries()) {
       const parentObjectiveId = objectiveNodeByControlItem.get(objective.laddersToControlItem);
       if (!parentObjectiveId) throw new Error(`Unknown ladder target ${objective.laddersToControlItem}`);
@@ -322,7 +359,7 @@ async function main() {
         },
       });
       for (const [index, spec] of objective.controlItems.entries()) {
-        await createControlItem(objectiveNode.id, spec, index);
+        await createControlItem(objectiveNode.id, spec, index, level4.department);
       }
     }
   }
