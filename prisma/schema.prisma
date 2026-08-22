@@ -1,0 +1,260 @@
+// Hoshin Kanri policy deployment platform.
+//
+// Design principle: the month is the only grain that is stored. Quarters, Ki
+// totals, gaps, achievement percentages and evaluation symbols are all derived
+// at read time by lib/calc. The single exception is entry.computed_value, the
+// cached result of a formula cell (see lib/formula).
+
+generator client {
+  provider = "prisma-client"
+  output   = "../generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum OrgUnitType {
+  COMPANY
+  DIVISION
+  DEPARTMENT
+}
+
+enum UserRole {
+  ADMIN
+  OWNER
+  VIEWER
+}
+
+enum NodeKind {
+  GOAL
+  THEME
+  OBJECTIVE
+}
+
+enum Unit {
+  PERCENT
+  CURRENCY
+  COUNT
+  RATIO
+  DAYS
+  INDEX
+}
+
+enum Direction {
+  HIGHER_BETTER
+  LOWER_BETTER
+}
+
+enum AchievementMethod {
+  RATIO
+  INVERSE
+}
+
+enum Aggregation {
+  SUM
+  AVERAGE
+  LATEST
+}
+
+/// The fiscal year. Runs April 1 to March 31. "Ki 2026" = Apr 2026 -> Mar 2027.
+model Ki {
+  id        String   @id @default(cuid())
+  code      String   @unique
+  startDate DateTime @map("start_date") @db.Date
+  endDate   DateTime @map("end_date") @db.Date
+  isCurrent Boolean  @default(false) @map("is_current")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  planVersions PlanVersion[]
+  nodes        Node[]
+
+  @@map("ki")
+}
+
+model OrgUnit {
+  id        String      @id @default(cuid())
+  code      String      @unique
+  name      String
+  type      OrgUnitType
+  parentId  String?     @map("parent_id")
+  sortOrder Int         @default(0) @map("sort_order")
+
+  parent   OrgUnit?  @relation("OrgUnitTree", fields: [parentId], references: [id])
+  children OrgUnit[] @relation("OrgUnitTree")
+
+  users           AppUser[]
+  nodes           Node[]
+  controlItemsDic ControlItem[] @relation("ControlItemDic")
+
+  @@index([parentId])
+  @@map("org_unit")
+}
+
+model AppUser {
+  id           String   @id @default(cuid())
+  name         String
+  email        String   @unique
+  passwordHash String   @map("password_hash")
+  role         UserRole @default(VIEWER)
+  orgUnitId    String?  @map("org_unit_id")
+  isActive     Boolean  @default(true) @map("is_active")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  orgUnit OrgUnit? @relation(fields: [orgUnitId], references: [id])
+
+  responsibleFor ControlItem[] @relation("ControlItemResponsible")
+  entriesUpdated Entry[]       @relation("EntryUpdatedBy")
+  auditEntries   EntryAudit[]  @relation("AuditChangedBy")
+
+  @@index([orgUnitId])
+  @@map("app_user")
+}
+
+/// A named snapshot of the plan for a Ki: OB, PRB, 1QFC, 2QFC, 3QFC, ACT.
+model PlanVersion {
+  id       String    @id @default(cuid())
+  kiId     String    @map("ki_id")
+  code     String
+  label    String
+  sequence Int
+  isActual Boolean   @default(false) @map("is_actual")
+  lockedAt DateTime? @map("locked_at")
+
+  ki      Ki      @relation(fields: [kiId], references: [id], onDelete: Cascade)
+  entries Entry[]
+
+  @@unique([kiId, code])
+  @@index([kiId, sequence])
+  @@map("plan_version")
+}
+
+/// Self-referencing tree covering Levels 1-4. One table, not four: a fifth
+/// level later needs no schema change.
+model Node {
+  id        String   @id @default(cuid())
+  kiId      String   @map("ki_id")
+  parentId  String?  @map("parent_id")
+  level     Int
+  kind      NodeKind
+  statement String
+  orgUnitId String?  @map("org_unit_id")
+  sortOrder Int      @default(0) @map("sort_order")
+
+  ki       Ki       @relation(fields: [kiId], references: [id], onDelete: Cascade)
+  parent   Node?    @relation("NodeTree", fields: [parentId], references: [id])
+  children Node[]   @relation("NodeTree")
+  orgUnit  OrgUnit? @relation(fields: [orgUnitId], references: [id])
+
+  controlItems ControlItem[]
+
+  @@index([kiId, level])
+  @@index([parentId])
+  @@map("node")
+}
+
+/// The thing that actually gets measured - the measurement method.
+/// One Control Item is one row on the report.
+model ControlItem {
+  id                String            @id @default(cuid())
+  nodeId            String            @map("node_id")
+  code              String            @unique
+  name              String
+  unit              Unit
+  direction         Direction
+  achievementMethod AchievementMethod @map("achievement_method")
+  aggregation       Aggregation
+  decimalPlaces     Int               @default(0) @map("decimal_places")
+  dicOrgUnitId      String            @map("dic_org_unit_id")
+  responsibleUserId String?           @map("responsible_user_id")
+  sortOrder         Int               @default(0) @map("sort_order")
+
+  node            Node     @relation(fields: [nodeId], references: [id], onDelete: Cascade)
+  dicOrgUnit      OrgUnit  @relation("ControlItemDic", fields: [dicOrgUnitId], references: [id])
+  responsibleUser AppUser? @relation("ControlItemResponsible", fields: [responsibleUserId], references: [id])
+
+  entries      Entry[]
+  dependencies EntryDependency[] @relation("DependencyTarget")
+
+  @@index([nodeId])
+  @@index([dicOrgUnitId])
+  @@index([responsibleUserId])
+  @@map("control_item")
+}
+
+/// One cell: a Control Item x a month x a plan version. Targets and actuals
+/// live in the same table - an actual is simply an entry on the ACT version.
+model Entry {
+  id            String   @id @default(cuid())
+  controlItemId String   @map("control_item_id")
+  period        DateTime @db.Date
+  planVersionId String   @map("plan_version_id")
+  rawValue      Decimal? @map("raw_value") @db.Decimal(20, 6)
+  formula       String?
+  computedValue Decimal? @map("computed_value") @db.Decimal(20, 6)
+  errorCode     String?  @map("error_code")
+  errorMessage  String?  @map("error_message")
+  updatedById   String?  @map("updated_by")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  controlItem ControlItem @relation(fields: [controlItemId], references: [id], onDelete: Cascade)
+  planVersion PlanVersion @relation(fields: [planVersionId], references: [id], onDelete: Cascade)
+  updatedBy   AppUser?    @relation("EntryUpdatedBy", fields: [updatedById], references: [id])
+
+  audits       EntryAudit[]
+  dependencies EntryDependency[] @relation("DependencyDependent")
+
+  @@unique([controlItemId, period, planVersionId])
+  @@index([planVersionId, period])
+  @@index([controlItemId, planVersionId])
+  @@map("entry")
+}
+
+/// Append-only. Never updated, never deleted.
+model EntryAudit {
+  id          String   @id @default(cuid())
+  entryId     String   @map("entry_id")
+  oldValue    Decimal? @map("old_value") @db.Decimal(20, 6)
+  newValue    Decimal? @map("new_value") @db.Decimal(20, 6)
+  oldFormula  String?  @map("old_formula")
+  newFormula  String?  @map("new_formula")
+  changedById String?  @map("changed_by")
+  changedAt   DateTime @default(now()) @map("changed_at")
+
+  entry     Entry    @relation(fields: [entryId], references: [id], onDelete: Cascade)
+  changedBy AppUser? @relation("AuditChangedBy", fields: [changedById], references: [id])
+
+  @@index([entryId, changedAt])
+  @@map("entry_audit")
+}
+
+/// Edges of the formula dependency graph: `dependentEntry` reads the cell
+/// addressed by (targetControlItem, targetPeriod, targetPlanVersion).
+model EntryDependency {
+  id                  String   @id @default(cuid())
+  dependentEntryId    String   @map("dependent_entry_id")
+  targetControlItemId String   @map("target_control_item_id")
+  targetPeriod        DateTime @map("target_period") @db.Date
+  targetPlanVersionId String   @map("target_plan_version_id")
+
+  dependentEntry    Entry       @relation("DependencyDependent", fields: [dependentEntryId], references: [id], onDelete: Cascade)
+  targetControlItem ControlItem @relation("DependencyTarget", fields: [targetControlItemId], references: [id], onDelete: Cascade)
+
+  @@unique([dependentEntryId, targetControlItemId, targetPeriod, targetPlanVersionId])
+  @@index([targetControlItemId, targetPeriod, targetPlanVersionId])
+  @@map("entry_dependency")
+}
+
+/// Admin editable. Validated on startup: contiguous, covering the full number
+/// line, boundaries belonging to the upper band.
+model EvaluationBand {
+  id        String   @id @default(cuid())
+  symbol    String   @unique
+  label     String
+  minPct    Decimal? @map("min_pct") @db.Decimal(10, 4)
+  maxPct    Decimal? @map("max_pct") @db.Decimal(10, 4)
+  colorHex  String   @map("color_hex")
+  sortOrder Int      @default(0) @map("sort_order")
+
+  @@map("evaluation_band")
+}
