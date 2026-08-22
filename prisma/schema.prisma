@@ -164,6 +164,11 @@ model ControlItem {
   /// "Units sold", "% of sales", "Engagement %". `unit` says how to format a
   /// figure; this says what the figure counts. Optional - the sheet falls back
   /// to a readable form of `unit` when it has not been filled in.
+  ///
+  /// Shown on every screen as "Control Item", which is the domain's own term
+  /// for the measurement method. The stored name stays `measuredAs` because
+  /// this table is already the ControlItem model, and a `controlItem` column on
+  /// the control_item table would be unreadable in every query that touches it.
   measuredAs        String?           @map("measured_as")
   unit              Unit
   direction         Direction

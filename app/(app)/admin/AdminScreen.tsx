@@ -279,10 +279,11 @@ export function AdminScreen({
             </Field>
             <Field label="Code"><input name="code" required className={inputClass} placeholder="AUTO-VOL" /></Field>
             <Field label="Name"><input name="name" required className={inputClass} placeholder="Vehicle sales volume" /></Field>
-            <Field label="Measured as" span>
+            <Field label="Control Item" span>
               <input name="measuredAs" className={inputClass} placeholder="Units sold · % of sales · US$ 000" />
               <p className="mt-0.5 text-[10px] text-ink-faint">
-                What the figure counts, in the reviewer&apos;s words. Left blank, the sheet shows the unit.
+                How the target and actual are measured — &ldquo;Units sold&rdquo;, &ldquo;% of sales&rdquo;.
+                Left blank, the sheet shows the unit.
               </p>
             </Field>
             <Field label="Unit">

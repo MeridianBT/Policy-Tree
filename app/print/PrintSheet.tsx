@@ -67,7 +67,7 @@ export function PrintSheet({
         <thead>
           <tr>
             <th className="col-label">Measures</th>
-            <th className="col-measure">Measured as</th>
+            <th className="col-measure">Control Item</th>
             <th className="col-dic">DIC</th>
             {columns.map((column) => (
               <th

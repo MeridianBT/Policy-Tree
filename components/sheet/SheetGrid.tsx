@@ -219,7 +219,7 @@ function ColumnHeader({
         className="sticky z-40 flex shrink-0 items-end border-r border-rule-strong bg-paper-band-strong px-2 py-1 text-[11px] font-medium text-ink-muted"
         style={{ left: "var(--label-width)", width: "var(--measure-width)" }}
       >
-        Measured as
+        Control Item
       </div>
       {columns.map((column) =>
         column.kind === "QUARTER" ? (

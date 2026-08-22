@@ -252,7 +252,7 @@ export async function loadSheet(options: LoadSheetOptions): Promise<SheetModel> 
 }
 
 /**
- * What to show in the "Measured as" column when nobody has filled it in. The
+ * What to show in the "Control Item" column when nobody has filled it in. The
  * unit is the only thing the system knows, so it says that rather than leaving
  * the column blank.
  */

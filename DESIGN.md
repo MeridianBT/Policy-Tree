@@ -62,8 +62,11 @@ mode. The grid is tight on purpose.
 
 ## Layout plan
 
-- **Frozen left column block** — Control Item name, unit, DIC badge. Sticky
-  horizontally with a `--rule-strong` right boundary.
+- **Frozen left column block** — two columns, both sticky, bounded on the right
+  with `--rule-strong`: **Measures** carries the measure's name and its DIC
+  badge, and **Control Item** carries the measurement method — what the figure
+  actually counts, in the reviewer's words ("Units sold", "% of sales"). The
+  two belong together and neither should scroll away from the numbers.
 - **Sticky column header** — two rows: quarter spans over month labels.
 - **Sticky context bar** — because rows are virtualised they are absolutely
   positioned, and a `position: sticky` group header inside a transformed

@@ -70,7 +70,7 @@ tables can be pulled out without replaying everything.
 | **Goal** | Level 1. A company priority statement, no measurement. |
 | **Theme** | A grouping heading under a Goal, at Levels 2, 3 and 4. |
 | **Objective** | A statement of intent under a Theme, carrying Control Items. |
-| **Control Item** | The measurement method — the thing measured. One row on the sheet. |
+| **Control Item** | The measurement method — how a target and actual are measured ("Units sold", "% of sales"). One row on the sheet. |
 | **DIC** | Division In Charge: the org unit accountable for a Control Item. |
 | **Version** | A named plan snapshot: OB, PRB, 1QFC, 2QFC, 3QFC, ACT. |
 
