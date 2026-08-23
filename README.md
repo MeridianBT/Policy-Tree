@@ -367,9 +367,11 @@ shared mailbox does not fill with hundreds of copies nobody reads.
 | `/my-entries` | Keyboard-driven monthly entry for everything the signed-in user owns, with an outstanding count |
 | `/control-item/[id]` | Trend chart with every version overlaid, stored cells including formulas as typed, and the full audit trail |
 | `/print/company` | A3 landscape, print-only |
+| `/print/division/[code]` | The same, pre-scoped to one division |
 | `/admin` | Ki setup, version locking, structure builder, copy-from-previous-Ki, evaluation scale, users |
 | `/symbols` | Symbol rendering check for a platform you are deploying to |
 | `/api/export` | Excel download of the current sheet (`?division=CODE` for a Level 4 sheet, `?version=ID` to pin the target basis) |
+| `/api/reminders` | Month-end reminder trigger, called by a scheduler with a shared secret — see below |
 
 Entry is `Tab` to move and save, `Enter` to save and drop a row, `Escape` to
 revert. No modal dialogs anywhere in that flow.
@@ -569,7 +571,7 @@ macOS Safari need a run on those platforms.
 ## Tests
 
 ```bash
-npm test              # 192 tests
+npm test              # 266 tests, about four seconds
 npm run test:unit     # the pure modules only, no database needed
 ```
 
@@ -580,6 +582,18 @@ npm run test:unit     # the pure modules only, no database needed
 - `lib/calc/structure-permissions.test.ts` — the client-side permission mirror
   that decides which pencils and trash cans to draw, checked against every
   role/level/org-unit combination
+- `lib/calc/cascade-tree.test.ts` — rebuilding the Level 1–4 tree from the flat
+  row list, so a department branch always lands under the objective it ladders
+  into and nothing is dropped or duplicated
+- `lib/calc/heatmap.test.ts` — symbol distribution per division per month,
+  including that a department's figures count toward its parent division and
+  that a cell never collapses to one representative symbol
+- `lib/calc/sso.test.ts` — who may sign in through Microsoft: invite-only,
+  `oid` preferred over email, deactivated accounts refused
+- `lib/calc/auth-config.test.ts` — that a half-configured Entra provider counts
+  as unconfigured, so it is never registered against the `/common/` issuer
+- `lib/calc/reminders.test.ts` — which month a reminder run chases, and who is
+  accountable for a missing figure
 - `lib/formula/formula.test.ts` — tokeniser, precedence, nesting, ranges, cycle
   detection, topological order, missing references, division by zero, and that
   a JavaScript payload is a syntax error rather than code
@@ -592,6 +606,9 @@ npm run test:unit     # the pure modules only, no database needed
   delete confirmation refusing even to reveal its impact to someone outside
   that scope; and department deletion refusing outright — never cascading —
   the moment anything still points at it
+- `tests/reminders.test.ts` — integration against a real PostgreSQL for the one
+  reminder property that cannot be unit-tested: nobody is chased twice for the
+  same month, and a dry run writes nothing
 
 The integration suites need `DATABASE_URL` and run serially against a real
 database. Each creates and removes its own throwaway Ki (`tests/fixture.ts`).

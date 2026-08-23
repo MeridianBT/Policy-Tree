@@ -82,11 +82,16 @@ function NavLink({ href, children }: { href: string; children: React.ReactNode }
   );
 }
 
-/** Control Items the user is responsible for with no actual for the open month. */
+/**
+ * Control Items this person is personally accountable for with no actual for
+ * the open month. Deliberately "personal" and not "permitted": an admin may
+ * key anything, but a badge claiming they owe thirty-one figures they do not
+ * own is noise, and a badge people learn to ignore is worse than no badge.
+ */
 async function countOutstanding(userId: string): Promise<number> {
   const { outstandingForUser } = await import("@/lib/entries/query");
   try {
-    const rows = await outstandingForUser(userId);
+    const rows = await outstandingForUser(userId, { scope: "personal" });
     return rows.filter((row) => row.value === null).length;
   } catch {
     return 0;

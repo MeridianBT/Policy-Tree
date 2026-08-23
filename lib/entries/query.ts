@@ -46,13 +46,30 @@ export function openMonth(kiStartYear: number, today = new Date()): PeriodKey {
 
 export async function outstandingForUser(
   userId: string,
-  options?: { period?: PeriodKey },
+  options?: {
+    period?: PeriodKey;
+    /**
+     * "permitted" (the default) is everything this user is *allowed* to key,
+     * which for an ADMIN is the whole Ki. That is right for the screen, which
+     * they chose to open.
+     *
+     * "personal" is what they are actually accountable for: measures naming
+     * them, or belonging to their own division or department. Use it wherever
+     * a number is pushed at someone rather than requested - the nav badge -
+     * because telling a company-level admin they have thirty-one things to do
+     * when they own none is how a nudge gets ignored. This mirrors the rule in
+     * lib/reminders/match.ts, which is tested.
+     */
+    scope?: "permitted" | "personal";
+  },
 ): Promise<OutstandingEntry[]> {
   const user = await prisma.appUser.findUnique({
     where: { id: userId },
-    select: { id: true, role: true, orgUnitId: true },
+    select: { id: true, role: true, orgUnitId: true, orgUnit: { select: { type: true } } },
   });
   if (!user) return [];
+
+  const personal = options?.scope === "personal";
 
   const ki =
     (await prisma.ki.findFirst({ where: { isCurrent: true } })) ??
@@ -65,12 +82,16 @@ export async function outstandingForUser(
   const actVersion = await prisma.planVersion.findFirst({ where: { kiId: ki.id, isActual: true } });
   if (!actVersion) return [];
 
-  const coveredOrgUnits = user.orgUnitId ? await orgUnitSubtree(user.orgUnitId) : [];
+  // Covering the whole company is an administrative fact, not a personal
+  // to-do list, so company-level coverage does not count as personal scope.
+  const coversPersonally = user.orgUnitId !== null && !(personal && user.orgUnit?.type === "COMPANY");
+  const coveredOrgUnits =
+    user.orgUnitId && coversPersonally ? await orgUnitSubtree(user.orgUnitId) : [];
 
   const controlItems = await prisma.controlItem.findMany({
     where: {
       node: { kiId: ki.id },
-      ...(user.role === "ADMIN"
+      ...(user.role === "ADMIN" && !personal
         ? {}
         : {
             OR: [

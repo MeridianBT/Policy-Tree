@@ -117,7 +117,7 @@ never as pre-formatted strings.
 
 ```bash
 npm run typecheck     # TypeScript, expect zero errors
-npm test              # 261 tests, about four seconds
+npm test              # 266 tests, about four seconds
 npm run build         # production build
 ```
 

@@ -30,7 +30,10 @@ import bcrypt from "bcryptjs";
 import { z } from "zod";
 import { prisma } from "@/lib/db";
 import { resolveSsoUser, type EntraClaims, type SsoLookup } from "./sso";
+import { entraConfigured, passwordSignInEnabled } from "./env";
 import type { AuthenticatedUser } from "./types";
+
+export { entraConfigured, passwordSignInEnabled } from "./env";
 
 const credentialsSchema = z.object({
   email: z.string().email(),
@@ -126,29 +129,19 @@ export const entraProvider = MicrosoftEntraID({
 });
 
 /**
- * Whether the Entra credentials are actually present.
+ * Only configured providers are registered.
  *
- * Auth.js handles a missing client id or secret by redirecting internally,
- * before any error this application could catch, which lands the user back on
- * a bare sign-in screen with nothing said. Checking first means a deployment
- * that has not been given its credentials says so, instead of looking like a
- * button that does nothing.
+ * Registering Entra unconditionally left a hole: Auth.js falls back to the
+ * `/common/` issuer when `issuer` is unset, and a request straight to
+ * /api/auth/signin/microsoft-entra-id never passes through the login screen,
+ * so the entraConfigured() pre-flight there could not stop it. A deployment
+ * given a client id and secret but no tenant would therefore authenticate
+ * against /common/ - any Microsoft account in the world, personal ones
+ * included. Invite-only matching still refused them at the callback, so this
+ * was never an open door, but the tenant restriction is meant to hold before
+ * that, not after it. An unconfigured provider is now simply absent.
  */
-export function entraConfigured(): boolean {
-  return Boolean(
-    process.env.AUTH_MICROSOFT_ENTRA_ID_ID &&
-      process.env.AUTH_MICROSOFT_ENTRA_ID_SECRET &&
-      process.env.AUTH_MICROSOFT_ENTRA_ID_ISSUER,
-  );
-}
-
-/**
- * Password sign-in is a development convenience, not a production feature.
- * Set AUTH_ALLOW_PASSWORD=true to keep it as a deliberate break-glass path.
- */
-export const passwordSignInEnabled =
-  process.env.NODE_ENV !== "production" || process.env.AUTH_ALLOW_PASSWORD === "true";
-
-export const providers = passwordSignInEnabled
-  ? [entraProvider, localCredentialsProvider]
-  : [entraProvider];
+export const providers = [
+  ...(entraConfigured() ? [entraProvider] : []),
+  ...(passwordSignInEnabled() ? [localCredentialsProvider] : []),
+];

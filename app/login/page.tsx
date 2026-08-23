@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/auth/session";
 import { signIn } from "@/lib/auth/config";
-import { entraConfigured, passwordSignInEnabled } from "@/lib/auth/providers";
+import { entraConfigured, passwordSignInEnabled } from "@/lib/auth/env";
 import { AuthError } from "next-auth";
 
 /**
@@ -101,7 +101,7 @@ export default async function LoginPage({
           </p>
         )}
 
-        {passwordSignInEnabled && <PasswordForm authenticate={authenticate} next={next} />}
+        {passwordSignInEnabled() && <PasswordForm authenticate={authenticate} next={next} />}
       </div>
     </main>
   );

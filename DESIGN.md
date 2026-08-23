@@ -133,3 +133,30 @@ different moments:
 - *Density versus the accessibility floor.* 11px is small. It is paired with a
   high-contrast ink (`#141413` on white is 16.9:1) and a `26px` row target, and
   the print view scales the symbols up independently.
+
+## Screens added after the sheet
+
+The sheet above is the operating surface. Two later screens read the same data
+without extending that grid, because both answer questions the grid answers
+badly.
+
+- **Cascade** (`/cascade`). The sheet already contains the whole Level 1–4 tree,
+  but seventeen columns bury the linkage. The cascade view drops every column
+  and keeps only the structure: nested rows, a connecting rule per branch, the
+  DIC badge on a department row, and one small evaluation symbol per Control
+  Item. Weight alone separates Goal from Theme from Objective, so no new colour
+  and no new type sizes were introduced. An objective with nothing laddering
+  into it prints a muted line saying so — the gap is the point of the page, and
+  hiding it would defeat the reason the page exists.
+
+- **Insights** (`/insights`). One row per division, one column per month, each
+  cell a small stacked bar of symbol counts. It is the only place in the
+  product where the band colours carry area rather than a glyph, which is why
+  the bars are short and the legend is stated in words above them. No cell is
+  ever reduced to a single representative symbol: the five bands are not one
+  good-to-bad axis, so an average of them would be a number the data cannot
+  support. A month with nothing keyed is a dashed outline, never an empty gap.
+
+Both are read-only. Neither introduced a token, and neither is reachable from a
+row action on the sheet — they are destinations in the nav, because they are
+read at different moments than the sheet is.
