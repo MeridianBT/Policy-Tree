@@ -204,6 +204,7 @@ LDAP later means adding a provider there and mapping its claims onto
 | `/sheet` | The company sheet — Levels 1–3 by default, with a View toggle folding every Level 4 branch in under its Objective. Virtualised, with version selector, compare mode, four display densities, condensable quarter columns, a Division/Department scope and filters by DIC, Theme and evaluation symbol. ADMIN and OWNER (division/department leads) can edit the structure directly here |
 | `/division/[code]` | The same Level 4 sheet, pre-scoped to one division and its departments — a narrower, single-division view of what "+ Departments" on the company sheet shows for everyone |
 | `/cascade` | A read-only, one-page alignment map from every Company Goal down to the Department work laddering into it — see below |
+| `/insights` | A read-only symbol-distribution heatmap, one Division per row, one month per column — see below |
 | `/my-entries` | Keyboard-driven monthly entry for everything the signed-in user owns, with an outstanding count |
 | `/control-item/[id]` | Trend chart with every version overlaid, stored cells including formulas as typed, and the full audit trail |
 | `/print/company` | A3 landscape, print-only |
@@ -330,6 +331,30 @@ each row's existing `path` ancestry, so a Level 4 branch always renders
 exactly where it structurally attaches — under the Level 2 or 3 Objective it
 ladders into — with no possibility of drifting from what the sheet itself
 would show.
+
+### The Insights heatmap
+
+`/insights` answers "where is trouble concentrating" without inventing a
+number to answer it with. It is a grid — one row per Division, one column
+per month of the Ki — where each cell is a small stacked bar: one segment
+per evaluation band actually present that month, width proportional to how
+many Control Items landed there. A Department's Control Items count toward
+their parent Division's cell, so a Division's row reflects its own work and
+everything laddering up into it from below.
+
+The one rule this page will not break: no cell collapses to a single
+"worst" or "average" symbol. The five evaluation bands are not one
+good-to-bad scale — □ (far above target) and ■ (far below target) are
+symmetric extremes, not opposite ends of a line — so picking one
+representative symbol per cell would assert a verdict the data does not
+actually support. A month with nothing keyed yet is a plain dashed box,
+never hidden and never silently folded into a neighbouring month.
+
+`lib/calc/heatmap.ts` (`buildSymbolHeatmap`) does the one piece of new
+aggregation this page needs — grouping the same `loadSheet({ levels: [1, 2,
+3, 4] })` rows the sheet and Cascade already use by Division and month,
+counting symbols per cell — and nothing else on the page is computed twice:
+the counts are exactly what the sheet's own month cells already carry.
 
 ### Exporting to Excel
 
