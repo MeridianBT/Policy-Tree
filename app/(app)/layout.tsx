@@ -28,6 +28,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
 
         <div className="flex items-center gap-1 text-[11px]">
           <NavLink href="/sheet">Company sheet</NavLink>
+          <NavLink href="/cascade">Cascade</NavLink>
           <NavLink href="/my-entries">
             My entries
             {outstanding > 0 && (

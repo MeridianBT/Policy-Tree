@@ -203,6 +203,7 @@ LDAP later means adding a provider there and mapping its claims onto
 |---|---|
 | `/sheet` | The company sheet — Levels 1–3 by default, with a View toggle folding every Level 4 branch in under its Objective. Virtualised, with version selector, compare mode, four display densities, condensable quarter columns, a Division/Department scope and filters by DIC, Theme and evaluation symbol. ADMIN and OWNER (division/department leads) can edit the structure directly here |
 | `/division/[code]` | The same Level 4 sheet, pre-scoped to one division and its departments — a narrower, single-division view of what "+ Departments" on the company sheet shows for everyone |
+| `/cascade` | A read-only, one-page alignment map from every Company Goal down to the Department work laddering into it — see below |
 | `/my-entries` | Keyboard-driven monthly entry for everything the signed-in user owns, with an outstanding count |
 | `/control-item/[id]` | Trend chart with every version overlaid, stored cells including formulas as typed, and the full audit trail |
 | `/print/company` | A3 landscape, print-only |
@@ -295,6 +296,40 @@ counts every Level 4 row, Control Item and user still pointing at it first and
 refuses outright if any exist — there is no "delete anyway" override here,
 because an org unit is an identity other rows depend on, not plan content with
 a value of its own.
+
+### The cascade view
+
+`/cascade` answers a different question than the sheet does. The sheet is
+built for the quarterly PDCA review — dense, filterable, one row per Control
+Item. The cascade view is built for the opposite problem: when Department
+work lives on its own page or its own slide, it is easy to lose sight of
+whether it genuinely ladders up to a Company Goal, or has quietly become
+disconnected busy work. So this page shows nothing but structure — every
+Goal, numbered, down through its Themes and Objectives, down to whichever
+Departments have laddered a Level 4 branch in underneath, on one continuous
+page with a connecting line the eye can follow.
+
+It is deliberately plain: no version picker, no filters, no editing surface,
+read-only for every role including VIEWER. Performance still shows — one
+evaluation symbol per Control Item — but small and quiet, never the point of
+the page; there is no rollup or invented "worst" verdict for a branch, which
+would misrepresent a scale where the two extreme bands (□ far above, ■ far
+below) are not simply good and bad ends of one line.
+
+The one thing this page insists on showing is the gap: most Objectives in a
+given Ki have no Level 4 branch yet, and rather than rendering nothing under
+them, the page says so plainly — "— nothing yet ladders in here —". A blank
+cascade is exactly as visible as a full one, which is the actual point of
+building it: the absence of alignment is the thing a slide deck hides and
+this page cannot.
+
+Structurally there is nothing new to fetch or compute — `buildCascadeTree` in
+`components/sheet/outline.ts` just re-nests the same flat `loadSheet({ levels:
+[1, 2, 3, 4] })` rows the "+ Departments" sheet view already uses, keyed off
+each row's existing `path` ancestry, so a Level 4 branch always renders
+exactly where it structurally attaches — under the Level 2 or 3 Objective it
+ladders into — with no possibility of drifting from what the sheet itself
+would show.
 
 ### Exporting to Excel
 

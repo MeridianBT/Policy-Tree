@@ -58,3 +58,45 @@ export function indentPx(
 export function groupHeading(statement: string, ordinal?: number | null): string {
   return ordinal ? `${ordinal}.  ${statement}` : statement;
 }
+
+// ------------------------------------------------------------- Cascade tree
+
+/**
+ * A real nested tree, rebuilt from the flat row list `loadSheet` returns.
+ *
+ * The sheet screens walk the flat list directly, indenting each row by its
+ * level - that works for a single scrolling grid. The cascade view needs
+ * actual DOM nesting instead, so a connecting line can run continuously down
+ * one branch rather than being faked with repeated border segments at each
+ * row. Reconstruction is exact: every row already carries its full ancestor
+ * chain in `path`, so the immediate parent is simply the last id in it.
+ */
+export interface CascadeNode {
+  row: SheetRowModel;
+  children: CascadeNode[];
+}
+
+export function buildCascadeTree(rows: readonly SheetRowModel[]): CascadeNode[] {
+  const byId = new Map<string, CascadeNode>();
+  for (const row of rows) byId.set(row.id, { row, children: [] });
+
+  const roots: CascadeNode[] = [];
+  for (const row of rows) {
+    const node = byId.get(row.id)!;
+    const parentId = row.path[row.path.length - 1];
+    const parent = parentId ? byId.get(parentId) : undefined;
+    if (parent) parent.children.push(node);
+    else roots.push(node);
+  }
+  return roots;
+}
+
+/**
+ * Whether a Level 1-3 Objective has any Level 4 branch laddering into it. A
+ * Level 4 branch always attaches as a direct child of the Objective it
+ * ladders into (see `addDepartmentBranch`), so this never needs to look
+ * further than one level down.
+ */
+export function hasDepartmentWork(node: CascadeNode): boolean {
+  return node.children.some((child) => child.row.level === 4);
+}
