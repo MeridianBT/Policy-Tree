@@ -33,7 +33,7 @@ export interface ExportOptions {
 }
 
 export async function buildWorkbook(options: ExportOptions): Promise<ArrayBuffer> {
-  const { model, title, basisLabel } = options;
+  const { model } = options;
   const workbook = new ExcelJS.Workbook();
   workbook.creator = "Hoshin Kanri";
   workbook.created = new Date();

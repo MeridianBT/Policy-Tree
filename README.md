@@ -571,9 +571,20 @@ macOS Safari need a run on those platforms.
 ## Tests
 
 ```bash
+npm run lint          # ESLint, zero warnings
+npm run typecheck     # tsc --noEmit
 npm test              # 266 tests, about four seconds
 npm run test:unit     # the pure modules only, no database needed
 ```
+
+`npm run build` runs the linter and the type checker itself, so a build is the
+single command that proves all three. The lint config
+(`eslint.config.mjs`) carries no stylistic rules — the point is catching what
+types cannot: a hook called conditionally, an unused export left by a
+refactor, a `require` in the bundle. One rule is disabled at its call site
+rather than in config: React Compiler cannot memoize the virtualized grid,
+because TanStack Virtual returns functions whose identity changes, and the
+reason is written where a reader will meet it.
 
 - `lib/calc/calc.test.ts` — roll-up, baseline resolution, achievement, gap,
   bands, row assembly, formatting

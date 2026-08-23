@@ -116,9 +116,10 @@ never as pre-formatted strings.
 ## Check it works
 
 ```bash
+npm run lint          # ESLint, expect zero warnings
 npm run typecheck     # TypeScript, expect zero errors
 npm test              # 266 tests, about four seconds
-npm run build         # production build
+npm run build         # runs lint and typecheck too, so this proves all three
 ```
 
 Inside Compose, prefix these with `docker compose exec app`.

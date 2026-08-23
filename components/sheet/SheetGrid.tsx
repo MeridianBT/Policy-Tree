@@ -104,6 +104,11 @@ export function SheetGrid({
 
   const controlItemHeight = rowHeightFor(displayMode) * (compareById ? 2 : 1);
 
+  // React Compiler cannot memoize a component using this hook: TanStack
+  // Virtual returns functions whose identity changes, and memoizing them would
+  // serve stale offsets. Skipping memoization here is the correct trade — the
+  // grid is virtualized precisely so React only ever sees the visible rows.
+  // eslint-disable-next-line react-hooks/incompatible-library
   const virtualizer = useVirtualizer({
     count: visible.length,
     getScrollElement: () => scrollRef.current,
@@ -487,7 +492,6 @@ function ControlItemRowView({
               <SheetCellView
                 cell={cell}
                 mode={displayMode}
-                unit={row.unit}
                 decimalPlaces={row.decimalPlaces}
               />
             )}
@@ -496,7 +500,6 @@ function ControlItemRowView({
                 <SheetCellView
                   cell={compareCell}
                   mode={displayMode}
-                  unit={row.unit}
                   decimalPlaces={row.decimalPlaces}
                 />
               </div>

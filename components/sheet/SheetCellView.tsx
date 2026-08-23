@@ -7,7 +7,6 @@
 
 import type { SheetCell } from "@/lib/calc/row";
 import { EM_DASH, formatAchievement, formatValue } from "@/lib/calc/format";
-import type { Unit } from "@/lib/calc/types";
 import { EvaluationSymbol } from "./EvaluationSymbol";
 
 export type DisplayMode = "FULL" | "TARGET_ACTUAL" | "ACHIEVEMENT" | "SYMBOL";
@@ -19,15 +18,18 @@ export const DISPLAY_MODES: Array<{ value: DisplayMode; label: string; hint: str
   { value: "SYMBOL", label: "Symbol", hint: "Evaluation symbol only" },
 ];
 
+/**
+ * One cell. The unit is deliberately not repeated here — it is stated once per
+ * row in the Control Item column, and printing "%" in all seventeen columns
+ * would cost width the numbers need.
+ */
 export function SheetCellView({
   cell,
   mode,
-  unit,
   decimalPlaces,
 }: {
   cell: SheetCell;
   mode: DisplayMode;
-  unit: Unit;
   decimalPlaces: number;
 }) {
   if (cell.error) {
