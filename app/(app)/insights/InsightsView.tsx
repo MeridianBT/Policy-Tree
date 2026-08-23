@@ -16,7 +16,7 @@ import { monthLabel } from "@/lib/domain/period";
 import type { SheetModel } from "@/lib/sheet/types";
 
 export function InsightsView({ model }: { model: SheetModel }) {
-  const divisions = divisionCodes(model.dics);
+  const divisions = divisionCodes(model.dics, model.rows);
   const cells = buildSymbolHeatmap(model.rows, model.dics, model.months);
   const cellFor = new Map(cells.map((cell) => [cell.divisionCode + "|" + cell.period, cell]));
 

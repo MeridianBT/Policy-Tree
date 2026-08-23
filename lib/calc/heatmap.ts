@@ -27,9 +27,30 @@ export interface HeatmapCell {
   total: number;
 }
 
-/** Every Division code, in the order `dics` already carries them. */
-export function divisionCodes(dics: SheetModel["dics"]): string[] {
-  return dics.filter((dic) => dic.type === "DIVISION").map((dic) => dic.code);
+/**
+ * The Divisions this plan actually uses, in the order `dics` carries them.
+ *
+ * `dics` lists every org unit in the database, because the sheet's DIC picker
+ * and the add-measure form need to offer all of them. A heatmap must not: a
+ * division that carries no Control Item in this Ki is not part of this plan,
+ * and a row of empty cells for it reads as "nothing keyed yet" when the truth
+ * is "nothing was ever planned here". Those are different states and only one
+ * of them is worth a reviewer's attention.
+ */
+export function divisionCodes(
+  dics: SheetModel["dics"],
+  rows?: readonly SheetRowModel[],
+): string[] {
+  const all = dics.filter((dic) => dic.type === "DIVISION").map((dic) => dic.code);
+  if (!rows) return all;
+
+  const used = new Set<string>();
+  for (const row of rows) {
+    if (row.kind !== "CONTROL_ITEM") continue;
+    const division = topDivisionOf(row.dicCode, dics);
+    if (division) used.add(division);
+  }
+  return all.filter((code) => used.has(code));
 }
 
 /** A DIC's own code if it is a Division, or its parent Division's code if it is a Department. */
@@ -46,7 +67,7 @@ export function buildSymbolHeatmap(
 ): HeatmapCell[] {
   const cellKey = (division: string, period: PeriodKey) => division + "|" + period;
   const grid = new Map<string, HeatmapCell>();
-  for (const division of divisionCodes(dics)) {
+  for (const division of divisionCodes(dics, rows)) {
     for (const period of months) {
       grid.set(cellKey(division, period), { divisionCode: division, period, counts: {}, total: 0 });
     }

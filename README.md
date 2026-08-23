@@ -29,6 +29,17 @@ and actuals through the first half:
 docker compose exec app npm run db:seed
 ```
 
+There is also a **UAT dataset** — a fictitious Australian automotive
+distributor with five Level 1 Goals, 54 Control Items across Levels 1 to 4 and
+four months of actuals, with targets set against the real Australian market of
+mid-2026. It exists to demonstrate the platform to a leadership team rather
+than to test it. See [prisma/uat/README.md](prisma/uat/README.md).
+
+```bash
+npm run db:seed:uat      # additive
+npm run db:reset:uat     # drops everything first, for a single-dataset demo
+```
+
 Seeded accounts all use the password `hoshin`:
 
 | Email | Role |

@@ -87,10 +87,30 @@ describe("buildSymbolHeatmap", () => {
     expect(april.counts).toEqual({ "▲": 1 });
   });
 
-  it("emits a zero cell for a Division/month with nothing keyed, rather than omitting it", () => {
-    const cells = buildSymbolHeatmap([], DICS, MONTHS);
-    expect(cells).toHaveLength(divisionCodes(DICS).length * MONTHS.length);
-    expect(cells.every((c) => c.total === 0)).toBe(true);
+  it("emits a zero cell for a month with nothing keyed, rather than omitting it", () => {
+    // AUTO is in the plan — it carries a measure — but nothing is keyed for
+    // May. That empty cell is meaningful and has to survive.
+    const rows = [item("a", "AUTO", [monthCell("2026-04", "〇")])];
+    const cells = buildSymbolHeatmap(rows, DICS, MONTHS);
+    const may = cells.find((c) => c.divisionCode === "AUTO" && c.period === "2026-05")!;
+    expect(may).toBeDefined();
+    expect(may.total).toBe(0);
+  });
+
+  it("leaves out a Division that carries no measure in this plan at all", () => {
+    // OX is a real division but nothing in this Ki is filed against it. A row
+    // of empty cells would read as "nothing keyed yet"; the truth is "nothing
+    // was ever planned here", which is a different thing and not the reader's
+    // problem.
+    const rows = [item("a", "AUTO", [monthCell("2026-04", "〇")])];
+    const cells = buildSymbolHeatmap(rows, DICS, MONTHS);
+    expect(cells.some((c) => c.divisionCode === "OX")).toBe(false);
+    expect(divisionCodes(DICS, rows)).toEqual(["AUTO"]);
+  });
+
+  it("still lists every Division when no rows are supplied", () => {
+    // The DIC picker and the add-measure form need the full list.
+    expect(divisionCodes(DICS)).toEqual(["AUTO", "OX"]);
   });
 
   it("ignores a month cell with no symbol (no target/actual that month)", () => {
