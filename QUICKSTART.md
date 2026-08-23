@@ -36,19 +36,17 @@ docker compose exec app npm run db:seed
 
 Then open **http://localhost:3000**.
 
-### If there is no password box on the sign-in screen
+### About the two sign-in options
 
-That is the design working, not a fault. Production is Microsoft SSO only, and
-Compose sets `NODE_ENV=production`. To key in a password locally, add this to
-the `app` service's `environment:` block in `docker-compose.yml` and restart:
+The Compose file is for local evaluation, so it switches email/password
+sign-in on for you — otherwise the first thing you would meet is a screen you
+could not get past, because the only other option is Microsoft and Microsoft
+is not configured yet.
 
-```yaml
-AUTH_ALLOW_PASSWORD: "true"
-```
-
-Microsoft sign-in itself will not work until IT issues an Entra app
-registration — see *Signing in with Microsoft* in the README. Everything else
-works fully offline.
+Microsoft sign-in will not work until IT issues an Entra app registration —
+see *Signing in with Microsoft* in the README. Everything else works fully
+offline. A real deployment sets `AUTH_ALLOW_PASSWORD=false` and signs in
+through Microsoft only.
 
 ## Sign in
 

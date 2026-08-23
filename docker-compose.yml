@@ -1,3 +1,11 @@
+# Local evaluation, not production.
+#
+# The defaults below exist so `docker compose up --build` works on a laptop
+# with no setup at all: a known database password, a placeholder AUTH_SECRET
+# and email/password sign-in switched on. A real deployment supplies its own
+# secrets, turns AUTH_ALLOW_PASSWORD off and signs in through Microsoft - see
+# README.md, "Signing in with Microsoft".
+
 services:
   db:
     image: postgres:16
@@ -27,6 +35,12 @@ services:
       AUTH_SECRET: ${AUTH_SECRET:-change-me-in-production}
       AUTH_TRUST_HOST: "true"
       NODE_ENV: production
+      # NODE_ENV=production is what the built image expects, and it also turns
+      # password sign-in off. Without this line the first thing a new user
+      # meets is a sign-in screen they cannot get past: the only button is
+      # Microsoft, and Microsoft is not configured yet. Set it to false once
+      # Entra is wired up.
+      AUTH_ALLOW_PASSWORD: "${AUTH_ALLOW_PASSWORD:-true}"
     ports:
       - "3000:3000"
 
