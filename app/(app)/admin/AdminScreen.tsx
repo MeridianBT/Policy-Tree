@@ -431,7 +431,9 @@ export function AdminScreen({
                 createUser({
                   name: String(formData.get("name")),
                   email: String(formData.get("email")),
-                  password: String(formData.get("password")),
+                  // Blank means a Microsoft-only invitation - the field is
+                  // omitted entirely rather than sent as an empty string.
+                  password: String(formData.get("password") || "") || undefined,
                   role: formData.get("role"),
                   orgUnitId: (formData.get("orgUnitId") as string) || null,
                 }),
@@ -440,8 +442,8 @@ export function AdminScreen({
           >
             <Field label="Name"><input name="name" required className={inputClass} /></Field>
             <Field label="Email"><input name="email" type="email" required className={inputClass} /></Field>
-            <Field label="Password (min 8)">
-              <input name="password" type="password" minLength={8} required className={inputClass} />
+            <Field label="Password (leave blank for Microsoft sign-in)">
+              <input name="password" type="password" minLength={8} className={inputClass} />
             </Field>
             <Field label="Role">
               <select name="role" className={inputClass} defaultValue="OWNER">

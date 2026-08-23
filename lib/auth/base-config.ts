@@ -11,7 +11,11 @@ import type { AuthenticatedUser, Role } from "./types";
 export const baseAuthConfig: NextAuthConfig = {
   providers: [],
   session: { strategy: "jwt", maxAge: 60 * 60 * 12 },
-  pages: { signIn: "/login" },
+  // Errors land back on the sign-in screen carrying `?error=`, rather than on
+  // Auth.js's own page. Without this a misconfigured tenant - an expired
+  // client secret, most likely - bounces people to a bare /login with nothing
+  // said, which is indistinguishable from a mis-click.
+  pages: { signIn: "/login", error: "/login" },
   callbacks: {
     jwt({ token, user }) {
       if (user) {

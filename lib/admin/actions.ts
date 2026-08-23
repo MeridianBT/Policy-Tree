@@ -134,7 +134,9 @@ export async function saveBands(input: unknown): Promise<AdminResult> {
 const userSchema = z.object({
   name: z.string().min(1),
   email: z.string().email(),
-  password: z.string().min(8),
+  // Omitted for the normal case: an invitation redeemable only by signing in
+  // through Microsoft, with no password to set, send or ever rotate.
+  password: z.string().min(8).optional(),
   role: z.enum(["ADMIN", "OWNER", "VIEWER"]),
   orgUnitId: z.string().nullable(),
 });
@@ -153,11 +155,16 @@ export async function createUser(input: unknown): Promise<AdminResult> {
         email,
         role: data.role,
         orgUnitId: data.orgUnitId,
-        passwordHash: await bcrypt.hash(data.password, 10),
+        passwordHash: data.password ? await bcrypt.hash(data.password, 10) : null,
       },
     });
     revalidatePath("/admin");
-    return { ok: true, message: `${email} created.` };
+    return {
+      ok: true,
+      message: data.password
+        ? `${email} created.`
+        : `${email} invited — they sign in with Microsoft.`,
+    };
   } catch (error) {
     return fail(error);
   }

@@ -191,11 +191,70 @@ individual who keys the number in and is optional.
 
 ### Authentication
 
-Local email and password via Auth.js with bcrypt. Every auth call in the
-application goes through `lib/auth/session.ts`; the only file that knows *how* a
-user proves who they are is `lib/auth/providers.ts`. Dropping in Entra, Okta or
-LDAP later means adding a provider there and mapping its claims onto
-`AuthenticatedUser` — no screen and no server action changes. SSO is not built.
+Microsoft Entra ID (Azure AD) single sign-on, with email and password kept as
+a development-only fallback. Every auth call in the application goes through
+`lib/auth/session.ts`; the only file that knows *how* a user proves who they
+are is `lib/auth/providers.ts`. That separation is what kept adding SSO small:
+no screen and no server action changed, and `lib/auth/permissions.ts` and its
+tests were not touched at all.
+
+Entra says **who you are**. This application still decides **what you may do**,
+from its own `role` and `org_unit_id` — so a role change is an admin action
+here, not a ticket to IT. Entra group claims are deliberately not mapped onto
+application roles.
+
+#### Signing in with Microsoft
+
+Sign-in is **invite-only**. Holding a Microsoft account in the company tenant
+is not by itself permission to use this application: an admin creates the
+account first (Admin → Users, leaving the password blank), and an unrecognised
+Microsoft user is refused with "ask an admin for access" rather than being
+provisioned automatically. That refusal is deliberately a different message
+from a wrong password — the person has signed in correctly and would otherwise
+be sent to the wrong help desk.
+
+Accounts match on the Entra `oid` claim first, falling back to email. Email is
+what an admin types when inviting someone, so it has to work for the first
+sign-in, but it is mutable in Entra — people change surname, mailboxes get
+renamed. `oid` is immutable, so the first successful match records it in
+`app_user.entra_object_id` and every later sign-in keys off that instead. The
+rule lives in `lib/auth/sso.ts` as a pure function with no Prisma and no
+Auth.js, so who-gets-in is exercisable in a unit test (`lib/calc/sso.test.ts`)
+without an OAuth round trip.
+
+Password sign-in is on automatically outside production so the seeded accounts
+work in development, and off in production unless `AUTH_ALLOW_PASSWORD=true` is
+set deliberately. A production deployment therefore has no local password to
+leak or rotate. An invited SSO user has `password_hash = NULL`; the credentials
+provider already compares against a dummy hash when none is present, so a
+password attempt against such an account fails in constant time like any other.
+
+#### What to ask IT for
+
+An Entra **app registration**, single-tenant, with:
+
+- Redirect URI `https://<host>/api/auth/callback/microsoft-entra-id`
+  (add `http://localhost:3000/api/auth/callback/microsoft-entra-id` for local work)
+- Delegated scopes `openid profile email`
+- A client secret — **note its expiry date somewhere it will be seen.** Client
+  secrets expire on a 12–24 month calendar and an expired one locks out
+  everyone at once.
+
+Then set `AUTH_MICROSOFT_ENTRA_ID_ID`, `_SECRET` and `_ISSUER` (see
+`.env.example`). The issuer must name your tenant: left unset, Auth.js defaults
+to `/common/`, which would let any Microsoft account in the world — personal
+Outlook and Xbox accounts included — reach the sign-in step. Treat that as a
+security requirement, not a config nicety.
+
+If the credentials are missing or wrong, the sign-in screen says so and points
+at an administrator, rather than bouncing the user back to a bare form with
+nothing said.
+
+#### Not built yet
+
+Entra group → role mapping, SCIM auto-provisioning, and the Graph `@`-mention
+user picker for invitations. Saviynt governs who may hold the Entra group
+upstream and needs nothing on this side.
 
 ## Screens
 

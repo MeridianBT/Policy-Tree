@@ -92,14 +92,24 @@ model OrgUnit {
 }
 
 model AppUser {
-  id           String   @id @default(cuid())
-  name         String
-  email        String   @unique
-  passwordHash String   @map("password_hash")
-  role         UserRole @default(VIEWER)
-  orgUnitId    String?  @map("org_unit_id")
-  isActive     Boolean  @default(true) @map("is_active")
-  createdAt    DateTime @default(now()) @map("created_at")
+  id            String   @id @default(cuid())
+  name          String
+  email         String   @unique
+  /// Null for a user who signs in through Microsoft only - an invitation
+  /// that can be redeemed by SSO and by nothing else. The credentials
+  /// provider compares against a dummy hash when this is absent, so a
+  /// password attempt against an SSO account fails like any other.
+  passwordHash  String?  @map("password_hash")
+  /// The Entra `oid` claim: the durable, tenant-wide identifier for this
+  /// person. An admin invites by email because that is what they know, but
+  /// email is mutable in Entra and `oid` is not, so the first successful
+  /// SSO sign-in records it here and every later sign-in prefers it. A
+  /// rename or mailbox change then cannot orphan the account.
+  entraObjectId String?  @unique @map("entra_object_id")
+  role          UserRole @default(VIEWER)
+  orgUnitId     String?  @map("org_unit_id")
+  isActive      Boolean  @default(true) @map("is_active")
+  createdAt     DateTime @default(now()) @map("created_at")
 
   orgUnit OrgUnit? @relation(fields: [orgUnitId], references: [id])
 
