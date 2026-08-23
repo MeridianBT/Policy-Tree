@@ -1,0 +1,200 @@
+# Quickstart
+
+Getting the platform running on your own machine, signing in, and checking it
+actually works. About twenty minutes, most of it waiting for a Docker build.
+
+For what the thing *is* and why it is built the way it is, read
+[README.md](README.md). This file is only concerned with running it.
+
+## What you need
+
+A computer — not a tablet. This is a Next.js server talking to PostgreSQL, so
+there is no version of it that runs in Safari on an iPad.
+
+Either:
+
+- **Docker Desktop** — the easy path, and the one below, or
+- **Node 22 and PostgreSQL 16** if you would rather run it on the host.
+
+## Run it
+
+```bash
+cp .env.example .env
+# open .env and set AUTH_SECRET — generate one with: openssl rand -base64 32
+
+docker compose up --build       # app on :3000, Postgres on :5432
+```
+
+Database migrations run automatically every time the container boots
+(`docker/entrypoint.sh`), so there is no separate migrate step. Once it is up,
+load the worked example — Ki 2026, six divisions, 31 Control Items, targets for
+the year and actuals through the first half:
+
+```bash
+docker compose exec app npm run db:seed
+```
+
+Then open **http://localhost:3000**.
+
+### If there is no password box on the sign-in screen
+
+That is the design working, not a fault. Production is Microsoft SSO only, and
+Compose sets `NODE_ENV=production`. To key in a password locally, add this to
+the `app` service's `environment:` block in `docker-compose.yml` and restart:
+
+```yaml
+AUTH_ALLOW_PASSWORD: "true"
+```
+
+Microsoft sign-in itself will not work until IT issues an Entra app
+registration — see *Signing in with Microsoft* in the README. Everything else
+works fully offline.
+
+## Sign in
+
+Every seeded account uses the password `hoshin`.
+
+| Email | Role | Worth signing in as, to see |
+|---|---|---|
+| `admin@example.com` | ADMIN | Everything: structure editing at all four levels, the Admin panel |
+| `auto.lead@example.com` | OWNER · AUTO division | A division lead — can key their own departments, can only add at Level 4 |
+| `dealer.lead@example.com` | OWNER · AUTO-SALES dept | The same role scoped to one department, so noticeably narrower |
+| `viewer@example.com` | VIEWER | Read-only. No entry screen, no edit controls, no reminders |
+
+Signing in as the two OWNERs one after the other is the quickest way to see the
+permission model rather than take the README's word for it.
+
+## Have a look around
+
+A walkthrough that touches every part of the platform.
+
+**1 · The sheet** — `/sheet`
+
+The operating grid, and where a quarterly review actually happens. Switch
+**Target** between OB, PRB and 1QFC: the actuals never move, only what they are
+measured against, so achievement percentages and symbols change with the
+version. Tap a quarter heading to fold its three months away. Switch
+**View → + Departments** to fold every Level 4 branch in under the objective it
+ladders into.
+
+**2 · The cascade** — `/cascade`
+
+Every Company Goal down to the department work beneath it, on one page. The
+thing to look at is the *gaps*: objectives showing "nothing yet ladders in
+here" are the point of the page, not a rendering fault.
+
+**3 · Insights** — `/insights`
+
+Symbol distribution per division per month. October to March are empty because
+the seed only keys actuals through the first half of the Ki — that is the
+"nothing keyed yet" state rendering correctly.
+
+**4 · Keying a number** — `/my-entries`
+
+Sign in as `auto.lead@example.com`. Type a figure, press `Tab` to save and move.
+`Enter` saves and drops a row, `Escape` reverts. No modal dialogs anywhere in
+that flow.
+
+**5 · The audit trail** — `/control-item/[id]`
+
+Click any measure you just edited. Trend chart with every plan version overlaid,
+the stored cell including any formula as typed, and the full history of who
+changed what and when.
+
+**6 · Admin** — `/admin`
+
+Ki setup, version locking, the evaluation scale, users and departments. Try
+removing a department that still has data: it refuses outright and tells you
+what is pointing at it, rather than silently orphaning Level 4 rows.
+
+**7 · Export** — the toolbar's *Export to Excel*
+
+Three tabs — the sheet as rendered, the same figures in long format for
+pivoting, and the evaluation bands in force. Numbers are written as numbers,
+never as pre-formatted strings.
+
+## Check it works
+
+```bash
+npm run typecheck     # TypeScript, expect zero errors
+npm test              # 261 tests, about four seconds
+npm run build         # production build
+```
+
+Inside Compose, prefix these with `docker compose exec app`.
+
+The suite is split on purpose:
+
+- `npm run test:unit` runs only the pure logic — the calculation rules,
+  evaluation bands, the permission model, the cascade tree, SSO account
+  matching, reminder accountability. **No database needed.** These are the
+  tests worth reading, because they are where the rules live.
+- The files in `tests/` need PostgreSQL running. They cover the seams that only
+  exist once a database is involved, like "nobody is reminded twice".
+
+### Two checks beyond the suite
+
+```bash
+npm run check:acceptance          # the hand-verification checklist, automated
+npm run remind -- --dry-run       # who would be chased at month end
+```
+
+`check:acceptance` **writes to the database** — it clears a month, sets a zero
+target, locks a version and unlocks it again. Run it against a development
+database only, and re-seed afterwards:
+
+```bash
+npm run db:seed && npm run check:acceptance && npm run db:seed
+```
+
+`remind --dry-run` is safe: it resolves recipients and renders the messages but
+writes nothing and sends nothing. Pass `--send` only once Graph is configured.
+
+## Running on the host instead
+
+If you would rather not run the app in Docker:
+
+```bash
+docker compose up -d db        # just PostgreSQL, on localhost:5432
+
+cp .env.example .env           # switch DATABASE_URL to the localhost line
+npm install
+npm run db:migrate             # applies migrations and generates the Prisma client
+npm run db:seed
+npm run dev                    # http://localhost:3000
+```
+
+`npm run dev` is a development build, so password sign-in is on automatically —
+no `AUTH_ALLOW_PASSWORD` needed.
+
+## Useful commands
+
+| Command | What it does |
+|---|---|
+| `npm run db:seed` | Reload the worked example. Idempotent — replaces the seeded Ki |
+| `npm run db:reset` | Drop everything, re-migrate, re-seed |
+| `npm run db:studio` | Prisma Studio, to poke at rows directly |
+| `npm run backup` | `pg_dump -Fc` into `./backups/` |
+| `npm run check:symbols` | Verify the five evaluation glyphs render here (needs `npx playwright install chromium` once) |
+
+## When something is wrong
+
+**The app cannot reach the database.** `DATABASE_URL` has two forms in
+`.env.example` — the `db:5432` hostname works inside Compose, `localhost:5432`
+works on the host. Using the wrong one is the usual cause.
+
+**Sign-in fails for a seeded account.** Re-run `npm run db:seed`; the password
+is only set when the user row is created.
+
+**The five symbols render as boxes.** `〇` is U+3007 and needs a
+Japanese-capable font. `npm run check:symbols` renders them in a real browser to
+confirm what the machine has — it drives Playwright, so it needs the browsers
+downloaded once first:
+
+```bash
+npx playwright install chromium
+npm run check:symbols
+```
+
+**A test in `tests/` fails but `test:unit` passes.** PostgreSQL is not running,
+or `DATABASE_URL` is not set for the shell running the tests.
