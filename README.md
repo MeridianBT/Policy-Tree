@@ -256,6 +256,102 @@ Entra group → role mapping, SCIM auto-provisioning, and the Graph `@`-mention
 user picker for invitations. Saviynt governs who may hold the Entra group
 upstream and needs nothing on this side.
 
+### Month-end reminders
+
+Nothing in this application matters if the numbers never get keyed, so a
+scheduled job chases the people who still owe one.
+
+#### Who gets chased, and about what
+
+Accountability only — never "everything in the Ki":
+
+- the person **named responsible** for a Control Item, and
+- the **lead of the org unit** the Control Item's DIC sits in, or any unit
+  above it, which is what makes a division lead answerable for their
+  departments' numbers.
+
+Both the named owner and their lead can be reminded about the same measure.
+That is intended: both are answerable, and a lead who never hears about it
+cannot chase it.
+
+Two exclusions stop it becoming noise, and both were found by running it
+against real data rather than reasoned about in advance:
+
+- **A VIEWER is never reminded.** They attend the review and key nothing.
+- **Someone whose org unit is the company itself** is reminded only about
+  measures they are *personally named* on, never by coverage. The company root
+  covers every division, so coverage there would mean all 31 measures — true,
+  and useless as a to-do list. This is the case a company-level ADMIN falls
+  into: they administer the plan, they do not key it.
+
+The run also reports measures **nobody active is accountable for** — a real
+gap, and one an admin should want to see rather than have silently swallowed.
+
+#### Which month
+
+"Month end" is ambiguous and getting it wrong is expensive in trust — chase
+someone for a month they already keyed and they start ignoring the mail.
+Actuals are keyed *after* a month ends, so `reminderPeriod` splits it on a
+grace window (default 5 days): a run in the first days of May chases April, a
+run later in May prompts for May, whose close is imminent. The same scheduled
+job therefore does the right thing on the 1st and on the 28th. An explicit
+`period` always overrides it.
+
+#### Running it
+
+A `POST /api/reminders` endpoint rather than an in-process timer, because the
+app runs as a container that may have zero or several replicas — a timer would
+fire once per replica, or never on a platform that sleeps idle instances.
+Anything that can make a scheduled HTTP call drives it (Azure Function timer,
+Logic App, Kubernetes CronJob, cron with curl):
+
+```
+curl -X POST -H "Authorization: Bearer $REMINDER_TRIGGER_SECRET" \
+  "https://hoshin.example.com/api/reminders"
+```
+
+`?dryRun=true` reports without sending, `?period=2026-04` targets a month,
+`?force=true` re-sends deliberately. The endpoint refuses every call when
+`REMINDER_TRIGGER_SECRET` is unset — an endpoint that mails the whole company
+must not be the thing that discovers a missing config. It is excluded from the
+session middleware, since a scheduler carries a secret and not a cookie.
+
+Same thing from a shell, defaulting to a dry run because sending mail to real
+people should have to be asked for:
+
+```
+npm run remind -- --dry-run          # who would be chased
+npm run remind -- --send             # actually send
+npm run remind -- --period=2026-04 --send --force
+```
+
+#### Nobody is chased twice
+
+`reminder_log` has a unique constraint on (user, month), claimed *before*
+sending, so two runs racing each other produce one mail rather than two.
+Schedulers retry, deploys double-fire, people re-run jobs by hand — none of
+that should cost anyone a second chasing. A run that fails mid-flight leaves an
+honest `FAILED` row, which a later run retries without needing `--force`;
+only a genuine `SENT` needs forcing. The table doubles as the record of what
+went to whom, which is the first thing asked when someone says they were never
+told.
+
+A dry run writes **nothing at all** — otherwise it would consume the slot and
+the real run afterwards would mail nobody.
+
+#### What to ask IT for
+
+On the same Entra app registration as SSO, the **application** permission
+`Mail.Send` (not delegated — there is no signed-in user at 6am), with admin
+consent, plus a mailbox for `REMINDER_FROM`.
+
+Be ready for the obvious pushback: application `Mail.Send` lets the app send as
+*any* mailbox in the tenant. Most security teams will, rightly, scope it with an
+[application access policy](https://learn.microsoft.com/en-us/graph/auth-limit-mailbox-access)
+so it can only send as that one shared mailbox. Have the mailbox picked before
+the conversation. Reminders are sent with `saveToSentItems: false`, so the
+shared mailbox does not fill with hundreds of copies nobody reads.
+
 ## Screens
 
 | Route | What it is |

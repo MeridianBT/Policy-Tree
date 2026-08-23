@@ -116,9 +116,40 @@ model AppUser {
   responsibleFor ControlItem[] @relation("ControlItemResponsible")
   entriesUpdated Entry[]       @relation("EntryUpdatedBy")
   auditEntries   EntryAudit[]  @relation("AuditChangedBy")
+  reminders      ReminderLog[] @relation("ReminderRecipient")
 
   @@index([orgUnitId])
   @@map("app_user")
+}
+
+enum ReminderStatus {
+  SENT
+  FAILED
+}
+
+/// One reminder, to one person, for one month.
+///
+/// The unique constraint is the whole point: schedulers retry, someone re-runs
+/// the job by hand, a deploy fires it twice. Nobody should be chased twice for
+/// the same month because of that. It doubles as the record of what was sent
+/// and to whom, which is the first thing asked when someone says they were
+/// never told.
+model ReminderLog {
+  id               String         @id @default(cuid())
+  userId           String         @map("user_id")
+  period           DateTime       @db.Date
+  status           ReminderStatus
+  /// How many Control Items were still missing when the reminder was built.
+  outstandingCount Int            @map("outstanding_count")
+  /// Why a send failed, kept so a failure can be retried deliberately.
+  error            String?
+  sentAt           DateTime       @default(now()) @map("sent_at")
+
+  user AppUser @relation("ReminderRecipient", fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, period])
+  @@index([period])
+  @@map("reminder_log")
 }
 
 /// A named snapshot of the plan for a Ki: OB, PRB, 1QFC, 2QFC, 3QFC, ACT.
