@@ -1,3 +1,4 @@
+import { activeKiId } from "@/lib/ki/active";
 import { loadSheet } from "@/lib/sheet/query";
 import { requireSession } from "@/lib/auth/session";
 import { CascadeView } from "./CascadeView";
@@ -11,6 +12,6 @@ export const dynamic = "force-dynamic";
  */
 export default async function CascadePage() {
   await requireSession();
-  const model = await loadSheet({ levels: [1, 2, 3, 4] });
+  const model = await loadSheet({ levels: [1, 2, 3, 4], kiId: await activeKiId() });
   return <CascadeView model={model} />;
 }

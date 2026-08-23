@@ -1,3 +1,4 @@
+import { activeKiId } from "@/lib/ki/active";
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/db";
 import { requireSession, orgUnitSubtree } from "@/lib/auth/session";
@@ -15,7 +16,7 @@ export default async function DivisionPage({ params }: { params: Promise<{ code:
 
   // A division sheet includes the departments beneath it.
   const orgUnitIds = await orgUnitSubtree(orgUnit.id);
-  const model = await loadSheet({ levels: [4], orgUnitIds });
+  const model = await loadSheet({ levels: [4], orgUnitIds, kiId: await activeKiId() });
 
   return (
     <DivisionSheet

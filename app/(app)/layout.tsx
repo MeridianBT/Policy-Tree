@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/auth/session";
 import { signOut } from "@/lib/auth/config";
 import { prisma } from "@/lib/db";
+import { KiSwitcher } from "./KiSwitcher";
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const user = await getCurrentUser();
@@ -57,6 +58,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         </div>
 
         <div className="ml-auto flex items-center gap-2 text-[11px] text-ink-muted">
+          {user.role === "ADMIN" && <KiSwitcher />}
           <span title={user.email}>
             {user.name} · {user.role}
             {user.orgUnitCode ? ` · ${user.orgUnitCode}` : ""}

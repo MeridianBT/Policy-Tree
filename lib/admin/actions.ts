@@ -24,14 +24,23 @@ function fail(error: unknown): AdminResult {
 
 const createKiSchema = z.object({
   startYear: z.coerce.number().int().min(2000).max(2100),
+  /**
+   * What this year is called in the business. Optional: left blank it derives
+   * "Ki 2026" from the start year, which is fine for a demo but not what most
+   * companies say. Numbered fiscal periods - "103KI", "104KI" - are common and
+   * carry no year in them at all, so the name cannot be computed and has to be
+   * typed. Only the start date decides which months the year covers; the code
+   * is a label throughout.
+   */
+  code: z.string().trim().min(1).max(30).optional(),
   makeCurrent: z.boolean().default(true),
 });
 
 export async function createKi(input: unknown): Promise<AdminResult> {
   try {
     await requireRole("ADMIN");
-    const { startYear, makeCurrent } = createKiSchema.parse(input);
-    const code = kiCodeFor(startYear);
+    const { startYear, code: given, makeCurrent } = createKiSchema.parse(input);
+    const code = given || kiCodeFor(startYear);
 
     if (await prisma.ki.findUnique({ where: { code } })) {
       return { ok: false, message: `${code} already exists.` };
@@ -486,6 +495,96 @@ export async function deleteDepartment(id: string): Promise<AdminResult> {
     revalidatePath("/admin");
     revalidatePath("/sheet");
     return { ok: true, message: `${department.code} removed.` };
+  } catch (error) {
+    return fail(error);
+  }
+}
+
+// ------------------------------------------------------------- Resetting a Ki
+
+export interface KiResetImpact {
+  kiCode: string;
+  nodes: number;
+  controlItems: number;
+  entries: number;
+}
+
+export type KiResetResult =
+  | { ok: true; message: string }
+  | { ok: false; message: string }
+  | { ok: false; needsConfirmation: true; impact: KiResetImpact; message: string };
+
+/** What a reset would destroy, counted before anything is touched. */
+export async function kiResetImpact(kiId: string): Promise<KiResetImpact | null> {
+  await requireRole("ADMIN");
+  const ki = await prisma.ki.findUnique({ where: { id: kiId }, select: { code: true } });
+  if (!ki) return null;
+
+  const [nodes, controlItems, entries] = await Promise.all([
+    prisma.node.count({ where: { kiId } }),
+    prisma.controlItem.count({ where: { node: { kiId } } }),
+    prisma.entry.count({ where: { controlItem: { node: { kiId } } } }),
+  ]);
+  return { kiCode: ki.code, nodes, controlItems, entries };
+}
+
+/**
+ * Empty a Ki: every Goal, Theme, Objective, Control Item and stored figure for
+ * that year, gone. The year itself and its six plan versions survive, so it is
+ * immediately ready to be built again or copied into.
+ *
+ * There is no undo, and no soft delete to recover from - so the caller must
+ * type the Ki's own code back. That is deliberately harder than clicking twice:
+ * this is the one action in the application that can destroy a year of a
+ * company's planning, and a mis-click on the wrong row in a list of years would
+ * be unrecoverable. Naming the year proves you looked at which one.
+ *
+ * The current Ki is refused outright. Emptying the year everyone is actively
+ * keying into is never what was meant; make another Ki current first, which is
+ * a deliberate act with its own visible consequence.
+ */
+export async function resetKi(kiId: string, confirmation?: string): Promise<KiResetResult> {
+  try {
+    await requireRole("ADMIN");
+
+    const ki = await prisma.ki.findUnique({ where: { id: kiId } });
+    if (!ki) return { ok: false, message: "That Ki no longer exists." };
+    if (ki.isCurrent) {
+      return {
+        ok: false,
+        message: `${ki.code} is the current Ki. Make another Ki current before emptying this one.`,
+      };
+    }
+
+    const impact = await kiResetImpact(kiId);
+    if (!impact) return { ok: false, message: "That Ki no longer exists." };
+
+    if (confirmation?.trim() !== ki.code) {
+      return {
+        ok: false,
+        needsConfirmation: true,
+        impact,
+        message:
+          `Emptying ${ki.code} removes ${impact.nodes} rows, ` +
+          `${impact.controlItems} Control Items and ${impact.entries} stored figures. ` +
+          `This cannot be undone. Type ${ki.code} to confirm.`,
+      };
+    }
+
+    // Deleting the nodes is enough: control items cascade from their node,
+    // entries and their audit trail cascade from the control item, and formula
+    // dependencies cascade from both ends. The plan versions hang off the Ki
+    // rather than off a node, so they survive and the year stays usable.
+    await prisma.node.deleteMany({ where: { kiId } });
+
+    revalidatePath("/admin");
+    revalidatePath("/sheet");
+    return {
+      ok: true,
+      message:
+        `${ki.code} emptied — ${impact.nodes} rows, ${impact.controlItems} Control Items ` +
+        `and ${impact.entries} figures removed. Its plan versions are intact.`,
+    };
   } catch (error) {
     return fail(error);
   }

@@ -368,7 +368,7 @@ shared mailbox does not fill with hundreds of copies nobody reads.
 | `/control-item/[id]` | Trend chart with every version overlaid, stored cells including formulas as typed, and the full audit trail |
 | `/print/company` | A3 landscape, print-only |
 | `/print/division/[code]` | The same, pre-scoped to one division |
-| `/admin` | Ki setup, version locking, structure builder, copy-from-previous-Ki, evaluation scale, users |
+| `/admin` | Ki setup and naming, version locking, emptying a year, structure builder, copy-from-previous-Ki, evaluation scale, users, departments |
 | `/symbols` | Symbol rendering check for a platform you are deploying to |
 | `/api/export` | Excel download of the current sheet (`?division=CODE` for a Level 4 sheet, `?version=ID` to pin the target basis) |
 | `/api/reminders` | Month-end reminder trigger, called by a scheduler with a shared secret — see below |
@@ -384,6 +384,47 @@ changes nothing that is computed: the quarter figure is derived from the
 monthly grain whether or not the months are on screen. A condensed sheet prints
 condensed — the Print view link carries the state as `?columns=quarters`, which
 gives a much less dense one-pager for a board reading.
+
+### Running more than one year
+
+A Ki is named, not computed. Left blank the name derives from the start year
+("Ki 2026"), but numbered fiscal periods — `103KI`, `104KI` — are what most
+companies actually say, carry no year in them, and so have to be typed. Only
+the start date decides which months the year covers; the name is a label
+everywhere else.
+
+Next year has to be built before it starts: its Goals typed in or copied from
+this year, its targets loaded. Doing that by making it current would move
+every user onto a half-built year mid-review. So **an admin, and only an
+admin, can point themselves at another Ki** using the year selector in the
+nav. The choice lives in a cookie — it is one person's view, never a property
+of the year — and everyone else keeps seeing the live Ki whatever is in it.
+Working on a draft year is marked with a red `DRAFT YEAR` badge, because
+forgetting which year you are keying into is the mistake the control makes
+possible.
+
+Month-end reminders deliberately ignore all of this and always use the current
+Ki. A scheduler has no cookie and no person, and chasing people about a draft
+year would be worse than useless.
+
+### Emptying a year
+
+Admin → *Empty year* on any Ki that is not current. It removes every Goal,
+Theme, Objective, Control Item and stored figure for that year; the year
+itself and its six plan versions survive, so it is immediately ready to be
+built again or copied into.
+
+Two guards, because there is no undo and no soft delete behind it:
+
+- **The current Ki cannot be emptied at all.** Emptying the year everyone is
+  keying into is never what was meant. Make another Ki current first — a
+  deliberate act with its own visible consequence.
+- **You must type the year's own name back.** The first click only reports
+  what would be lost ("removes 37 rows, 31 Control Items and 4,812 stored
+  figures"); nothing happens until `104KI` is typed by hand. A second confirm
+  button would sit where the first one was, so a double-click would sail
+  through both. Typing the name cannot happen by accident, and it forces a
+  look at which row was actually clicked.
 
 ### Editing the structure from the sheet
 

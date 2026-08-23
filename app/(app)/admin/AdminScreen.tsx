@@ -23,7 +23,9 @@ import {
   setCurrentKi,
   setUserActive,
   setVersionLock,
+  resetKi,
   type AdminResult,
+  type KiResetImpact,
 } from "@/lib/admin/actions";
 
 interface KiRow {
@@ -106,8 +108,9 @@ export function AdminScreen({
                     </div>
                     <div className="text-[11px] text-ink-faint">{ki.nodeCount} nodes</div>
                     {!ki.isCurrent && (
-                      <div className="mt-1">
+                      <div className="mt-1 flex flex-wrap items-center gap-1.5">
                         <Button onClick={() => run(() => setCurrentKi(ki.id))}>Make current</Button>
+                        <ResetKi ki={ki} onResult={setMessage} onDone={() => router.refresh()} />
                       </div>
                     )}
                   </td>
@@ -146,6 +149,7 @@ export function AdminScreen({
               run(() =>
                 createKi({
                   startYear: Number(formData.get("startYear")),
+                  code: String(formData.get("code") ?? "").trim() || undefined,
                   makeCurrent: formData.get("makeCurrent") === "on",
                 }),
               )
@@ -153,6 +157,9 @@ export function AdminScreen({
           >
             <Field label="New Ki start year">
               <input name="startYear" type="number" defaultValue={new Date().getFullYear() + 1} className={inputClass} />
+            </Field>
+            <Field label="Name (optional)">
+              <input name="code" placeholder="104KI" className={inputClass} />
             </Field>
             <label className="flex items-center gap-1 pb-1 text-[11px] text-ink-muted">
               <input name="makeCurrent" type="checkbox" defaultChecked /> make current
@@ -471,6 +478,91 @@ export function AdminScreen({
 }
 
 const inputClass = "w-full border border-rule bg-paper px-1.5 py-1 text-[12px]";
+
+/**
+ * Emptying a year. Two steps, and the second one asks for the year's own name
+ * rather than another click.
+ *
+ * This is the only control in the application that can destroy a year of
+ * planning, with no undo and no soft delete behind it. A second confirm button
+ * sits in the same place as the first, so a double-click would sail through
+ * both; typing "104KI" cannot happen by accident, and it forces a look at which
+ * row was actually clicked.
+ */
+function ResetKi({
+  ki,
+  onResult,
+  onDone,
+}: {
+  ki: KiRow;
+  onResult: (result: AdminResult) => void;
+  onDone: () => void;
+}) {
+  const [impact, setImpact] = useState<KiResetImpact | null>(null);
+  const [typed, setTyped] = useState("");
+  const [busy, startBusy] = useTransition();
+
+  function ask() {
+    startBusy(async () => {
+      const result = await resetKi(ki.id);
+      if ("needsConfirmation" in result) {
+        setImpact(result.impact);
+        setTyped("");
+        return;
+      }
+      onResult(result);
+      if (result.ok) onDone();
+    });
+  }
+
+  function confirm() {
+    startBusy(async () => {
+      const result = await resetKi(ki.id, typed);
+      if ("needsConfirmation" in result) return;
+      onResult(result);
+      setImpact(null);
+      setTyped("");
+      if (result.ok) onDone();
+    });
+  }
+
+  if (!impact) {
+    return (
+      <Button onClick={ask} disabled={busy}>
+        Empty year
+      </Button>
+    );
+  }
+
+  const matches = typed.trim() === ki.code;
+
+  return (
+    <div className="mt-1 w-full border p-2" style={{ borderColor: "#B3261E" }}>
+      <p className="text-[11px]" style={{ color: "#B3261E" }}>
+        Removes {impact.nodes} rows, {impact.controlItems} Control Items and {impact.entries}{" "}
+        stored figures from {ki.code}. This cannot be undone.
+      </p>
+      <p className="mt-1 text-[11px] text-ink-muted">
+        Type <span className="font-medium text-ink">{ki.code}</span> to confirm.
+      </p>
+      <div className="mt-1.5 flex items-center gap-1.5">
+        <input
+          value={typed}
+          onChange={(event) => setTyped(event.target.value)}
+          aria-label={`Type ${ki.code} to confirm emptying it`}
+          className={inputClass}
+          autoFocus
+        />
+        <Button onClick={confirm} disabled={!matches || busy} variant="primary">
+          Empty {ki.code}
+        </Button>
+        <Button onClick={() => setImpact(null)} disabled={busy}>
+          Cancel
+        </Button>
+      </div>
+    </div>
+  );
+}
 
 function Panel({ title, hint, children }: { title: string; hint?: string; children: React.ReactNode }) {
   return (
