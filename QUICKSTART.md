@@ -27,12 +27,22 @@ docker compose up --build       # app on :3000, Postgres on :5432
 
 Database migrations run automatically every time the container boots
 (`docker/entrypoint.sh`), so there is no separate migrate step. Once it is up,
-load the worked example — Ki 2026, six divisions, 31 Control Items, targets for
-the year and actuals through the first half:
+load a dataset. There are two, and which one you want depends on why you are
+here:
 
 ```bash
+# Showing this to a leadership team — a fictitious Australian automotive
+# distributor, 5 Goals, 54 Control Items, 103KI live and 104KI ready to start.
+docker compose exec app npm run db:seed:uat
+
+# Kicking the tyres on the mechanics — the smaller worked example,
+# Ki 2026, six divisions, 31 Control Items.
 docker compose exec app npm run db:seed
 ```
+
+Pick one. Running both leaves two sets of divisions in the DIC picker, which
+looks like a bug in a demo and is not one — see
+[prisma/uat/README.md](prisma/uat/README.md) if you need both.
 
 Then open **http://localhost:3000**.
 
@@ -50,7 +60,11 @@ through Microsoft only.
 
 ## Sign in
 
-Every seeded account uses the password `hoshin`.
+Every seeded account uses the password `hoshin`, in both datasets.
+
+The demo dataset's fourteen accounts are listed in
+[prisma/uat/README.md](prisma/uat/README.md) — start with
+`md@driveaus.example`. The worked example uses these:
 
 | Email | Role | Worth signing in as, to see |
 |---|---|---|
@@ -83,13 +97,17 @@ here" are the point of the page, not a rendering fault.
 
 **3 · Insights** — `/insights`
 
-Symbol distribution per division per month. October to March are empty because
-the seed only keys actuals through the first half of the Ki — that is the
-"nothing keyed yet" state rendering correctly.
+Symbol distribution per division per month. The later months are empty because
+neither dataset keys actuals for the whole Ki — the demo dataset stops after
+July, the worked example after September. That is the "nothing keyed yet" state
+rendering correctly, not a gap in the page.
 
 **4 · Keying a number** — `/my-entries`
 
-Sign in as `auto.lead@example.com`. Type a figure, press `Tab` to save and move.
+Sign in as `service.manager@driveaus.example` (demo dataset) or
+`auto.lead@example.com` (worked example) — someone who owns a department rather
+than the whole company, so the list is short and obviously theirs. Type a
+figure, press `Tab` to save and move.
 `Enter` saves and drops a row, `Escape` reverts. No modal dialogs anywhere in
 that flow.
 
@@ -170,8 +188,10 @@ no `AUTH_ALLOW_PASSWORD` needed.
 
 | Command | What it does |
 |---|---|
+| `npm run db:seed:uat` | Reload the demo dataset. Idempotent — makes 103KI current |
+| `npm run db:reset:uat` | Drop everything, re-migrate, load the demo dataset alone |
 | `npm run db:seed` | Reload the worked example. Idempotent — replaces the seeded Ki |
-| `npm run db:reset` | Drop everything, re-migrate, re-seed |
+| `npm run db:reset` | Drop everything, re-migrate, re-seed the worked example |
 | `npm run db:studio` | Prisma Studio, to poke at rows directly |
 | `npm run backup` | `pg_dump -Fc` into `./backups/` |
 | `npm run check:symbols` | Verify the five evaluation glyphs render here (needs `npx playwright install chromium` once) |
