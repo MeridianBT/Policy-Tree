@@ -16,11 +16,14 @@ import {
   createControlItem,
   createBusinessUnit,
   createDepartment,
+  createDivision,
   createKi,
   createNode,
   createUser,
   deleteBusinessUnit,
   deleteDepartment,
+  deleteDivision,
+  updateOrgUnit,
   saveBands,
   setCurrentKi,
   setUserActive,
@@ -395,8 +398,8 @@ export function AdminScreen({
         </Panel>
 
         <Panel
-          title="Departments"
-          hint="The pick list every Control Item and Level 4 branch is filed under. A department can only be removed once nothing points at it any more."
+          title="Divisions and departments"
+          hint="The org structure every Control Item and Level 4 branch is filed under. Edit a row in place; a unit can only be removed once nothing points at it any more."
         >
           <table className="w-full border-collapse text-[12px]">
             <tbody>
@@ -404,57 +407,79 @@ export function AdminScreen({
                 .filter((unit) => unit.type === "DIVISION")
                 .map((division) => (
                   <Fragment key={division.id}>
-                    <tr className="border-b border-rule bg-paper-sunken">
-                      <td className="py-1.5 pl-1 font-medium" colSpan={2}>
-                        {division.code} — {division.name}
-                      </td>
-                    </tr>
+                    <OrgUnitEditor
+                      unit={division}
+                      divisions={orgUnits.filter((candidate) => candidate.type === "DIVISION")}
+                      onSave={(values) => run(() => updateOrgUnit(values))}
+                      onRemove={() => run(() => deleteDivision(division.id))}
+                    />
                     {orgUnits
                       .filter((unit) => unit.type === "DEPARTMENT" && unit.parentId === division.id)
                       .map((department) => (
-                        <tr key={department.id} className="border-b border-rule">
-                          <td className="py-1.5 pl-4">
-                            {department.code} — {department.name}
-                          </td>
-                          <td className="py-1.5 text-right">
-                            <Button onClick={() => run(() => deleteDepartment(department.id))}>Remove</Button>
-                          </td>
-                        </tr>
+                        <OrgUnitEditor
+                          key={department.id}
+                          unit={department}
+                          divisions={orgUnits.filter((candidate) => candidate.type === "DIVISION")}
+                          onSave={(values) => run(() => updateOrgUnit(values))}
+                          onRemove={() => run(() => deleteDepartment(department.id))}
+                        />
                       ))}
                   </Fragment>
                 ))}
             </tbody>
           </table>
 
-          <form
-            className="mt-3 flex flex-wrap items-end gap-2 border-t border-rule pt-3"
-            action={(formData) =>
-              run(() =>
-                createDepartment({
-                  divisionId: String(formData.get("divisionId")),
-                  code: String(formData.get("code")),
-                  name: String(formData.get("name")),
-                }),
-              )
-            }
-          >
-            <Field label="Division">
-              <select name="divisionId" className={inputClass}>
-                {orgUnits
-                  .filter((unit) => unit.type === "DIVISION")
-                  .map((division) => (
-                    <option key={division.id} value={division.id}>{division.code} — {division.name}</option>
-                  ))}
-              </select>
-            </Field>
-            <Field label="Code">
-              <input name="code" required className={inputClass} placeholder="AUTO-D2" />
-            </Field>
-            <Field label="Name">
-              <input name="name" required className={inputClass} placeholder="Powertrain Engineering" />
-            </Field>
-            <Button type="submit" variant="primary">Add department</Button>
-          </form>
+          <div className="mt-3 flex flex-wrap gap-6 border-t border-rule pt-3">
+            <form
+              className="flex flex-wrap items-end gap-2"
+              action={(formData) =>
+                run(() =>
+                  createDivision({
+                    code: String(formData.get("code")),
+                    name: String(formData.get("name")),
+                  }),
+                )
+              }
+            >
+              <Field label="Division code">
+                <input name="code" required className={inputClass} placeholder="PSP" />
+              </Field>
+              <Field label="Name">
+                <input name="name" required className={inputClass} placeholder="Powersports & Products" />
+              </Field>
+              <Button type="submit" variant="primary">Add division</Button>
+            </form>
+
+            <form
+              className="flex flex-wrap items-end gap-2"
+              action={(formData) =>
+                run(() =>
+                  createDepartment({
+                    divisionId: String(formData.get("divisionId")),
+                    code: String(formData.get("code")),
+                    name: String(formData.get("name")),
+                  }),
+                )
+              }
+            >
+              <Field label="Under">
+                <select name="divisionId" className={inputClass}>
+                  {orgUnits
+                    .filter((unit) => unit.type === "DIVISION")
+                    .map((division) => (
+                      <option key={division.id} value={division.id}>{division.code}</option>
+                    ))}
+                </select>
+              </Field>
+              <Field label="Department code">
+                <input name="code" required className={inputClass} placeholder="PSP-MAR" />
+              </Field>
+              <Field label="Name">
+                <input name="name" required className={inputClass} placeholder="Marine" />
+              </Field>
+              <Button type="submit" variant="primary">Add department</Button>
+            </form>
+          </div>
         </Panel>
 
                 <Panel title="Users" hint="Accountability (DIC) and data entry (responsible) are separate. A division lead can key anything in their own org unit.">
@@ -710,5 +735,93 @@ function BandEditor({
         <Button onClick={() => setDraft(bands)}>Reset</Button>
       </div>
     </div>
+  );
+}
+
+/**
+ * One org unit, editable in place.
+ *
+ * In place rather than a modal, matching the sheet's own structure editing:
+ * the row you are changing stays where it is, in the tree that gives it its
+ * meaning, so moving a department between divisions is visible as it happens.
+ * A division indents nothing and shows no "under" picker - it has only one
+ * possible parent, the company.
+ */
+function OrgUnitEditor({
+  unit,
+  divisions,
+  onSave,
+  onRemove,
+}: {
+  unit: OrgUnitRow;
+  divisions: OrgUnitRow[];
+  onSave: (values: { id: string; code: string; name: string; parentId: string | null }) => void;
+  onRemove: () => void;
+}) {
+  const isDivision = unit.type === "DIVISION";
+  const [editing, setEditing] = useState(false);
+  const [code, setCode] = useState(unit.code);
+  const [name, setName] = useState(unit.name);
+  const [parentId, setParentId] = useState(unit.parentId);
+
+  const reset = () => {
+    setCode(unit.code);
+    setName(unit.name);
+    setParentId(unit.parentId);
+    setEditing(false);
+  };
+
+  if (!editing) {
+    return (
+      <tr className={`border-b border-rule ${isDivision ? "bg-paper-sunken" : ""}`}>
+        <td className={`py-1.5 ${isDivision ? "pl-1 font-medium" : "pl-5"}`}>
+          {unit.code} — {unit.name}
+        </td>
+        <td className="py-1.5 text-right">
+          <span className="flex justify-end gap-1">
+            <Button onClick={() => setEditing(true)}>Edit</Button>
+            <Button onClick={onRemove}>Remove</Button>
+          </span>
+        </td>
+      </tr>
+    );
+  }
+
+  return (
+    <tr className={`border-b border-rule ${isDivision ? "bg-paper-sunken" : ""}`}>
+      <td className={`py-1.5 ${isDivision ? "pl-1" : "pl-5"}`} colSpan={2}>
+        <span className="flex flex-wrap items-end gap-2">
+          <Field label="Code">
+            <input value={code} onChange={(e) => setCode(e.target.value)} className={inputClass} />
+          </Field>
+          <Field label="Name">
+            <input value={name} onChange={(e) => setName(e.target.value)} className={inputClass} />
+          </Field>
+          {!isDivision && (
+            <Field label="Under">
+              <select
+                value={parentId ?? ""}
+                onChange={(e) => setParentId(e.target.value)}
+                className={inputClass}
+              >
+                {divisions.map((division) => (
+                  <option key={division.id} value={division.id}>{division.code}</option>
+                ))}
+              </select>
+            </Field>
+          )}
+          <Button
+            variant="primary"
+            onClick={() => {
+              onSave({ id: unit.id, code, name, parentId });
+              setEditing(false);
+            }}
+          >
+            Save
+          </Button>
+          <Button onClick={reset}>Cancel</Button>
+        </span>
+      </td>
+    </tr>
   );
 }

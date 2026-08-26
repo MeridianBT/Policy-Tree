@@ -666,3 +666,143 @@ export async function deleteBusinessUnit(id: string): Promise<AdminResult> {
     return fail(error);
   }
 }
+
+// ------------------------------------------------------ Divisions and edits
+
+const divisionSchema = z.object({
+  code: z.string().trim().min(1, "Give the division a code.").max(20)
+    .regex(/^[A-Za-z0-9-]+$/, "Use letters, digits or dashes."),
+  name: z.string().trim().min(1, "Give the division a name.").max(80),
+});
+
+export async function createDivision(input: unknown): Promise<AdminResult> {
+  try {
+    await requireRole("SUPER_ADMIN");
+    const data = divisionSchema.parse(input);
+
+    const code = data.code.toUpperCase();
+    if (await prisma.orgUnit.findUnique({ where: { code } })) {
+      return { ok: false, message: `${code} is already in use.` };
+    }
+
+    const company = await prisma.orgUnit.findFirst({ where: { type: "COMPANY" } });
+    if (!company) return { ok: false, message: "There is no company to file the division under." };
+
+    const siblings = await prisma.orgUnit.count({ where: { type: "DIVISION" } });
+    await prisma.orgUnit.create({
+      data: { code, name: data.name, type: "DIVISION", parentId: company.id, sortOrder: siblings },
+    });
+
+    revalidatePath("/admin");
+    revalidatePath("/sheet");
+    return { ok: true, message: `${code} added.` };
+  } catch (error) {
+    return fail(error);
+  }
+}
+
+const updateOrgUnitSchema = z.object({
+  id: z.string().min(1),
+  code: z.string().trim().min(1, "An org unit needs a code.").max(20)
+    .regex(/^[A-Za-z0-9-]+$/, "Use letters, digits or dashes."),
+  name: z.string().trim().min(1, "An org unit needs a name.").max(80),
+  /** Departments only: move to a different division. Ignored for a division. */
+  parentId: z.string().nullable().optional(),
+});
+
+/**
+ * Renames, re-codes, and - for a department - moves it under another division.
+ *
+ * Safe to change a code: nothing stores one as a reference. Formulas address
+ * Control Items by *their* code, and every place an org unit's code appears -
+ * the DIC badge, the division scope, the export column - reads it at render
+ * time from the row itself.
+ */
+export async function updateOrgUnit(input: unknown): Promise<AdminResult> {
+  try {
+    await requireRole("SUPER_ADMIN");
+    const data = updateOrgUnitSchema.parse(input);
+
+    const unit = await prisma.orgUnit.findUnique({ where: { id: data.id } });
+    if (!unit) return { ok: false, message: "That org unit no longer exists." };
+    if (unit.type === "COMPANY") {
+      return { ok: false, message: "The company itself is not edited here." };
+    }
+
+    const code = data.code.toUpperCase();
+    const clash = await prisma.orgUnit.findUnique({ where: { code } });
+    if (clash && clash.id !== unit.id) {
+      return { ok: false, message: `${code} is already in use.` };
+    }
+
+    let parentId = unit.parentId;
+    if (unit.type === "DEPARTMENT" && data.parentId && data.parentId !== unit.parentId) {
+      const division = await prisma.orgUnit.findUnique({ where: { id: data.parentId } });
+      if (!division || division.type !== "DIVISION") {
+        return { ok: false, message: "A department has to sit under a division." };
+      }
+      parentId = division.id;
+    }
+
+    await prisma.orgUnit.update({
+      where: { id: unit.id },
+      data: { code, name: data.name, parentId },
+    });
+
+    revalidatePath("/admin");
+    revalidatePath("/sheet");
+    revalidatePath("/division", "layout");
+    return { ok: true, message: `${code} updated.` };
+  } catch (error) {
+    return fail(error);
+  }
+}
+
+/**
+ * Refuses while anything still points at the division - its own departments
+ * included - and never cascades.
+ *
+ * Postgres's default on an optional foreign key is SET NULL rather than block,
+ * which for a division would silently strip its departments of a parent and
+ * unassign its people. Counting first and refusing outright is the only way to
+ * make the failure legible. Same rule as deleteDepartment, one level up.
+ */
+export async function deleteDivision(id: string): Promise<AdminResult> {
+  try {
+    await requireRole("SUPER_ADMIN");
+
+    const division = await prisma.orgUnit.findUnique({ where: { id } });
+    if (!division || division.type !== "DIVISION") {
+      return { ok: false, message: "That division no longer exists." };
+    }
+
+    const [departments, controlItems, nodes, users] = await Promise.all([
+      prisma.orgUnit.count({ where: { parentId: id } }),
+      prisma.controlItem.count({ where: { dicOrgUnitId: id } }),
+      prisma.node.count({ where: { orgUnitId: id } }),
+      prisma.appUser.count({ where: { orgUnitId: id } }),
+    ]);
+
+    const blockers: string[] = [];
+    if (departments) blockers.push(`${departments} department${departments === 1 ? "" : "s"}`);
+    if (controlItems) blockers.push(`${controlItems} Control Item${controlItems === 1 ? "" : "s"}`);
+    if (nodes) blockers.push(`${nodes} Level 4 row${nodes === 1 ? "" : "s"}`);
+    if (users) blockers.push(`${users} user${users === 1 ? "" : "s"}`);
+
+    if (blockers.length) {
+      return {
+        ok: false,
+        message:
+          `${division.code} still has ${blockers.join(", ")} pointing at it. ` +
+          "Move or remove those first.",
+      };
+    }
+
+    await prisma.orgUnit.delete({ where: { id } });
+    revalidatePath("/admin");
+    revalidatePath("/sheet");
+    return { ok: true, message: `${division.code} removed.` };
+  } catch (error) {
+    return fail(error);
+  }
+}

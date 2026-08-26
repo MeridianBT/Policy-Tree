@@ -1,8 +1,13 @@
-# UAT dataset — Drive Australia
+# UAT dataset — Honda Australia
 
-A fictitious Australian automotive distributor, for user acceptance testing and
-for demonstrating the platform to a leadership team. The company is invented;
-the market conditions its measures respond to are not.
+The real Honda Australia org structure - six divisions and thirty-eight
+departments, as supplied - carrying **invented** targets and actuals, for user
+acceptance testing and for demonstrating the platform to a leadership team.
+
+Say that second part out loud when demonstrating it. The company, the
+divisions and the departments are real, which makes the numbers beside them
+look real too. They are not: no figure in this dataset came from Honda. What
+is real is the market the targets are set against - see below.
 
 ## Loading it
 
@@ -24,6 +29,7 @@ but this dataset, use `db:reset:uat`, which drops the database first.
 | **103KI** | Apr 2026 – Mar 2027, current. 54 Control Items, 1,512 figures |
 | **104KI** | Apr 2027 – Mar 2028, created empty so the multi-year workflow can be shown |
 | Structure | 5 Goals, 13 Level 2 Themes, 15 Level 2 Objectives, 2 Level 3 Themes, 3 Level 3 Objectives, 8 Level 4 department branches |
+| Org | 6 divisions, 38 departments — AUTO, PSP, BMD, OX, CS, FRC |
 | Data | PRB targets for all twelve months, OB targets a little under them, actuals keyed April–July |
 | People | 14 accounts, password `hoshin` — see below |
 
@@ -67,14 +73,15 @@ Password for all of them is `hoshin`.
 
 | Email | Role | Sees |
 |---|---|---|
-| `md@driveaus.example` | ADMIN | Everything, plus the year selector and Admin |
-| `sales.director@driveaus.example` | OWNER · SLS | Sales & Network and its departments |
-| `aftersales.director@driveaus.example` | OWNER · AFT | Aftersales, parts and service |
-| `service.manager@driveaus.example` | OWNER · AFT-SVC | One department only — the narrowest view |
-| `board@driveaus.example` | VIEWER | Read-only, no entry screen |
+| `md@honda.example` | SUPER_ADMIN | Everything, plus the year selector and Admin |
+| `gm.auto@honda.example` | EXECUTIVE | The whole plan and the year selector, but no Admin and no locking |
+| `auto.director@honda.example` | OWNER · AUTO | Automotive and its departments |
+| `ox.director@honda.example` | OWNER · OX | Ownership Experience, parts and service |
+| `service.manager@honda.example` | OWNER · OX-SVC | One department only — the narrowest view |
+| `board@honda.example` | VIEWER | Read-only, no entry screen |
 
-Signing in as the aftersales director and then the service manager is the
-quickest way to show scoping without explaining it.
+Signing in as the Ownership Experience director and then the service manager
+is the quickest way to show scoping without explaining it.
 
 ## Reading the sheet mid-year
 

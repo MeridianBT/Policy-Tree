@@ -59,9 +59,9 @@ async function main() {
 
   // ------------------------------------------------------------- org units
   const company = await prisma.orgUnit.upsert({
-    where: { code: "DA" },
-    update: { name: "Drive Australia" },
-    create: { code: "DA", name: "Drive Australia", type: "COMPANY", sortOrder: 0 },
+    where: { code: "HONDA" },
+    update: { name: "Honda" },
+    create: { code: "HONDA", name: "Honda", type: "COMPANY", sortOrder: 0 },
   });
 
   const orgByCode = new Map<string, string>([["DA", company.id]]);
