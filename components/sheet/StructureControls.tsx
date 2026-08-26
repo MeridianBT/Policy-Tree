@@ -34,6 +34,7 @@ export function RowActions({
   canAddDepartment,
   canAddMeasure,
   canRename,
+  renameLabel = "Rename",
   canDelete,
   onAddChild,
   onAddDepartment,
@@ -47,6 +48,8 @@ export function RowActions({
   canAddDepartment?: boolean;
   canAddMeasure: boolean;
   canRename: boolean;
+  /** A group row is renamed; a measure opens its whole form. */
+  renameLabel?: string;
   canDelete: boolean;
   onAddChild: () => void;
   onAddDepartment?: () => void;
@@ -83,7 +86,7 @@ export function RowActions({
         </button>
       )}
       {canRename && (
-        <button type="button" className={ICON_BUTTON} onClick={onRename} title="Rename">
+        <button type="button" className={ICON_BUTTON} onClick={onRename} title={renameLabel}>
           <Pencil size={11} />
         </button>
       )}
@@ -281,10 +284,32 @@ export function InlineAddDepartment({
  * derived are asked for; `achievement_method` follows from the direction and
  * the code is generated from the name.
  */
-export function InlineAddMeasure({
+export interface MeasureValues {
+  name: string;
+  measuredAs: string;
+  unit: string;
+  direction: string;
+  aggregation: string;
+  decimalPlaces: number;
+  dicOrgUnitId: string;
+  businessUnitId: string;
+}
+
+/**
+ * The measure form, used both to add one and to edit one in place.
+ *
+ * One component for both because they are the same eight decisions, and a
+ * second form would be a second place for the two to drift apart - which on
+ * this screen would mean an edit that silently could not express something the
+ * add form could.
+ */
+export function InlineMeasureForm({
   indent,
   dics,
   businessUnits,
+  initial,
+  submitLabel = "Add measure",
+  pendingLabel = "Adding…",
   onCommit,
   onCancel,
   pending,
@@ -292,27 +317,24 @@ export function InlineAddMeasure({
   indent: number;
   dics: DicOption[];
   businessUnits: Array<{ id: string; code: string; name: string }>;
-  onCommit: (values: {
-    name: string;
-    measuredAs: string;
-    unit: string;
-    direction: string;
-    aggregation: string;
-    decimalPlaces: number;
-    dicOrgUnitId: string;
-    businessUnitId: string;
-  }) => void;
+  /** Absent when adding; the measure as it stands when editing. */
+  initial?: MeasureValues;
+  submitLabel?: string;
+  pendingLabel?: string;
+  onCommit: (values: MeasureValues) => void;
   onCancel: () => void;
   pending: boolean;
 }) {
-  const [name, setName] = useState("");
-  const [measuredAs, setMeasuredAs] = useState("");
-  const [unit, setUnit] = useState("COUNT");
-  const [direction, setDirection] = useState("HIGHER_BETTER");
-  const [aggregation, setAggregation] = useState("SUM");
-  const [decimalPlaces, setDecimalPlaces] = useState(0);
-  const [dicOrgUnitId, setDic] = useState(dics[0]?.id ?? "");
-  const [businessUnitId, setBusinessUnit] = useState(businessUnits[0]?.id ?? "");
+  const [name, setName] = useState(initial?.name ?? "");
+  const [measuredAs, setMeasuredAs] = useState(initial?.measuredAs ?? "");
+  const [unit, setUnit] = useState(initial?.unit ?? "COUNT");
+  const [direction, setDirection] = useState(initial?.direction ?? "HIGHER_BETTER");
+  const [aggregation, setAggregation] = useState(initial?.aggregation ?? "SUM");
+  const [decimalPlaces, setDecimalPlaces] = useState(initial?.decimalPlaces ?? 0);
+  const [dicOrgUnitId, setDic] = useState(initial?.dicOrgUnitId ?? dics[0]?.id ?? "");
+  const [businessUnitId, setBusinessUnit] = useState(
+    initial?.businessUnitId ?? businessUnits[0]?.id ?? "",
+  );
 
   const field = "border border-rule bg-paper px-1.5 py-1 text-[11px]";
 
@@ -340,6 +362,13 @@ export function InlineAddMeasure({
       </Labelled>
       <Labelled label="Department">
         <select value={dicOrgUnitId} onChange={(e) => setDic(e.target.value)} className={field}>
+          {/* A measure being edited may sit under a department this user
+              cannot otherwise file to. Listing it keeps the current value
+              selected and truthful; the server still refuses a *move* to
+              anywhere they have no authority over. */}
+          {initial && !dics.some((dic) => dic.id === initial.dicOrgUnitId) && (
+            <option value={initial.dicOrgUnitId}>current</option>
+          )}
           {dics.map((dic) => (
             <option key={dic.id} value={dic.id}>{dic.code}</option>
           ))}
@@ -406,7 +435,7 @@ export function InlineAddMeasure({
         }
         className="rounded-sm bg-ink px-2.5 py-1 text-[11px] text-paper disabled:opacity-50"
       >
-        {pending ? "Adding…" : "Add measure"}
+        {pending ? pendingLabel : submitLabel}
       </button>
       <button type="button" onClick={onCancel} className="px-2 py-1 text-[11px] text-ink-muted underline">
         Cancel

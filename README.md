@@ -524,6 +524,39 @@ stored figures"); only a second, explicit confirmation removes anything. The
 same two-step confirmation guards deleting a Control Item that already has data
 keyed against it.
 
+#### Editing a measure
+
+The pencil on a measure row opens its whole form, not an inline rename: a
+Control Item has eight settings and only one of them is its name. Name, the
+Control Item text, unit, roll-up, direction, decimal places, Department and
+business unit are all editable in place. The **code** is not — a formula
+addresses the measure by it, so changing it would break every formula pointing
+at it silently.
+
+Two guards beyond the usual role and year checks.
+
+**Moving a measure to another Department needs authority over both ends.**
+Filing work onto a division is the same act whether it is new work or work
+being handed over, and `addControlItem` already asks permission for it, so an
+edit asks the same. A division lead may move a measure of theirs down into one
+of their own departments; they may not push it onto a division that never
+agreed to it.
+
+**Roll-up and direction are refused when a locked version holds figures.**
+Those two are the settings that reach back through stored numbers: switch sum
+to average and a closed quarter reads differently; switch higher-is-better to
+lower and every achievement and evaluation symbol on that row inverts. Doing
+either to a locked version rewrites what was committed, so it is refused for
+every role including SUPER_ADMIN — the same rule, and the same helper, that
+stops a delete taking a closed figure with it. Everything else about the
+measure stays editable while the lock stands, because a name and a Department
+change nothing a closed version says.
+
+Before this existed the only thing that could change was the name, so a
+measure filed against the wrong Department was stuck there for the year: the
+only alternative was to delete it, and that takes every figure ever keyed
+against it.
+
 #### Reordering by dragging
 
 In edit mode every row also grows a grip on its right-hand end. Dragging it
@@ -730,7 +763,7 @@ macOS Safari need a run on those platforms.
 ```bash
 npm run lint          # ESLint, zero warnings
 npm run typecheck     # tsc --noEmit
-npm test              # 365 tests, about six seconds
+npm test              # 377 tests, about six seconds
 npm run test:unit     # the pure modules only, no database needed
 npm run check:ui      # browser checks, against a running dev server
 ```

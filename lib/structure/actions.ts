@@ -279,23 +279,115 @@ export async function renameNode(input: unknown): Promise<StructureResult> {
   }
 }
 
-export async function renameControlItem(input: unknown): Promise<StructureResult> {
+const updateControlItemSchema = z.object({
+  id: z.string().min(1),
+  name: z.string().trim().min(1, "Give the measure a name.").max(200),
+  measuredAs: z.string().trim().max(120).nullable(),
+  unit: z.enum(["PERCENT", "CURRENCY", "COUNT", "RATIO", "DAYS", "INDEX"]),
+  direction: z.enum(["HIGHER_BETTER", "LOWER_BETTER"]),
+  aggregation: z.enum(["SUM", "AVERAGE", "LATEST"]),
+  decimalPlaces: z.coerce.number().int().min(0).max(4),
+  dicOrgUnitId: z.string().min(1, "A Control Item needs a Department in charge."),
+  businessUnitId: z.string().min(1, "A Control Item needs a business unit."),
+});
+
+/**
+ * Editing a Control Item in place: everything about it except the code a
+ * formula addresses it by.
+ *
+ * Until this existed the only thing that could change was the name, so a
+ * measure filed against the wrong department - or set to sum when it should
+ * average - was stuck that way for the year, because the only alternative was
+ * to delete it and lose every figure ever keyed against it.
+ *
+ * Two guards beyond the usual role and year checks.
+ *
+ * Moving a measure to another department needs authority over *both* ends,
+ * not just the one it is leaving. Otherwise a division lead could push work
+ * onto a division that never agreed to it, which is the same act as filing it
+ * there in the first place - and `addControlItem` already asks permission for
+ * that.
+ *
+ * Changing how a figure is *read* is free; changing what it *means* is not.
+ * Roll-up and direction are the two settings that reach back through stored
+ * figures: switch sum to average and a closed quarter reads differently,
+ * switch higher-is-better to lower and every achievement and evaluation symbol
+ * on that row inverts. Doing that to a locked version rewrites what was
+ * committed, so it is refused for every role - the same rule, and the same
+ * helper, as deleting a row out from under one.
+ */
+export async function updateControlItem(input: unknown): Promise<StructureResult> {
   try {
     const user = await requireSession();
-    const { id, statement } = renameSchema.parse(input);
+    const data = updateControlItemSchema.parse(input);
 
     const item = await prisma.controlItem.findUnique({
-      where: { id },
-      select: { node: { select: { level: true } }, dicOrgUnitId: true },
+      where: { id: data.id },
+      select: {
+        name: true,
+        dicOrgUnitId: true,
+        direction: true,
+        aggregation: true,
+        node: { select: { level: true, kiId: true } },
+      },
     });
     if (!item) return { ok: false, message: "That Control Item no longer exists." };
+
     if (!(await canControlItemScope(user, item.node.level, item.dicOrgUnitId))) {
       throw new NotPermitted();
     }
+    if (
+      data.dicOrgUnitId !== item.dicOrgUnitId &&
+      !(await canControlItemScope(user, item.node.level, data.dicOrgUnitId))
+    ) {
+      throw new NotPermitted(
+        "You can only move a measure to a division or department you are responsible for.",
+      );
+    }
+    if (!(await canEditInKi(user, item.node.kiId))) {
+      throw new NotPermitted("That year is closed. Only a super admin can change it.");
+    }
 
-    await prisma.controlItem.update({ where: { id }, data: { name: statement } });
+    const changesMeaning =
+      data.direction !== item.direction || data.aggregation !== item.aggregation;
+    if (changesMeaning) {
+      const locked = await lockedVersionsHolding([data.id]);
+      if (locked.length) {
+        return {
+          ok: false,
+          message:
+            `"${item.name}" holds figures in ${locked.length === 1 ? "a locked version" : "locked versions"} ` +
+            `(${locked.join(", ")}). Changing how it rolls up, or which direction is better, would change ` +
+            "what those closed figures say - so it is refused for everyone, including an administrator. " +
+            "Everything else about the measure can still be edited. Unlock the version first if this " +
+            "genuinely needs to change.",
+        };
+      }
+    }
+
+    // INVERSE is the cost-item convention; a plain ratio is the only meaningful
+    // reading for a higher-is-better item. Re-derived here for the same reason
+    // it is derived on creation - it is a consequence of direction, not a
+    // separate decision.
+    const achievementMethod = data.direction === "LOWER_BETTER" ? "INVERSE" : "RATIO";
+
+    await prisma.controlItem.update({
+      where: { id: data.id },
+      data: {
+        name: data.name,
+        measuredAs: data.measuredAs,
+        unit: data.unit,
+        direction: data.direction,
+        achievementMethod,
+        aggregation: data.aggregation,
+        decimalPlaces: data.decimalPlaces,
+        dicOrgUnitId: data.dicOrgUnitId,
+        businessUnitId: data.businessUnitId,
+      },
+    });
+
     revalidate();
-    return { ok: true, message: "Renamed." };
+    return { ok: true, message: `${data.name} updated.` };
   } catch (error) {
     return permissionAware(error);
   }

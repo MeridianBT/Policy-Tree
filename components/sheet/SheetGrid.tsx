@@ -136,7 +136,13 @@ export interface EditingHandlers {
   onStartRename: (id: string) => void;
   onCancelRename: () => void;
   onRenameNode: (id: string, statement: string) => void;
-  onRenameControlItem: (id: string, name: string) => void;
+  /**
+   * Opens the measure form. A measure has eight settings and only one of them
+   * is its name, so the pencil opens the lot rather than an inline rename that
+   * could reach just the one - the other seven were unreachable for the life
+   * of the Ki before this.
+   */
+  onEditControlItem: (row: ControlItemRow) => void;
   onAddChild: (parentId: string, kind: "THEME" | "OBJECTIVE") => void;
   onAddDepartment: (parentObjectiveId: string) => void;
   onAddMeasure: (nodeId: string) => void;
@@ -660,13 +666,7 @@ function ControlItemRowView({
         {/* Stands in for the group rows' disclosure caret, so a Control Item
             lands on the same vertical as a group at the same step. */}
         <span className="size-4 shrink-0" aria-hidden />
-        {editing?.renamingId === row.id ? (
-          <InlineRename
-            initial={row.name}
-            onCommit={(value) => editing.onRenameControlItem(row.id, value)}
-            onCancel={editing.onCancelRename}
-          />
-        ) : (
+        {(
           <Link
             href={`/control-item/${row.id}`}
             // A link is a drag source by default, so dragging a measure by its
@@ -679,7 +679,6 @@ function ControlItemRowView({
           </Link>
         )}
         {editing &&
-        editing.renamingId !== row.id &&
         (row.level < 4
           ? editing.user.role === "SUPER_ADMIN" || editing.user.role === "EXECUTIVE"
           : canEditStructureAt(editing.user, editing.dics, row.level, row.dicOrgUnitId)) ? (
@@ -696,10 +695,11 @@ function ControlItemRowView({
               childLabel=""
               canAddMeasure={false}
               canRename
+              renameLabel="Edit measure"
               canDelete
               onAddChild={() => {}}
               onAddMeasure={() => {}}
-              onRename={() => editing.onStartRename(row.id)}
+              onRename={() => editing.onEditControlItem(row)}
               onDelete={() => editing.onDeleteControlItem(row.id)}
             />
           </>

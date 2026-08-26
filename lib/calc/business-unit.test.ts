@@ -34,6 +34,8 @@ function item(id: string, businessUnitCode: string, dicCode = "SLS"): SheetRowMo
     dicOrgUnitId: dicCode,
     businessUnitCode,
     businessUnitName: businessUnitCode,
+    businessUnitId: `bu-${businessUnitCode}`,
+    measuredAsRaw: null,
     responsibleUserId: null,
     responsibleUserName: null,
     level: 2,

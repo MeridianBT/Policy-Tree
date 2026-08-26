@@ -29,7 +29,8 @@ import {
   DeleteConfirm,
   InlineAdd,
   InlineAddDepartment,
-  InlineAddMeasure,
+  InlineMeasureForm,
+  type MeasureValues,
   useStructureAction,
   type DicOption,
 } from "./StructureControls";
@@ -41,8 +42,8 @@ import {
   assignableDics,
   deleteControlItem,
   deleteNode,
-  renameControlItem,
   renameNode,
+  updateControlItem,
   reorderRow,
   type DeletionImpact,
 } from "@/lib/structure/actions";
@@ -260,6 +261,7 @@ export function SheetScreen({
     | { kind: "DEPARTMENT_BRANCH"; parentObjectiveId: string; under: string }
     | { kind: "DEPARTMENT_OBJECTIVE"; parentThemeId: string; under: string }
     | { kind: "MEASURE"; parentId: string; under: string }
+    | { kind: "EDIT_MEASURE"; row: ControlItemRow; initial: MeasureValues }
     | null
   >(null);
   const [deleting, setDeleting] = useState<
@@ -321,8 +323,23 @@ export function SheetScreen({
           onStartRename: setRenamingId,
           onCancelRename: () => setRenamingId(null),
           onRenameNode: (id, statement) => run(() => renameNode({ id, statement }), afterChange),
-          onRenameControlItem: (id, statement) =>
-            run(() => renameControlItem({ id, statement }), afterChange),
+          onEditControlItem: (row) =>
+            setAdding({
+              kind: "EDIT_MEASURE",
+              row,
+              initial: {
+                name: row.name,
+                // The raw value, so opening and saving a measure nobody filled
+                // this in for does not store the sheet's readable fallback.
+                measuredAs: row.measuredAsRaw ?? "",
+                unit: row.unit,
+                direction: row.direction,
+                aggregation: row.aggregation,
+                decimalPlaces: row.decimalPlaces,
+                dicOrgUnitId: row.dicOrgUnitId,
+                businessUnitId: row.businessUnitId,
+              },
+            }),
           onAddChild: (parentId, kind) => {
             // A Level 4 Theme's continuation is its own Objective, scoped to
             // whoever owns that branch; everything above Level 4 is a plain
@@ -689,6 +706,51 @@ export function SheetScreen({
         </div>
       )}
 
+      {adding?.kind === "EDIT_MEASURE" && (
+        <div className="border border-rule bg-paper">
+          <p className="border-b border-rule px-3 py-1 text-[11px] text-ink-muted">
+            Editing <strong>{adding.row.name}</strong>{" "}
+            <span className="text-ink-faint">({adding.row.code})</span> — the code stays as it is,
+            because formulas address the measure by it.
+          </p>
+          {/* Same scoping as the add form: a division lead is offered only the
+              org units they may file to, fetched server-side rather than
+              filtered on screen. The measure's current department is listed
+              regardless, so an edit cannot silently re-file it. */}
+          {formDics === null ? (
+            <p className="px-3 py-2 text-[11px] text-ink-faint">Loading divisions…</p>
+          ) : (
+          <InlineMeasureForm
+            indent={12}
+            dics={formDics}
+            businessUnits={model.businessUnits}
+            initial={adding.initial}
+            submitLabel="Save measure"
+            pendingLabel="Saving…"
+            pending={saving}
+            onCommit={(values) =>
+              run(
+                () =>
+                  updateControlItem({
+                    id: adding.row.id,
+                    name: values.name,
+                    measuredAs: values.measuredAs || null,
+                    unit: values.unit,
+                    direction: values.direction,
+                    aggregation: values.aggregation,
+                    decimalPlaces: values.decimalPlaces,
+                    dicOrgUnitId: values.dicOrgUnitId,
+                    businessUnitId: values.businessUnitId,
+                  }),
+                afterChange,
+              )
+            }
+            onCancel={() => setAdding(null)}
+          />
+          )}
+        </div>
+      )}
+
       {adding?.kind === "MEASURE" && (
         <div className="border border-rule bg-paper">
           <p className="border-b border-rule px-3 py-1 text-[11px] text-ink-muted">
@@ -702,7 +764,7 @@ export function SheetScreen({
               under. Ask an admin to set your org unit.
             </p>
           ) : (
-          <InlineAddMeasure
+          <InlineMeasureForm
             indent={12}
             dics={formDics}
             businessUnits={model.businessUnits}

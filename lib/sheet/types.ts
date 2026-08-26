@@ -44,6 +44,14 @@ export interface ControlItemRow {
   /** The business unit this measure belongs to: AUTO, MC, PP or SHARED. */
   businessUnitCode: string;
   businessUnitName: string;
+  businessUnitId: string;
+  /**
+   * `measuredAs` exactly as stored, which is null when nobody has filled it
+   * in. `measuredAs` above carries the readable fallback the sheet shows
+   * instead; the edit form needs the raw value so that opening and saving a
+   * measure does not quietly turn "not set" into the literal word "Count".
+   */
+  measuredAsRaw: string | null;
   /**
    * Who keys this measure. Needed on the client only so the entry grid can
    * mirror `canEditControlItem`, which lets a named responsible person key a

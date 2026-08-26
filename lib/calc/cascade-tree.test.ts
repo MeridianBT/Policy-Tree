@@ -36,6 +36,8 @@ function item(id: string, level: number, path: string[], overrides: Partial<Cont
     dicCode: "AUTO",
     dicName: "Auto",
     dicOrgUnitId: "org-auto",
+    businessUnitId: "bu1",
+    measuredAsRaw: null,
     responsibleUserId: null,
     responsibleUserName: null,
     level,

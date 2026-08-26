@@ -14,7 +14,7 @@
  */
 
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
-import { createFixture, prisma, type Fixture } from "./fixture";
+import { codeOf, createFixture, prisma, setRaw, type Fixture } from "./fixture";
 import type { AuthenticatedUser } from "@/lib/auth/types";
 
 let currentUser: AuthenticatedUser;
@@ -52,6 +52,7 @@ const {
   deleteNode,
   renameNode,
   reorderRow,
+  updateControlItem,
 } = await import("@/lib/structure/actions");
 const { createDepartment, deleteDepartment } = await import("@/lib/admin/actions");
 
@@ -736,5 +737,208 @@ describe("reordering rows", () => {
       select: { sortOrder: true },
     });
     expect(branchAfter.sortOrder).toBe(branchBefore.sortOrder);
+  });
+});
+
+/**
+ * Editing a measure in place.
+ *
+ * Two rules here are not obvious from the outside and both are the point of
+ * the feature. Moving a measure to another department needs authority over
+ * where it is *going* as well as where it has been - otherwise a division lead
+ * could push work onto a division that never agreed to it. And roll-up and
+ * direction reach back through stored figures, so changing them on a measure
+ * that a locked version holds would rewrite what was committed.
+ */
+describe("editing a Control Item", () => {
+  /** The measure as it stands, for building an edit that changes one thing. */
+  async function current(id: string) {
+    const item = await prisma.controlItem.findUniqueOrThrow({
+      where: { id },
+      select: {
+        name: true, measuredAs: true, unit: true, direction: true,
+        aggregation: true, decimalPlaces: true, dicOrgUnitId: true, businessUnitId: true,
+      },
+    });
+    return { id, ...item };
+  }
+
+  /*
+   * A Level 4 measure of Alpha's own, because that is where an OWNER's
+   * authority actually lives. The fixture's own measures hang off a Level 2
+   * Objective, which is company-wide and closed to them whichever division
+   * they lead - the same rule that governs every other structure edit.
+   */
+  let alphaBranchId: string;
+  let alphaMeasureId: string;
+
+  beforeAll(async () => {
+    asUser(fx.users.admin);
+    const branch = await addDepartmentBranch({
+      kiId: fx.kiId,
+      parentObjectiveId: fx.nodes.objective,
+      orgUnitId: fx.orgUnits.alpha,
+      statement: "Alpha branch for edit tests",
+    });
+    alphaBranchId = (branch as { id: string }).id;
+    const objective = await addDepartmentObjective({
+      kiId: fx.kiId,
+      parentThemeId: alphaBranchId,
+      statement: "Alpha objective for edit tests",
+    });
+    const measure = await addControlItem({
+      nodeId: (objective as { id: string }).id,
+      name: "Alpha L4 measure",
+      measuredAs: null,
+      unit: "COUNT",
+      direction: "HIGHER_BETTER",
+      aggregation: "SUM",
+      decimalPlaces: 0,
+      dicOrgUnitId: fx.orgUnits.alpha,
+      businessUnitId: fx.businessUnits.AUTO,
+    });
+    alphaMeasureId = (measure as { id: string }).id;
+  });
+
+  it("changes everything the add form could set", async () => {
+    const before = await current(fx.items.B);
+    const result = await updateControlItem({
+      ...before,
+      name: "Item B, renamed",
+      measuredAs: "Units delivered",
+      unit: "CURRENCY",
+      decimalPlaces: 2,
+      businessUnitId: fx.businessUnits.MC,
+    });
+    expect(result.ok).toBe(true);
+
+    const after = await current(fx.items.B);
+    expect(after.name).toBe("Item B, renamed");
+    expect(after.measuredAs).toBe("Units delivered");
+    expect(after.unit).toBe("CURRENCY");
+    expect(after.decimalPlaces).toBe(2);
+    expect(after.businessUnitId).toBe(fx.businessUnits.MC);
+  });
+
+  it("re-derives the achievement method from the direction", async () => {
+    // INVERSE is a consequence of "lower is better", not a separate choice,
+    // exactly as it is on creation.
+    const before = await current(fx.items.B);
+    await updateControlItem({ ...before, direction: "LOWER_BETTER" });
+    expect(
+      (await prisma.controlItem.findUniqueOrThrow({
+        where: { id: fx.items.B }, select: { achievementMethod: true },
+      })).achievementMethod,
+    ).toBe("INVERSE");
+
+    await updateControlItem({ ...(await current(fx.items.B)), direction: "HIGHER_BETTER" });
+    expect(
+      (await prisma.controlItem.findUniqueOrThrow({
+        where: { id: fx.items.B }, select: { achievementMethod: true },
+      })).achievementMethod,
+    ).toBe("RATIO");
+  });
+
+  it("refuses a VIEWER", async () => {
+    asUser(fx.users.viewer);
+    expect((await updateControlItem(await current(fx.items.A))).ok).toBe(false);
+  });
+
+  it("refuses an OWNER the company-wide Levels 1-3, whoever they lead", async () => {
+    asUser(fx.users.alphaLead);
+    const result = await updateControlItem({ ...(await current(fx.items.A)), name: "Reaching up" });
+    expect(result.ok).toBe(false);
+    expect((await current(fx.items.A)).name).not.toBe("Reaching up");
+  });
+
+  it("lets an OWNER edit their own Level 4 measure", async () => {
+    asUser(fx.users.alphaLead);
+    const result = await updateControlItem({ ...(await current(alphaMeasureId)), decimalPlaces: 3 });
+    expect(result.ok).toBe(true);
+    expect((await current(alphaMeasureId)).decimalPlaces).toBe(3);
+  });
+
+  it("refuses another division's lead the same measure", async () => {
+    asUser(fx.users.betaLead);
+    const result = await updateControlItem({ ...(await current(alphaMeasureId)), name: "Beta reaching" });
+    expect(result.ok).toBe(false);
+    expect((await current(alphaMeasureId)).name).not.toBe("Beta reaching");
+  });
+
+  it("refuses an OWNER moving a measure into a division they do not hold", async () => {
+    // The measure is theirs; the destination is not. Filing work onto another
+    // division is the same act as creating it there, and addControlItem asks
+    // permission for that too.
+    asUser(fx.users.alphaLead);
+    const result = await updateControlItem({
+      ...(await current(alphaMeasureId)),
+      dicOrgUnitId: fx.orgUnits.beta,
+    });
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.message).toMatch(/responsible for/i);
+    expect((await current(alphaMeasureId)).dicOrgUnitId).toBe(fx.orgUnits.alpha);
+  });
+
+  it("lets an OWNER move a measure into a department beneath their own division", async () => {
+    asUser(fx.users.alphaLead);
+    const result = await updateControlItem({
+      ...(await current(alphaMeasureId)),
+      dicOrgUnitId: fx.orgUnits.alphaDept,
+    });
+    expect(result.ok).toBe(true);
+    await updateControlItem({ ...(await current(alphaMeasureId)), dicOrgUnitId: fx.orgUnits.alpha });
+  });
+
+  describe("against a locked version", () => {
+    // Locked here rather than relying on the fixture: an earlier block in this
+    // file unlocks PRB in its own cleanup, so the state has to be established
+    // by whoever depends on it.
+    beforeEach(async () => {
+      await setRaw(fx.items.C, "2026-09", fx.versions.PRB, 42);
+      await prisma.planVersion.update({
+        where: { id: fx.versions.PRB }, data: { lockedAt: new Date() },
+      });
+      asUser(fx.users.admin);
+    });
+    afterEach(async () => {
+      await prisma.planVersion.update({
+        where: { id: fx.versions.PRB }, data: { lockedAt: null },
+      });
+    });
+
+    it("refuses a roll-up change", async () => {
+      const before = await current(fx.items.C);
+      const result = await updateControlItem({ ...before, aggregation: "AVERAGE" });
+      expect(result.ok).toBe(false);
+      if (!result.ok) expect(result.message).toMatch(/PRB/);
+      expect((await current(fx.items.C)).aggregation).toBe(before.aggregation);
+    });
+
+    it("refuses a direction change on the same grounds", async () => {
+      const before = await current(fx.items.C);
+      expect((await updateControlItem({ ...before, direction: "LOWER_BETTER" })).ok).toBe(false);
+      expect((await current(fx.items.C)).direction).toBe(before.direction);
+    });
+
+    it("still allows everything that cannot change a stored figure", async () => {
+      // The lock protects what a closed version says, not what the row is
+      // called or which desk answers for it.
+      const before = await current(fx.items.C);
+      const result = await updateControlItem({
+        ...before,
+        name: "Renamed despite the lock",
+        decimalPlaces: 1,
+        measuredAs: "Still editable",
+      });
+      expect(result.ok).toBe(true);
+      expect((await current(fx.items.C)).name).toBe("Renamed despite the lock");
+    });
+  });
+
+  it("never changes the code a formula addresses the measure by", async () => {
+    asUser(fx.users.admin);
+    const codeBefore = await codeOf(fx.items.B);
+    await updateControlItem({ ...(await current(fx.items.B)), name: "Something else entirely" });
+    expect(await codeOf(fx.items.B)).toBe(codeBefore);
   });
 });

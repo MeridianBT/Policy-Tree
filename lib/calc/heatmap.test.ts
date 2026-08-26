@@ -55,6 +55,8 @@ function item(id: string, dicCode: string, cells: SheetCell[]): SheetRowModel {
     dicCode,
     dicName: dicCode,
     dicOrgUnitId: dicCode,
+    businessUnitId: "bu1",
+    measuredAsRaw: null,
     businessUnitCode: "AUTO",
     businessUnitName: "Automobiles",
     responsibleUserId: null,
