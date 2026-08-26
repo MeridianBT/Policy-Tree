@@ -56,6 +56,12 @@ password sign-in is off by default and Microsoft is the only way in — and
 Microsoft is not configured yet. Without this you get a sign-in screen you
 cannot get past.
 
+**Set only the five variables above.** Do not paste the rest of
+`.env.example` in: its Microsoft and Graph entries are angle-bracketed
+placeholders, and a half-configured Entra provider used to take the whole
+login screen down. The app now ignores placeholder values, but leaving them
+set still buys you nothing.
+
 ## 4 · Give it a URL
 
 App service → **Settings → Networking → Generate Domain**.
@@ -78,37 +84,50 @@ broken deploy is caught rather than going green.
 
 ## 6 · Load the demo data
 
-The database is empty until you seed it. Migrations create the tables;
-they do not create a plan.
+The database is empty until you seed it. Migrations create the tables; they
+do not create a plan, and with no accounts there is nothing to sign in with.
 
-Pick a password first — see the warning below — then:
+**The easy way — no shell needed.** Set two more variables on the app service:
 
-```bash
-npm install -g @railway/cli
-railway login
-railway link            # choose the project, then the app service
-railway ssh
+| Variable | Value |
+|---|---|
+| `SEED_ON_BOOT` | `uat` |
+| `SEED_PASSWORD` | Something only your team knows |
 
-# now inside the container:
-SEED_PASSWORD='<something only your team knows>' npm run db:seed:uat
-exit
+Redeploy. The container seeds itself on the way up, and the deploy log says so:
+
+```
+SEED_ON_BOOT: no accounts found, loading the demo dataset…
+  org units:      45
+  103KI:         72 rows, 82 Control Items, 2296 figures
 ```
 
-**If `railway ssh` is not available on your plan**, run it from your own machine
-against the database's *public* URL instead. In Railway, open the Postgres
-service → Variables → copy `DATABASE_PUBLIC_URL` (the public one — the internal
-`railway.internal` address is not reachable from your laptop):
+`SEED_ON_BOOT` is safe to leave set. It checks for existing accounts first and
+does nothing at all if it finds any — which matters, because the seed deletes
+and recreates its Ki, so an unguarded second run would erase every figure
+anyone had keyed. On later boots the log reads:
+
+```
+SEED_ON_BOOT: 14 accounts already exist — leaving the database untouched.
+```
+
+To re-seed deliberately, empty the year from Admin first, or drop the database.
+
+**The other way — a shell**, if you have one and prefer it:
+
+```bash
+railway ssh
+SEED_PASSWORD='…' npm run db:seed:uat
+```
+
+Or from your own machine, against the Postgres service's `DATABASE_PUBLIC_URL`
+(the public one — the `railway.internal` address does not resolve off-platform):
 
 ```bash
 git clone https://github.com/MeridianBT/Policy-Tree.git
-cd Policy-Tree
-npm install
-DATABASE_URL='<the DATABASE_PUBLIC_URL you copied>' \
-  SEED_PASSWORD='<something only your team knows>' \
-  npm run db:seed:uat
+cd Policy-Tree && npm install
+DATABASE_URL='<DATABASE_PUBLIC_URL>' SEED_PASSWORD='…' npm run db:seed:uat
 ```
-
-Needs Node 22 locally. Nothing else from that clone is used.
 
 ## 7 · Sign in
 
