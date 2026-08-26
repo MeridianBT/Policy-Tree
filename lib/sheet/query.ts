@@ -119,6 +119,9 @@ export async function loadSheet(options: LoadSheetOptions): Promise<SheetModel> 
     periodValues[dateToPeriod(entry.period)] = {
       value: stored === null || stored === undefined ? null : Number(stored),
       error: entry.errorMessage ?? null,
+      // Carried so the entry grid can hand a formula back as it was written,
+      // rather than as the number it last evaluated to.
+      formula: entry.formula,
     };
   }
 
@@ -245,6 +248,7 @@ export async function loadSheet(options: LoadSheetOptions): Promise<SheetModel> 
         dicOrgUnitId: item.dicOrgUnitId,
         businessUnitCode: item.businessUnit.code,
         businessUnitName: item.businessUnit.name,
+        responsibleUserId: item.responsibleUserId,
         responsibleUserName: item.responsibleUser?.name ?? null,
         level: node.level,
         path,

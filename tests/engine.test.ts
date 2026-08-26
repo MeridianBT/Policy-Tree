@@ -10,6 +10,8 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createFixture, codeOf, prisma, readCell, setRaw, type Fixture } from "./fixture";
 import { saveEntry, VersionLockedError } from "@/lib/entries/save";
+import { loadSheet } from "@/lib/sheet/query";
+import type { ControlItemRow } from "@/lib/sheet/types";
 import { NotPermittedError } from "@/lib/auth/errors";
 import { FormulaError } from "@/lib/formula/errors";
 
@@ -399,5 +401,82 @@ describe("formula cells", () => {
       }),
     ).rejects.toBeInstanceOf(FormulaError);
     expect((await readCell(fx.items.C, "2026-06", V())).formula).toBeNull();
+  });
+});
+
+/**
+ * Which cells the sheet offers as keyable, and what it puts in them.
+ *
+ * The grid draws a box wherever `targetEditable` is true and seeds it from
+ * `targetFormula` before `target`, so these two fields are the whole contract
+ * between the calculation module and the entry surface. Getting either wrong
+ * is silent on screen and destructive underneath: a box drawn over a resolved
+ * target would write into a version nobody chose, and a box seeded with a
+ * formula's result would replace the formula the moment anyone tabbed past.
+ */
+describe("keyable cells on the sheet", () => {
+  async function monthCell(targetVersionId: string | null, controlItemId = fx.items.A) {
+    const model = await loadSheet({ kiId: fx.kiId, levels: [2], targetVersionId });
+    const row = model.rows.find(
+      (candidate) => candidate.kind === "CONTROL_ITEM" && candidate.id === controlItemId,
+    ) as ControlItemRow;
+    return row.cells.find((cell) => cell.key === "2026-07")!;
+  }
+
+  beforeAll(async () => {
+    await setRaw(fx.items.A, "2026-07", fx.versions.OB, 250);
+  });
+
+  it("offers no box at all when the target is the latest-forecast resolution", async () => {
+    // Unpinned, the column is an answer assembled from several versions. There
+    // is no single entry for a keystroke to land in, so nothing is offered.
+    const cell = await monthCell(null);
+    expect(cell.target).toBe(250);
+    expect(cell.targetEditable).toBe(false);
+  });
+
+  it("offers a box once a specific unlocked version is pinned", async () => {
+    const cell = await monthCell(fx.versions.OB);
+    expect(cell.target).toBe(250);
+    expect(cell.targetEditable).toBe(true);
+  });
+
+  it("offers no box on a locked version, however it is reached", async () => {
+    const cell = await monthCell(fx.versions.PRB);
+    expect(cell.targetEditable).toBe(false);
+  });
+
+  it("never offers a box on a quarter or the Ki total", async () => {
+    const model = await loadSheet({
+      kiId: fx.kiId,
+      levels: [2],
+      targetVersionId: fx.versions.OB,
+    });
+    const row = model.rows.find(
+      (candidate) => candidate.kind === "CONTROL_ITEM" && candidate.id === fx.items.A,
+    ) as ControlItemRow;
+    const derived = row.cells.filter((cell) => cell.kind !== "MONTH");
+    expect(derived.length).toBe(5); // four quarters and the Ki total
+    expect(derived.every((cell) => cell.targetEditable === false)).toBe(true);
+  });
+
+  it("carries a formula back as it was written, not as the number it made", async () => {
+    const written = "=[CI:" + codes.B + "][2026-07][OB] + 10";
+    await setRaw(fx.items.B, "2026-07", fx.versions.OB, 90);
+    await saveEntry(fx.users.admin, {
+      controlItemId: fx.items.C,
+      period: "2026-07",
+      planVersionId: fx.versions.OB,
+      input: written,
+    });
+
+    const cell = await monthCell(fx.versions.OB, fx.items.C);
+    expect(cell.target).toBeCloseTo(100, 6);
+    expect(cell.targetFormula).toBe(written);
+  });
+
+  it("leaves targetFormula null for a plain number", async () => {
+    const cell = await monthCell(fx.versions.OB);
+    expect(cell.targetFormula).toBeNull();
   });
 });

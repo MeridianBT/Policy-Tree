@@ -181,6 +181,10 @@ holds one.
 A formula may read a locked version: the freeze is exactly what makes an old
 forecast quotable.
 
+Formulas are typed wherever a figure is: into `/my-entries` for an actual, and
+into a month cell on the sheet for a target once a version is pinned (see
+[Keying targets on the sheet](#keying-targets-on-the-sheet)).
+
 ### Permissions
 
 Enforced server-side on every mutation, in `lib/auth/permissions.ts`. The UI
@@ -372,7 +376,7 @@ shared mailbox does not fill with hundreds of copies nobody reads.
 
 | Route | What it is |
 |---|---|
-| `/sheet` | The company sheet — Levels 1–3 by default, with a View toggle folding every Level 4 branch in under its Objective. Virtualised, with version selector, compare mode, four display densities, condensable quarter columns, and three filters — Business unit, then Division, then Department — read outside-in. Rows can be dragged into a new order among their own siblings. ADMIN and OWNER (division/department leads) can edit the structure directly here |
+| `/sheet` | The company sheet — Levels 1–3 by default, with a View toggle folding every Level 4 branch in under its Objective. Virtualised, with version selector, compare mode, four display densities, condensable quarter columns, and three filters — Business unit, then Division, then Department — read outside-in. Rows can be dragged into a new order among their own siblings, and month cells become keyable when a specific unlocked version is pinned ADMIN and OWNER (division/department leads) can edit the structure directly here |
 | `/division/[code]` | The same Level 4 sheet, pre-scoped to one division and its departments — a narrower, single-division view of what "+ Departments" on the company sheet shows for everyone |
 | `/cascade` | A read-only, one-page alignment map from every Company Goal down to the Department work laddering into it — see below |
 | `/insights` | A read-only symbol-distribution heatmap, one Division per row, one month per column — see below |
@@ -437,6 +441,52 @@ Two guards, because there is no undo and no soft delete behind it:
   button would sit where the first one was, so a double-click would sail
   through both. Typing the name cannot happen by accident, and it forces a
   look at which row was actually clicked.
+
+### Keying targets on the sheet
+
+Pin a specific forecast version in **Target** and, if it is not locked,
+**Enter figures** appears beside it. Every month cell the signed-in person may
+key becomes a box.
+
+The condition is not decoration. Left on "Latest forecast", the target column
+is a *resolution* — for each month, the value from the highest-sequence version
+that actually has one — so it is an answer assembled from several versions and
+belongs to none of them. There is no single stored cell for a keystroke to land
+in, and the sheet says so by offering nothing. Pin OB and the question has an
+answer again: every box is one entry on OB. That rule is one field,
+`targetEditable`, decided in `lib/calc/row.ts` and never re-derived by a
+component.
+
+Only months are keyable. Quarters and the Ki total are rolled up from the
+months at read time, so there is nothing behind them to type into — the same
+"the month is the only stored grain" rule that governs everything else. The
+grid draws them plainly beside the boxes, and they re-derive once the typing
+pauses.
+
+Keying matches `/my-entries` exactly, because it is the same job done to a
+different version: **Tab** saves and moves across, **Enter** saves and drops to
+the same month on the next measure, **Escape** reverts. A value beginning with
+`=` is a formula, with the whole language above available — so a forecast can
+be built as `=[CI:AUTO-VOL][2026-04][OB] * 1.05` rather than as a column of
+hand-multiplied numbers, and it will recompute when its source moves. A cell
+already holding a formula seeds its box with the formula as written, never with
+the number it last evaluated to; seeding the result would silently freeze it
+into a literal the moment anyone tabbed past.
+
+Saving goes through `saveEntry` like every other write, so the same rules
+apply and none of them are re-implemented here: the role and ownership check,
+the flat refusal on a locked version for every role including SUPER_ADMIN, the
+append-only audit row, and the downstream recompute. Who may key which row
+mirrors `canEditControlItem`, which is wider than the structure rule on
+purpose — being *named responsible* for a measure is enough on its own,
+whichever division it is filed under. A row somebody else keys shows its
+figure greyed with the reason in its tooltip rather than showing nothing,
+because "not yours" and "no target set" must not look the same.
+
+**Actuals are not keyed here.** They belong to `/my-entries`, which is scoped
+to the month being closed. Keeping "what we promised" and "what happened" on
+separate screens is deliberate: they are entered by different people, at
+different times, against different versions.
 
 ### Editing the structure from the sheet
 
@@ -661,7 +711,7 @@ macOS Safari need a run on those platforms.
 ```bash
 npm run lint          # ESLint, zero warnings
 npm run typecheck     # tsc --noEmit
-npm test              # 329 tests, about six seconds
+npm test              # 361 tests, about six seconds
 npm run test:unit     # the pure modules only, no database needed
 ```
 
@@ -684,6 +734,10 @@ reason is written where a reader will meet it.
 - `lib/calc/cascade-tree.test.ts` — rebuilding the Level 1–4 tree from the flat
   row list, so a department branch always lands under the objective it ladders
   into and nothing is dropped or duplicated
+- `lib/calc/entry-state.test.ts` — what a keyable box shows and when a blur is
+  worth a write: a formula seeded as written rather than as its result, a
+  plain number seeded without thousands separators, and a tab-through that
+  changes nothing writing nothing
 - `lib/calc/quarter-figures.test.ts` — the cascade's one-figure-per-quarter
   rule: actual once a quarter has closed, target while it is open, and the
   fallback when a closed quarter has nothing keyed into it yet
@@ -740,7 +794,12 @@ current Ki, so run it on a development database and re-seed afterwards.
 
 Gap analysis and countermeasure text (deferred by design — the schema
 accommodates a text block attached to a Control Item per quarter, and nothing is
-built), SSO, approval workflow, notifications, chat integrations, weighted
+built), approval workflow, notifications, chat integrations, weighted
 roll-up or contribution scoring between levels, initiatives or task tracking
 beneath Control Items, and mobile-optimised entry. The application is
 desktop-first and does not break on a tablet.
+
+Microsoft sign-in used to be on this list and no longer is — see
+[Signing in with Microsoft](#signing-in-with-microsoft). What remains unbuilt
+around it is Entra group → role mapping and SCIM provisioning, both noted
+there.

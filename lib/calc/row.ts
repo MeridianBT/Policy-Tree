@@ -44,6 +44,20 @@ export interface SheetCell {
   target: number | null;
   /** Which forecast version supplied the target (month columns only). */
   targetVersionCode: string | null;
+  /** The target's formula as typed, when the stored entry holds one. */
+  targetFormula: string | null;
+  /**
+   * True when this cell's target is one stored entry, on one unlocked version,
+   * and can therefore be keyed directly.
+   *
+   * False in three different situations, and the third is the interesting one:
+   * a derived column has no entry behind it at all; a locked version is the
+   * record of what was committed; and the latest-forecast *resolution* is an
+   * answer assembled from several versions, so it belongs to none of them and
+   * there is no single cell for a keystroke to land in. Pin a version and the
+   * question has an answer again.
+   */
+  targetEditable: boolean;
   actual: number | null;
   achievement: number | null;
   gap: number | null;
@@ -102,6 +116,7 @@ export function buildRow(input: BuildRowInput): SheetRow {
       resolvedTargets[period] = {
         value: hasValue ? cell!.value : null,
         error: cell?.error ?? null,
+        formula: cell?.formula ?? null,
         versionId: hasValue ? input.targetVersionId : null,
         versionCode: hasValue ? pinned?.code ?? null : null,
       };
@@ -112,6 +127,13 @@ export function buildRow(input: BuildRowInput): SheetRow {
 
   const targetValues = targetsAsPeriodValues(resolvedTargets);
   const targetLocked = lockedLookup(versions);
+  // A month's target is keyable only when the reader pinned the version they
+  // are looking at. Unpinned, the column shows a resolution across versions,
+  // and there is no one entry a keystroke could belong to.
+  const pinnedTarget = input.targetVersionId
+    ? versions.find((version) => version.id === input.targetVersionId) ?? null
+    : null;
+  const targetEditable = pinnedTarget !== null && pinnedTarget.lockedAt == null;
 
   const cells: SheetCell[] = [];
   for (const quarter of QUARTERS) {
@@ -127,6 +149,8 @@ export function buildRow(input: BuildRowInput): SheetRow {
           quarter,
           target: resolved?.value ?? null,
           targetVersionCode: resolved?.versionCode ?? null,
+          targetFormula: resolved?.formula ?? null,
+          targetEditable,
           actual: actualCell?.value ?? null,
           error: actualCell?.error ?? resolved?.error ?? null,
           locked: actualSpec ? targetLocked.get(actualSpec.id) === true : false,
@@ -178,6 +202,8 @@ interface MakeCellInput {
   quarter: QuarterCode | null;
   target: number | null;
   targetVersionCode: string | null;
+  targetFormula: string | null;
+  targetEditable: boolean;
   actual: number | null;
   error: string | null;
   locked: boolean;
@@ -204,6 +230,8 @@ function makeCell(input: MakeCellInput): SheetCell {
     quarter: input.quarter,
     target: input.target,
     targetVersionCode: input.targetVersionCode,
+    targetFormula: input.targetFormula,
+    targetEditable: input.targetEditable,
     actual: input.actual,
     achievement: achieved,
     gap: gapValue,
@@ -238,6 +266,11 @@ function summaryCell(input: SummaryCellInput): SheetCell {
     quarter: input.quarter,
     target: rollUp(input.targetValues, input.periods, aggregation),
     targetVersionCode: null,
+    targetFormula: null,
+    // A quarter and a Ki total are derived from the months beneath them. There
+    // is no stored cell here to key, which is the whole reason the month is the
+    // only grain anyone types into.
+    targetEditable: false,
     actual: rollUp(input.actualValues, input.periods, aggregation),
     error: null,
     locked: true, // derived columns are never editable

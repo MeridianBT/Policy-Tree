@@ -23,7 +23,7 @@ export interface ResolvedTarget extends CellValue {
 
 export type ResolvedTargets = Record<PeriodKey, ResolvedTarget>;
 
-const EMPTY: ResolvedTarget = { value: null, versionId: null, versionCode: null };
+const EMPTY: ResolvedTarget = { value: null, formula: null, versionId: null, versionCode: null };
 
 /** Forecast versions, highest sequence first, actuals excluded. */
 export function forecastVersionsDescending(versions: readonly VersionSpec[]): VersionSpec[] {
@@ -55,6 +55,7 @@ export function resolveLatestForecast(
         resolved[period] = {
           value: cell.value,
           error: cell.error ?? null,
+          formula: cell.formula ?? null,
           versionId: version.id,
           versionCode: version.code,
         };

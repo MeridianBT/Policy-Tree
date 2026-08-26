@@ -27,10 +27,17 @@ export function SheetCellView({
   cell,
   mode,
   decimalPlaces,
+  hideTarget,
 }: {
   cell: SheetCell;
   mode: DisplayMode;
   decimalPlaces: number;
+  /**
+   * Drop the target line, because an editable box is standing in its place
+   * directly above. Only FULL and TARGET_ACTUAL show a target at all, so the
+   * other two modes ignore this.
+   */
+  hideTarget?: boolean;
 }) {
   if (cell.error) {
     return (
@@ -69,7 +76,7 @@ export function SheetCellView({
     case "TARGET_ACTUAL":
       return (
         <span className="flex flex-col items-end leading-tight">
-          <span className="num text-ink-muted text-[10px]">{target}</span>
+          {!hideTarget && <span className="num text-ink-muted text-[10px]">{target}</span>}
           <span className="num">{actual}</span>
         </span>
       );
@@ -78,9 +85,11 @@ export function SheetCellView({
     default:
       return (
         <span className="flex flex-col items-end leading-tight">
-          <span className="num text-ink-muted text-[10px]" title={`Target${cell.targetVersionCode ? ` (${cell.targetVersionCode})` : ""}`}>
-            {target}
-          </span>
+          {!hideTarget && (
+            <span className="num text-ink-muted text-[10px]" title={`Target${cell.targetVersionCode ? ` (${cell.targetVersionCode})` : ""}`}>
+              {target}
+            </span>
+          )}
           <span className="num">{actual}</span>
           <span className="flex items-baseline justify-end gap-1">
             <span className="num text-[10px]" style={{ color: cell.symbolColor ?? "var(--color-ink-faint)" }}>
@@ -99,10 +108,10 @@ export function SheetCellView({
 }
 
 /** Row height needed for a display mode, in pixels. */
-export function rowHeightFor(mode: DisplayMode): number {
-  switch (mode) {
-    case "FULL": return 46;
-    case "TARGET_ACTUAL": return 32;
-    default: return 26;
-  }
+export function rowHeightFor(mode: DisplayMode, entryMode?: boolean): number {
+  const base = mode === "FULL" ? 46 : mode === "TARGET_ACTUAL" ? 32 : 26;
+  if (!entryMode) return base;
+  // The box replaces the target line in the two modes that had one and is
+  // added on top in the two that did not, so the extra height differs.
+  return base + (mode === "FULL" || mode === "TARGET_ACTUAL" ? 8 : 20);
 }

@@ -26,6 +26,8 @@ function quarterCell(
     quarter,
     target: values.target,
     targetVersionCode: null,
+    targetFormula: null,
+    targetEditable: false,
     actual: values.actual,
     achievement:
       values.actual !== null && values.target ? values.actual / values.target : null,

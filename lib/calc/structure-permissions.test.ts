@@ -6,7 +6,12 @@
  */
 
 import { describe, expect, it } from "vitest";
-import { canAddDepartmentBranch, canEditStructureAt, orgUnitCoversClient } from "@/components/sheet/permissions";
+import {
+  canAddDepartmentBranch,
+  canEditStructureAt,
+  canEnterFigures,
+  orgUnitCoversClient,
+} from "@/components/sheet/permissions";
 import type { DicOption } from "@/components/sheet/StructureControls";
 
 const DICS: DicOption[] = [
@@ -39,8 +44,8 @@ describe("orgUnitCoversClient", () => {
 
 describe("canEditStructureAt", () => {
   it("lets SUPER_ADMIN edit any level, any org unit", () => {
-    expect(canEditStructureAt({ role: "SUPER_ADMIN", orgUnitId: null }, DICS, 1, null)).toBe(true);
-    expect(canEditStructureAt({ role: "SUPER_ADMIN", orgUnitId: null }, DICS, 4, "auto-d1")).toBe(true);
+    expect(canEditStructureAt({ id: "u1", role: "SUPER_ADMIN", orgUnitId: null }, DICS, 1, null)).toBe(true);
+    expect(canEditStructureAt({ id: "u1", role: "SUPER_ADMIN", orgUnitId: null }, DICS, 4, "auto-d1")).toBe(true);
   });
 
   it("lets EXECUTIVE edit any level, in any org unit", () => {
@@ -49,7 +54,7 @@ describe("canEditStructureAt", () => {
     // department they have no org-unit relationship with. What separates an
     // EXECUTIVE from a SUPER_ADMIN is the lock, the admin panel and a year
     // already run, none of which this function decides.
-    const exec = { role: "EXECUTIVE" as const, orgUnitId: null };
+    const exec = { id: "u1", role: "EXECUTIVE" as const, orgUnitId: null };
     for (const level of [1, 2, 3, 4]) {
       expect(canEditStructureAt(exec, DICS, level, null)).toBe(true);
     }
@@ -58,7 +63,7 @@ describe("canEditStructureAt", () => {
   });
 
   it("refuses VIEWER at every level", () => {
-    const viewer = { role: "VIEWER" as const, orgUnitId: "auto" };
+    const viewer = { id: "u1", role: "VIEWER" as const, orgUnitId: "auto" };
     for (const level of [1, 2, 3, 4]) {
       expect(canEditStructureAt(viewer, DICS, level, "auto")).toBe(false);
     }
@@ -67,7 +72,7 @@ describe("canEditStructureAt", () => {
   it("gives each role a different answer for the same row", () => {
     // The whole point of four roles: one Level 3 row, four verdicts.
     const row = (role: "SUPER_ADMIN" | "EXECUTIVE" | "OWNER" | "VIEWER") =>
-      canEditStructureAt({ role, orgUnitId: "auto" }, DICS, 3, null);
+      canEditStructureAt({ id: "u1", role, orgUnitId: "auto" }, DICS, 3, null);
     expect([row("SUPER_ADMIN"), row("EXECUTIVE"), row("OWNER"), row("VIEWER")]).toEqual([
       true,
       true,
@@ -78,7 +83,7 @@ describe("canEditStructureAt", () => {
     // At Level 4 in a department the OWNER does not cover, only the two
     // company-wide roles get through.
     const strangerL4 = (role: "SUPER_ADMIN" | "EXECUTIVE" | "OWNER" | "VIEWER") =>
-      canEditStructureAt({ role, orgUnitId: "ox" }, DICS, 4, "auto-d1");
+      canEditStructureAt({ id: "u1", role, orgUnitId: "ox" }, DICS, 4, "auto-d1");
     expect([
       strangerL4("SUPER_ADMIN"),
       strangerL4("EXECUTIVE"),
@@ -88,41 +93,41 @@ describe("canEditStructureAt", () => {
   });
 
   it("never lets OWNER touch Levels 1-3", () => {
-    const owner = { role: "OWNER" as const, orgUnitId: "auto" };
+    const owner = { id: "u1", role: "OWNER" as const, orgUnitId: "auto" };
     expect(canEditStructureAt(owner, DICS, 1, null)).toBe(false);
     expect(canEditStructureAt(owner, DICS, 2, null)).toBe(false);
     expect(canEditStructureAt(owner, DICS, 3, null)).toBe(false);
   });
 
   it("lets a division lead edit Level 4 rows in their own division and its departments", () => {
-    const owner = { role: "OWNER" as const, orgUnitId: "auto" };
+    const owner = { id: "u1", role: "OWNER" as const, orgUnitId: "auto" };
     expect(canEditStructureAt(owner, DICS, 4, "auto")).toBe(true);
     expect(canEditStructureAt(owner, DICS, 4, "auto-d1")).toBe(true);
   });
 
   it("refuses a division lead editing a Level 4 row in a different division", () => {
-    const owner = { role: "OWNER" as const, orgUnitId: "auto" };
+    const owner = { id: "u1", role: "OWNER" as const, orgUnitId: "auto" };
     expect(canEditStructureAt(owner, DICS, 4, "ox")).toBe(false);
   });
 
   it("refuses a department lead editing their own division's other departments", () => {
-    const departmentLead = { role: "OWNER" as const, orgUnitId: "auto-d1" };
+    const departmentLead = { id: "u1", role: "OWNER" as const, orgUnitId: "auto-d1" };
     expect(canEditStructureAt(departmentLead, DICS, 4, "auto-d1")).toBe(true);
     expect(canEditStructureAt(departmentLead, DICS, 4, "auto")).toBe(false);
   });
 
   it("refuses everything for VIEWER", () => {
-    const viewer = { role: "VIEWER" as const, orgUnitId: "auto" };
+    const viewer = { id: "u1", role: "VIEWER" as const, orgUnitId: "auto" };
     expect(canEditStructureAt(viewer, DICS, 4, "auto")).toBe(false);
   });
 
   it("refuses an OWNER with no org unit assigned", () => {
-    const orphan = { role: "OWNER" as const, orgUnitId: null };
+    const orphan = { id: "u1", role: "OWNER" as const, orgUnitId: null };
     expect(canEditStructureAt(orphan, DICS, 4, "auto")).toBe(false);
   });
 
   it("refuses a Level 4 row with no org unit recorded", () => {
-    const owner = { role: "OWNER" as const, orgUnitId: "auto" };
+    const owner = { id: "u1", role: "OWNER" as const, orgUnitId: "auto" };
     expect(canEditStructureAt(owner, DICS, 4, null)).toBe(false);
   });
 });
@@ -131,21 +136,69 @@ describe("canAddDepartmentBranch", () => {
   it("offers it on a Level 2 or 3 Objective, to every role but VIEWER", () => {
     const objective2 = { kind: "OBJECTIVE", level: 2 };
     const objective3 = { kind: "OBJECTIVE", level: 3 };
-    expect(canAddDepartmentBranch({ role: "SUPER_ADMIN", orgUnitId: null }, objective2)).toBe(true);
-    expect(canAddDepartmentBranch({ role: "EXECUTIVE", orgUnitId: null }, objective2)).toBe(true);
-    expect(canAddDepartmentBranch({ role: "OWNER", orgUnitId: "auto" }, objective3)).toBe(true);
-    expect(canAddDepartmentBranch({ role: "VIEWER", orgUnitId: "auto" }, objective2)).toBe(false);
+    expect(canAddDepartmentBranch({ id: "u1", role: "SUPER_ADMIN", orgUnitId: null }, objective2)).toBe(true);
+    expect(canAddDepartmentBranch({ id: "u1", role: "EXECUTIVE", orgUnitId: null }, objective2)).toBe(true);
+    expect(canAddDepartmentBranch({ id: "u1", role: "OWNER", orgUnitId: "auto" }, objective3)).toBe(true);
+    expect(canAddDepartmentBranch({ id: "u1", role: "VIEWER", orgUnitId: "auto" }, objective2)).toBe(false);
   });
 
   it("never offers it on a Goal, a Theme, or a Level 4 Objective", () => {
-    const owner = { role: "OWNER" as const, orgUnitId: "auto" };
+    const owner = { id: "u1", role: "OWNER" as const, orgUnitId: "auto" };
     expect(canAddDepartmentBranch(owner, { kind: "GOAL", level: 1 })).toBe(false);
     expect(canAddDepartmentBranch(owner, { kind: "THEME", level: 2 })).toBe(false);
     expect(canAddDepartmentBranch(owner, { kind: "OBJECTIVE", level: 4 })).toBe(false);
   });
 
   it("never offers it to VIEWER", () => {
-    const viewer = { role: "VIEWER" as const, orgUnitId: "auto" };
+    const viewer = { id: "u1", role: "VIEWER" as const, orgUnitId: "auto" };
     expect(canAddDepartmentBranch(viewer, { kind: "OBJECTIVE", level: 2 })).toBe(false);
+  });
+});
+
+/**
+ * Who may key a figure, as opposed to who may move the furniture. This is a
+ * different and deliberately wider rule than the structure one above, and the
+ * widening is the part worth pinning: being *named responsible* for a measure
+ * is enough on its own, whichever division the measure is filed under.
+ */
+describe("canEnterFigures", () => {
+  const inAuto = { dicOrgUnitId: "auto", responsibleUserId: null };
+  const inAutoDept = { dicOrgUnitId: "auto-d1", responsibleUserId: null };
+  const inOx = { dicOrgUnitId: "ox", responsibleUserId: null };
+
+  it("lets a SUPER_ADMIN and an EXECUTIVE key anything", () => {
+    for (const role of ["SUPER_ADMIN", "EXECUTIVE"] as const) {
+      expect(canEnterFigures({ id: "u1", role, orgUnitId: null }, DICS, inOx)).toBe(true);
+    }
+  });
+
+  it("refuses a VIEWER everything, including their own division", () => {
+    expect(canEnterFigures({ id: "u1", role: "VIEWER", orgUnitId: "auto" }, DICS, inAuto)).toBe(false);
+  });
+
+  it("lets an OWNER key their own division and the departments beneath it", () => {
+    const lead = { id: "u1", role: "OWNER" as const, orgUnitId: "auto" };
+    expect(canEnterFigures(lead, DICS, inAuto)).toBe(true);
+    expect(canEnterFigures(lead, DICS, inAutoDept)).toBe(true);
+  });
+
+  it("refuses an OWNER another division's measures", () => {
+    expect(canEnterFigures({ id: "u1", role: "OWNER", orgUnitId: "auto" }, DICS, inOx)).toBe(false);
+  });
+
+  it("lets a named responsible person key a measure outside their own division", () => {
+    // This is how a measure owned by one division but kept by a named person
+    // in another gets its numbers, without handing anyone a whole division.
+    const outsider = { id: "u9", role: "OWNER" as const, orgUnitId: "auto" };
+    expect(canEnterFigures(outsider, DICS, { dicOrgUnitId: "ox", responsibleUserId: "u9" })).toBe(true);
+  });
+
+  it("does not let being responsible promote a VIEWER", () => {
+    const viewer = { id: "u9", role: "VIEWER" as const, orgUnitId: "ox" };
+    expect(canEnterFigures(viewer, DICS, { dicOrgUnitId: "ox", responsibleUserId: "u9" })).toBe(false);
+  });
+
+  it("refuses an OWNER with no org unit and no named responsibility", () => {
+    expect(canEnterFigures({ id: "u1", role: "OWNER", orgUnitId: null }, DICS, inAuto)).toBe(false);
   });
 });

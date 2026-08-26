@@ -34,6 +34,7 @@ function item(id: string, businessUnitCode: string, dicCode = "SLS"): SheetRowMo
     dicOrgUnitId: dicCode,
     businessUnitCode,
     businessUnitName: businessUnitCode,
+    responsibleUserId: null,
     responsibleUserName: null,
     level: 2,
     path: ["goal-1"],

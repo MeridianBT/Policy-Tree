@@ -13,7 +13,7 @@ export default async function SheetPage() {
   return (
     <CompanySheet
       initialModel={model}
-      currentUser={{ role: user.role, orgUnitId: user.orgUnitId }}
+      currentUser={{ id: user.id, role: user.role, orgUnitId: user.orgUnitId }}
     />
   );
 }

@@ -9,12 +9,22 @@
  * division, whose desk.
  */
 
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { Download, Printer } from "lucide-react";
 import type { SheetModel } from "@/lib/sheet/types";
 import { Button, MultiSelect, Segmented, Select } from "@/components/ui/primitives";
-import { SheetGrid, EMPTY_FILTERS, type EditingHandlers, type SheetFilters } from "./SheetGrid";
+import {
+  SheetGrid,
+  EMPTY_FILTERS,
+  type EditingHandlers,
+  type EntryHandlers,
+  type SheetFilters,
+} from "./SheetGrid";
+import { cellKey, retireSaved, type CellEditState } from "./entry-state";
+import { canEnterFigures, type EditingUser } from "./permissions";
+import { saveEntryAction } from "@/lib/entries/actions";
+import type { ControlItemRow } from "@/lib/sheet/types";
 import {
   DeleteConfirm,
   InlineAdd,
@@ -23,7 +33,6 @@ import {
   useStructureAction,
   type DicOption,
 } from "./StructureControls";
-import type { EditingUser } from "./permissions";
 import {
   addControlItem,
   addDepartmentBranch,
@@ -134,6 +143,117 @@ export function SheetScreen({
 
   const canEditStructure = Boolean(currentUser && currentUser.role !== "VIEWER");
   const [editMode, setEditMode] = useState(false);
+
+  /*
+   * Keying figures.
+   *
+   * The offer only exists while one specific, unlocked forecast is pinned as
+   * the Target: that is the single condition under which "the target" names a
+   * stored cell rather than a resolution across versions. So the mode is
+   * *derived* from the version selector rather than remembered alongside it -
+   * changing the Target to Latest forecast, or to a locked version, drops the
+   * boxes rather than leaving a mode switched on that no longer means
+   * anything.
+   */
+  const [entryModeWanted, setEntryModeWanted] = useState(false);
+  const [edited, setEdited] = useState<Map<string, CellEditState>>(() => new Map());
+  const reloadTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const pinnedVersion = useMemo(
+    () => model.versions.find((version) => version.id === targetVersionId) ?? null,
+    [model.versions, targetVersionId],
+  );
+  const canEnterFiguresHere = Boolean(
+    currentUser &&
+      currentUser.role !== "VIEWER" &&
+      pinnedVersion &&
+      !pinnedVersion.isActual &&
+      !pinnedVersion.lockedAt,
+  );
+  const entryMode = entryModeWanted && canEnterFiguresHere;
+
+  /*
+   * A saved figure changes its quarter, its Ki total, its achievement and its
+   * symbol, and every one of those is derived server-side - the month is the
+   * only stored grain. So the sheet has to be re-read. Doing that per
+   * keystroke would refetch twelve times across one row, so it is debounced:
+   * the typed number stands in its box immediately, and the derived columns
+   * catch up once the typing pauses.
+   */
+  const scheduleReload = useCallback(() => {
+    if (!onStructureChanged) return;
+    if (reloadTimer.current) clearTimeout(reloadTimer.current);
+    reloadTimer.current = setTimeout(() => {
+      reloadTimer.current = null;
+      onStructureChanged();
+    }, 900);
+  }, [onStructureChanged]);
+
+  useEffect(() => () => {
+    if (reloadTimer.current) clearTimeout(reloadTimer.current);
+  }, []);
+
+  /*
+   * A fresh model already carries everything that landed, so the local
+   * stand-ins for saved cells retire the moment one arrives.
+   *
+   * This is React's "adjust state when a prop changes" pattern - done during
+   * render against the last model seen, rather than in an effect, so the boxes
+   * never render once showing stale stand-ins and then again without them.
+   */
+  const [lastModel, setLastModel] = useState(model);
+  if (lastModel !== model) {
+    setLastModel(model);
+    setEdited(retireSaved(edited));
+  }
+
+  const commitFigure = useCallback(
+    (row: ControlItemRow, period: string, raw: string) => {
+      const key = cellKey(row.id, period);
+      const input = raw.trim();
+      setEdited((previous) =>
+        new Map(previous).set(key, { input, status: "SAVING", value: null, error: null }),
+      );
+
+      void (async () => {
+        const outcome = await saveEntryAction({
+          controlItemId: row.id,
+          period,
+          planVersionId: targetVersionId,
+          // An emptied box clears the cell rather than storing a zero.
+          input: input === "" ? null : input,
+        });
+        setEdited((previous) =>
+          new Map(previous).set(
+            key,
+            outcome.ok
+              ? {
+                  input,
+                  // A formula that saved but could not evaluate is stored and
+                  // still wrong; #ERR in the cell is not the same as a refusal.
+                  status: outcome.error ? "ERROR" : "SAVED",
+                  value: outcome.value,
+                  error: outcome.error,
+                }
+              : { input, status: "ERROR", value: null, error: outcome.message },
+          ),
+        );
+        if (outcome.ok) scheduleReload();
+      })();
+    },
+    [targetVersionId, scheduleReload],
+  );
+
+  const entry: EntryHandlers | undefined =
+    entryMode && currentUser && pinnedVersion
+      ? {
+          versionId: pinnedVersion.id,
+          versionCode: pinnedVersion.code,
+          canEdit: (row) => canEnterFigures(currentUser, model.dics, row),
+          edited,
+          onCommit: commitFigure,
+        }
+      : undefined;
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [adding, setAdding] = useState<
     | { kind: "NODE"; parentId: string | null; label: string; under: string }
@@ -381,6 +501,19 @@ export function SheetScreen({
           onChange={(dics) => setFilters((previous) => ({ ...previous, dics }))}
         />
 
+        {canEnterFiguresHere && (
+          <>
+            <span className="mx-1 h-4 w-px bg-rule" aria-hidden />
+            <Button
+              variant={entryMode ? "primary" : "default"}
+              onClick={() => setEntryModeWanted((previous) => !previous)}
+              title={`Key ${pinnedVersion?.code} targets directly into the month columns`}
+            >
+              {entryMode ? "Done entering" : "Enter figures"}
+            </Button>
+          </>
+        )}
+
         {canEditStructure && (
           <>
             <span className="mx-1 h-4 w-px bg-rule" aria-hidden />
@@ -434,6 +567,19 @@ export function SheetScreen({
           </Button>
         )}
       </div>
+
+      {entryMode && pinnedVersion && (
+        <p className="border border-rule bg-paper-sunken px-3 py-1.5 text-[12px] text-ink-muted" role="status">
+          Keying <strong className="text-ink">{pinnedVersion.code}</strong> targets. Tab saves and
+          moves across; Enter saves and drops to the next measure; Escape reverts. A value
+          beginning with <code className="num">=</code> is a formula. Quarters and the Ki total are
+          derived from the months, so they are not keyed. Actuals are entered in{" "}
+          <Link href="/my-entries" className="underline hover:text-ink">
+            My entries
+          </Link>
+          .
+        </p>
+      )}
 
       {result && !("needsConfirmation" in result) && (
         <p
@@ -593,6 +739,7 @@ export function SheetScreen({
         condensedQuarters={condensedQuarters}
         onToggleQuarter={toggleQuarter}
         editing={editing}
+        entry={entry}
       />
     </div>
   );

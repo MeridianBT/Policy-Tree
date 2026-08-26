@@ -27,6 +27,14 @@ export interface CellValue {
   value: number | null;
   /** Present when a formula cell failed to evaluate. */
   error?: string | null;
+  /**
+   * The formula as its author typed it, when this cell holds one rather than a
+   * literal. Carried so an editor can put the formula back in front of the
+   * person editing it - seeding the box with the computed number instead would
+   * quietly turn "=SUM(...)" into a frozen literal the moment anyone tabbed
+   * through the cell.
+   */
+  formula?: string | null;
 }
 
 /** Values for one Control Item on one version, keyed by period. */

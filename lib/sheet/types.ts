@@ -44,6 +44,12 @@ export interface ControlItemRow {
   /** The business unit this measure belongs to: AUTO, MC, PP or SHARED. */
   businessUnitCode: string;
   businessUnitName: string;
+  /**
+   * Who keys this measure. Needed on the client only so the entry grid can
+   * mirror `canEditControlItem`, which lets a named responsible person key a
+   * measure filed outside their own org unit. The server re-checks every save.
+   */
+  responsibleUserId: string | null;
   responsibleUserName: string | null;
   level: number;
   path: string[];

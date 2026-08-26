@@ -25,10 +25,13 @@ import { matchRows, EMPTY_FILTERS, type SheetFilters } from "./filters";
 export { EMPTY_FILTERS, type SheetFilters };
 import { columnClass, columnWidth, sheetColumns } from "./columns";
 import type { QuarterCode } from "@/lib/domain/period";
+import type { SheetCell } from "@/lib/calc/row";
 import { groupHeading, indentPx } from "./outline";
 import { DragHandle, InlineRename, RowActions, type DicOption } from "./StructureControls";
 import { canAddDepartmentBranch, canEditStructureAt, type EditingUser } from "./permissions";
 import { SheetCellView, rowHeightFor, type DisplayMode } from "./SheetCellView";
+import { SheetCellInput, SheetCellReadOnly } from "./SheetCellInput";
+import { cellKey, displayFor, isDirty, seedInput, type CellEditState } from "./entry-state";
 import { EvaluationSymbol } from "./EvaluationSymbol";
 
 const GROUP_ROW_HEIGHT = 28;
@@ -102,6 +105,30 @@ export interface ReorderRequest {
   beforeId: string | null;
 }
 
+/**
+ * Keying figures into the grid.
+ *
+ * Present only when the reader has pinned one specific, unlocked forecast
+ * version as the Target, because that is the only state in which "the target"
+ * names a single stored cell. Unpinned, the target column is a resolution
+ * across several versions and belongs to none of them, so there is nothing a
+ * keystroke could land in - see `targetEditable` on SheetCell.
+ *
+ * Actuals are not keyed here. They belong to /my-entries, which is scoped to
+ * the month being closed and is where a division lead already goes; mixing the
+ * two would put "what we promised" and "what happened" one keystroke apart.
+ */
+export interface EntryHandlers {
+  /** The pinned version being keyed. */
+  versionId: string;
+  versionCode: string;
+  /** Client mirror of canEditControlItem; the server re-checks every save. */
+  canEdit: (row: ControlItemRow) => boolean;
+  /** Cells this session has touched, by `cellKey`. */
+  edited: Map<string, CellEditState>;
+  onCommit: (row: ControlItemRow, period: string, raw: string) => void;
+}
+
 export interface EditingHandlers {
   user: EditingUser;
   dics: DicOption[];
@@ -133,6 +160,7 @@ export function SheetGrid({
   condensedQuarters,
   onToggleQuarter,
   editing,
+  entry,
 }: {
   model: SheetModel;
   displayMode: DisplayMode;
@@ -144,6 +172,8 @@ export function SheetGrid({
   onToggleQuarter: (quarter: QuarterCode) => void;
   /** Structure-editing hooks, absent when not in edit mode. */
   editing?: EditingHandlers;
+  /** Figure-entry hooks, absent unless an unlocked version is pinned. */
+  entry?: EntryHandlers;
 }) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const [collapsed, setCollapsed] = useState<Set<string>>(() => new Set());
@@ -177,7 +207,8 @@ export function SheetGrid({
     [filtered, collapsed],
   );
 
-  const controlItemHeight = rowHeightFor(displayMode) * (compareById ? 2 : 1);
+  const controlItemHeight =
+    rowHeightFor(displayMode, Boolean(entry)) * (compareById ? 2 : 1);
 
   // React Compiler cannot memoize a component using this hook: TanStack
   // Virtual returns functions whose identity changes, and memoizing them would
@@ -203,6 +234,46 @@ export function SheetGrid({
       else next.add(id);
       return next;
     });
+  }, []);
+
+  /*
+   * Enter drops to the same month on the next measure, matching /my-entries.
+   * The grid is virtualised, so that row may not be mounted: scroll it into
+   * view first, then focus once React has actually put it there. A few frames
+   * of retry is all it takes, and giving up quietly is better than focusing
+   * the wrong cell.
+   */
+  const inputs = useRef(new Map<string, HTMLInputElement>());
+
+  const focusNextMeasure = useCallback(
+    (fromRowId: string, columnKey: string) => {
+      const from = visible.findIndex((row) => row.id === fromRowId);
+      if (from === -1) return;
+      const nextIndex = visible.findIndex(
+        (row, index) => index > from && row.kind === "CONTROL_ITEM",
+      );
+      if (nextIndex === -1) return;
+      const target = `${visible[nextIndex].id}|${columnKey}`;
+      virtualizer.scrollToIndex(nextIndex, { align: "auto" });
+
+      let attempts = 0;
+      const tryFocus = () => {
+        const element = inputs.current.get(target);
+        if (element) {
+          element.focus();
+          element.select();
+          return;
+        }
+        if (attempts++ < 10) requestAnimationFrame(tryFocus);
+      };
+      requestAnimationFrame(tryFocus);
+    },
+    [visible, virtualizer],
+  );
+
+  const registerInput = useCallback((key: string, element: HTMLInputElement | null) => {
+    if (element) inputs.current.set(key, element);
+    else inputs.current.delete(key);
   }, []);
 
   const beginDrag = useCallback((row: SheetRowModel, event: React.DragEvent) => {
@@ -316,6 +387,9 @@ export function SheetGrid({
                       displayMode={displayMode}
                       editing={editing}
                       drag={rowDrag}
+                      entry={entry}
+                      registerInput={registerInput}
+                      onEnterKey={focusNextMeasure}
                     />
                   ) : (
                     <GroupRowView
@@ -556,6 +630,9 @@ function ControlItemRowView({
   displayMode,
   editing,
   drag,
+  entry,
+  registerInput,
+  onEnterKey,
 }: {
   row: ControlItemRow;
   compare: ControlItemRow | null;
@@ -564,6 +641,9 @@ function ControlItemRowView({
   displayMode: DisplayMode;
   editing?: EditingHandlers;
   drag?: RowDragHandlers;
+  entry?: EntryHandlers;
+  registerInput: (key: string, element: HTMLInputElement | null) => void;
+  onEnterKey: (fromRowId: string, columnKey: string) => void;
 }) {
   const cellByKey = useMemo(() => new Map(row.cells.map((cell) => [cell.key, cell])), [row.cells]);
   const compareByKey = useMemo(
@@ -652,12 +732,25 @@ function ControlItemRowView({
             )} group-hover:bg-paper-sunken`}
             style={{ width: columnWidth(column.kind) }}
           >
-            {cell && (
-              <SheetCellView
+            {cell && entry && column.kind === "MONTH" && cell.period ? (
+              <MonthEntryCell
+                row={row}
                 cell={cell}
-                mode={displayMode}
-                decimalPlaces={row.decimalPlaces}
+                period={cell.period}
+                columnKey={column.key}
+                displayMode={displayMode}
+                entry={entry}
+                registerInput={registerInput}
+                onEnterKey={onEnterKey}
               />
+            ) : (
+              cell && (
+                <SheetCellView
+                  cell={cell}
+                  mode={displayMode}
+                  decimalPlaces={row.decimalPlaces}
+                />
+              )
             )}
             {compareCell && (
               <div className="mt-0.5 border-t border-dashed border-rule pt-0.5" title={compareVersionCode ?? undefined}>
@@ -672,6 +765,74 @@ function ControlItemRowView({
         );
       })}
     </div>
+  );
+}
+
+/**
+ * A keyable month: the box where the target goes, with the rest of the display
+ * mode underneath it.
+ *
+ * Three states, and each is a different answer to "why can I not type here?".
+ * A cell the reader may key gets a box. A cell on a measure that is not theirs
+ * shows the figure greyed with the reason in its tooltip - drawing nothing at
+ * all would read as "there is no target" rather than "this one is not yours".
+ * A cell whose version is locked says so the same way, which is how a closed
+ * forecast stays visibly quotable rather than merely inert.
+ */
+function MonthEntryCell({
+  row,
+  cell,
+  period,
+  columnKey,
+  displayMode,
+  entry,
+  registerInput,
+  onEnterKey,
+}: {
+  row: ControlItemRow;
+  cell: SheetCell;
+  period: string;
+  columnKey: string;
+  displayMode: DisplayMode;
+  entry: EntryHandlers;
+  registerInput: (key: string, element: HTMLInputElement | null) => void;
+  onEnterKey: (fromRowId: string, columnKey: string) => void;
+}) {
+  const key = cellKey(row.id, period);
+  const edited = entry.edited.get(key);
+  const mayKey = cell.targetEditable && entry.canEdit(row);
+
+  const commit = (raw: string) => {
+    if (!isDirty(cell, row.decimalPlaces, edited, raw)) return;
+    entry.onCommit(row, period, raw);
+  };
+
+  return (
+    <span className="flex w-full flex-col items-end gap-0.5">
+      {mayKey ? (
+        <SheetCellInput
+          value={displayFor(cell, row.decimalPlaces, edited)}
+          edited={edited}
+          ariaLabel={`${row.name} ${entry.versionCode} target for ${cell.label}`}
+          onCommit={commit}
+          onEnter={(raw) => {
+            commit(raw);
+            onEnterKey(row.id, columnKey);
+          }}
+          registerRef={(element) => registerInput(`${row.id}|${columnKey}`, element)}
+        />
+      ) : (
+        <SheetCellReadOnly
+          value={seedInput(cell, row.decimalPlaces)}
+          title={
+            cell.targetEditable
+              ? `${row.name} is keyed by ${row.responsibleUserName ?? row.dicName}`
+              : `${entry.versionCode} is locked, so its figures are read-only`
+          }
+        />
+      )}
+      <SheetCellView cell={cell} mode={displayMode} decimalPlaces={row.decimalPlaces} hideTarget />
+    </span>
   );
 }
 

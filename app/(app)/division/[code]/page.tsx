@@ -24,7 +24,7 @@ export default async function DivisionPage({ params }: { params: Promise<{ code:
       orgUnitIds={orgUnitIds}
       divisionCode={orgUnit.code}
       divisionName={orgUnit.name}
-      currentUser={{ role: user.role, orgUnitId: user.orgUnitId }}
+      currentUser={{ id: user.id, role: user.role, orgUnitId: user.orgUnitId }}
     />
   );
 }

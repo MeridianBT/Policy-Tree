@@ -23,6 +23,7 @@
 import type { DicOption } from "./StructureControls";
 
 export interface EditingUser {
+  id: string;
   role: "SUPER_ADMIN" | "EXECUTIVE" | "OWNER" | "VIEWER";
   orgUnitId: string | null;
 }
@@ -61,4 +62,29 @@ export function canEditStructureAt(
 /** Whether the "Add department" affordance belongs on this Objective row. */
 export function canAddDepartmentBranch(user: EditingUser, row: { kind: string; level: number }): boolean {
   return user.role !== "VIEWER" && row.kind === "OBJECTIVE" && row.level >= 2 && row.level <= 3;
+}
+
+/**
+ * The client-side mirror of `lib/auth/permissions.ts`'s `canEditControlItem` -
+ * who may key a figure, as opposed to who may move the furniture.
+ *
+ * It is a different rule from the structure one above and deliberately wider
+ * at the edges: being *named responsible* for a measure is enough on its own,
+ * whichever org unit the measure is filed under. That is how a measure owned
+ * by one division but kept by a named person in another gets its numbers
+ * without anyone being handed the whole division.
+ *
+ * Same standing as the structure mirror: it decides which boxes to draw, and
+ * `saveEntry` re-derives the answer from the database on every write.
+ */
+export function canEnterFigures(
+  user: EditingUser,
+  dics: DicOption[],
+  row: { dicOrgUnitId: string; responsibleUserId: string | null },
+): boolean {
+  if (user.role === "SUPER_ADMIN" || user.role === "EXECUTIVE") return true;
+  if (user.role !== "OWNER") return false;
+  if (row.responsibleUserId && row.responsibleUserId === user.id) return true;
+  if (!user.orgUnitId) return false;
+  return orgUnitCoversClient(dics, user.orgUnitId, row.dicOrgUnitId);
 }
