@@ -47,9 +47,30 @@ export function entraConfigured(): boolean {
 }
 
 /**
+ * A boolean environment variable, read the way people actually write them.
+ *
+ * `=== "true"` looks strict and safe until a deployment sets TRUE, or True,
+ * or pastes "true" with the quotes a .env file needed and a hosting panel
+ * does not. Then the flag silently reads false, and the only symptom is a
+ * missing control on a screen that otherwise looks fine.
+ *
+ * Absent or empty stays false, which is the part that matters: nothing is
+ * enabled by accident, only by someone who meant to and spelled it their own
+ * way.
+ */
+function envFlag(name: string): boolean {
+  const raw = process.env[name]
+    ?.trim()
+    .replace(/^["']|["']$/g, "")
+    .toLowerCase();
+  if (!raw) return false;
+  return raw === "true" || raw === "1" || raw === "yes" || raw === "on";
+}
+
+/**
  * Password sign-in is a development convenience, not a production feature.
  * Set AUTH_ALLOW_PASSWORD=true to keep it as a deliberate break-glass path.
  */
 export function passwordSignInEnabled(): boolean {
-  return process.env.NODE_ENV !== "production" || process.env.AUTH_ALLOW_PASSWORD === "true";
+  return process.env.NODE_ENV !== "production" || envFlag("AUTH_ALLOW_PASSWORD");
 }

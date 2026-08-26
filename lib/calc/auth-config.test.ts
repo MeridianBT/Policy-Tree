@@ -113,3 +113,54 @@ describe("entraConfigured, against a half-filled .env.example", () => {
     expect(await entraConfigured()).toBe(true);
   });
 });
+
+describe("passwordSignInEnabled, in production", () => {
+  // A hosting panel is not a .env file: people paste quotes, capitalise, and
+  // reach for 1. Getting any of those wrong used to remove the password form
+  // with no explanation, on a deployment where it was the only way in.
+  let savedNodeEnv: string | undefined;
+  let savedFlag: string | undefined;
+
+  beforeEach(() => {
+    savedNodeEnv = process.env.NODE_ENV;
+    savedFlag = process.env.AUTH_ALLOW_PASSWORD;
+    Object.defineProperty(process.env, "NODE_ENV", {
+      value: "production",
+      configurable: true,
+      writable: true,
+      enumerable: true,
+    });
+  });
+
+  afterEach(() => {
+    Object.defineProperty(process.env, "NODE_ENV", {
+      value: savedNodeEnv,
+      configurable: true,
+      writable: true,
+      enumerable: true,
+    });
+    if (savedFlag === undefined) delete process.env.AUTH_ALLOW_PASSWORD;
+    else process.env.AUTH_ALLOW_PASSWORD = savedFlag;
+  });
+
+  async function enabled() {
+    const mod = await import("@/lib/auth/env");
+    return mod.passwordSignInEnabled();
+  }
+
+  it("accepts the spellings people actually type", async () => {
+    for (const value of ["true", "TRUE", "True", ' "true" ', "1", "yes", "on"]) {
+      process.env.AUTH_ALLOW_PASSWORD = value;
+      expect(await enabled(), `value: ${JSON.stringify(value)}`).toBe(true);
+    }
+  });
+
+  it("stays off when unset, empty, or explicitly denied", async () => {
+    for (const value of ["", "   ", "false", "FALSE", "no", "off", "0", "maybe"]) {
+      process.env.AUTH_ALLOW_PASSWORD = value;
+      expect(await enabled(), `value: ${JSON.stringify(value)}`).toBe(false);
+    }
+    delete process.env.AUTH_ALLOW_PASSWORD;
+    expect(await enabled()).toBe(false);
+  });
+});
