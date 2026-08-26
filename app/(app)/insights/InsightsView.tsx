@@ -40,7 +40,7 @@ export function InsightsView({
         {model.businessUnits.length > 1 && (
           <nav className="mb-4 flex flex-wrap items-center gap-1.5 text-[11px]">
             <span className="mr-1 text-ink-faint">Business unit</span>
-            <BusinessUnitLink code={null} label="All" active={!businessUnit} />
+            <BusinessUnitLink code={null} label="Every unit" active={!businessUnit} />
             {model.businessUnits.map((unit) => (
               <BusinessUnitLink
                 key={unit.code}

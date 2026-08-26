@@ -57,7 +57,7 @@ const ROWS: SheetRowModel[] = [
   item("auto-volume", "AUTO"),
   item("mc-volume", "MC"),
   item("pp-volume", "PP"),
-  item("engagement", "CORP", "PPL"),
+  item("engagement", "ALL", "PPL"),
 ];
 
 const filters = (overrides: Partial<SheetFilters>): SheetFilters => ({
@@ -72,7 +72,7 @@ describe("business unit filter", () => {
     const codes = kept
       .filter((row) => row.kind === "CONTROL_ITEM")
       .map((row) => (row as ControlItemRow).businessUnitCode);
-    expect(codes).toEqual(["AUTO", "MC", "PP", "CORP"]);
+    expect(codes).toEqual(["AUTO", "MC", "PP", "ALL"]);
   });
 
   it("selects one unit's measures and drops the rest", () => {
@@ -96,18 +96,18 @@ describe("business unit filter", () => {
   });
 
   it("intersects with the DIC filter rather than replacing it", () => {
-    // "Corporate measures owned by People & Culture" - two independent tags
+    // "Group-wide measures owned by People & Culture" - two independent tags
     // meeting, which is the point of keeping the business unit off the org
     // tree.
     expect(
-      matchRows(ROWS, filters({ businessUnits: ["CORP"], dics: ["PPL"] })).filter(
+      matchRows(ROWS, filters({ businessUnits: ["ALL"], dics: ["PPL"] })).filter(
         (row) => row.kind === "CONTROL_ITEM",
       ),
     ).toHaveLength(1);
 
     // The same unit filed against a division that does not own it: no rows.
     expect(
-      matchRows(ROWS, filters({ businessUnits: ["CORP"], dics: ["SLS"] })).filter(
+      matchRows(ROWS, filters({ businessUnits: ["ALL"], dics: ["SLS"] })).filter(
         (row) => row.kind === "CONTROL_ITEM",
       ),
     ).toHaveLength(0);

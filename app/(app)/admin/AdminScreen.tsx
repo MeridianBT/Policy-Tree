@@ -353,7 +353,7 @@ export function AdminScreen({
 
         <Panel
           title="Business units"
-          hint="The product lines a Control Item can belong to. Nothing is ever summed across them - the whole-company sheet shows every unit's rows side by side rather than merging them."
+          hint="The product lines a Control Item can belong to, plus ALL for measures that span every one of them. Nothing is ever summed across units - the whole-company sheet shows their rows side by side rather than merging them."
         >
           <table className="w-full border-collapse text-[12px]">
             <tbody>
