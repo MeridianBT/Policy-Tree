@@ -68,7 +68,7 @@ export function PrintSheet({
           <tr>
             <th className="col-label">Measures</th>
             <th className="col-measure">Control Item</th>
-            <th className="col-dic">DIC</th>
+            <th className="col-dic">Department</th>
             {columns.map((column) => (
               <th
                 key={column.key}

@@ -51,6 +51,7 @@ const {
   deleteControlItem,
   deleteNode,
   renameNode,
+  reorderRow,
 } = await import("@/lib/structure/actions");
 const { createDepartment, deleteDepartment } = await import("@/lib/admin/actions");
 
@@ -626,5 +627,114 @@ describe("an EXECUTIVE reaches Level 4 as well", () => {
   it("refuses a VIEWER entirely", async () => {
     asUser(fx.users.viewer);
     expect((await renameNode({ id: branchId, statement: "Viewer rename" })).ok).toBe(false);
+  });
+});
+
+describe("reordering rows", () => {
+  /** Measure ids under the fixture Objective, in the order the sheet shows them. */
+  async function measureOrder(): Promise<string[]> {
+    const rows = await prisma.controlItem.findMany({
+      where: { nodeId: fx.nodes.objective },
+      orderBy: [{ sortOrder: "asc" }, { id: "asc" }],
+      select: { name: true },
+    });
+    return rows.map((row) => row.name);
+  }
+
+  it("moves a measure in front of the one it was dropped on", async () => {
+    expect(await measureOrder()).toEqual(["Item A", "Item B", "Item C", "Item D"]);
+
+    const result = await reorderRow({ kind: "MEASURE", id: fx.items.D, beforeId: fx.items.A });
+    expect(result.ok).toBe(true);
+    expect(await measureOrder()).toEqual(["Item D", "Item A", "Item B", "Item C"]);
+
+    // Put it back, this time by dropping it past the end.
+    expect((await reorderRow({ kind: "MEASURE", id: fx.items.D, beforeId: null })).ok).toBe(true);
+    expect(await measureOrder()).toEqual(["Item A", "Item B", "Item C", "Item D"]);
+  });
+
+  it("refuses a target that is not a sibling", async () => {
+    // The id of a row under a different parent. Nothing about the request looks
+    // malformed - it is only the sibling check that catches it.
+    const stranger = await prisma.controlItem.findFirstOrThrow({
+      where: { nodeId: { not: fx.nodes.objective } },
+      select: { id: true },
+    });
+    const result = await reorderRow({ kind: "MEASURE", id: fx.items.A, beforeId: stranger.id });
+    expect(result.ok).toBe(false);
+    expect(await measureOrder()).toEqual(["Item A", "Item B", "Item C", "Item D"]);
+  });
+
+  it("refuses an OWNER reordering the company-wide Levels 1-3", async () => {
+    // Item A sits under a Level 2 Objective, so this is company structure even
+    // though the measure itself is filed against the lead's own division.
+    asUser(fx.users.alphaLead);
+    expect((await reorderRow({ kind: "MEASURE", id: fx.items.A, beforeId: fx.items.C })).ok).toBe(
+      false,
+    );
+    expect(await measureOrder()).toEqual(["Item A", "Item B", "Item C", "Item D"]);
+  });
+
+  it("refuses a VIEWER outright", async () => {
+    asUser(fx.users.viewer);
+    expect((await reorderRow({ kind: "MEASURE", id: fx.items.A, beforeId: fx.items.C })).ok).toBe(
+      false,
+    );
+  });
+
+  it("reorders nodes among their siblings without touching their parent", async () => {
+    const first = await addNode({ kiId: fx.kiId, parentId: fx.nodes.theme, statement: "Reorder me" });
+    const second = await addNode({ kiId: fx.kiId, parentId: fx.nodes.theme, statement: "And me" });
+    const firstId = (first as { id: string }).id;
+    const secondId = (second as { id: string }).id;
+
+    expect((await reorderRow({ kind: "NODE", id: secondId, beforeId: firstId })).ok).toBe(true);
+
+    const siblings = await prisma.node.findMany({
+      where: { parentId: fx.nodes.theme },
+      orderBy: [{ sortOrder: "asc" }, { id: "asc" }],
+      select: { id: true, parentId: true },
+    });
+    expect(siblings.map((node) => node.id).indexOf(secondId)).toBeLessThan(
+      siblings.map((node) => node.id).indexOf(firstId),
+    );
+    // The whole point of writing only sort_order: nothing was re-filed.
+    expect(siblings.every((node) => node.parentId === fx.nodes.theme)).toBe(true);
+  });
+
+  it("leaves a Level 4 department branch alone when a Level 3 sibling moves", async () => {
+    // The mixed-level case: an Objective carrying both company-level structure
+    // and a department's branch. Reordering "within their level" must not
+    // renumber the branch out from under its owner.
+    const l3ThemeA = await addNode({ kiId: fx.kiId, parentId: fx.nodes.objective, statement: "L3 A" });
+    const branch = await addDepartmentBranch({
+      kiId: fx.kiId,
+      parentObjectiveId: fx.nodes.objective,
+      orgUnitId: fx.orgUnits.alpha,
+      statement: "Alpha branch between the themes",
+    });
+    const l3ThemeB = await addNode({ kiId: fx.kiId, parentId: fx.nodes.objective, statement: "L3 B" });
+
+    const branchId = (branch as { id: string }).id;
+    const branchBefore = await prisma.node.findUniqueOrThrow({
+      where: { id: branchId },
+      select: { sortOrder: true },
+    });
+
+    expect(
+      (
+        await reorderRow({
+          kind: "NODE",
+          id: (l3ThemeB as { id: string }).id,
+          beforeId: (l3ThemeA as { id: string }).id,
+        })
+      ).ok,
+    ).toBe(true);
+
+    const branchAfter = await prisma.node.findUniqueOrThrow({
+      where: { id: branchId },
+      select: { sortOrder: true },
+    });
+    expect(branchAfter.sortOrder).toBe(branchBefore.sortOrder);
   });
 });

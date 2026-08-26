@@ -87,7 +87,7 @@ tables can be pulled out without replaying everything.
 | **Theme** | A grouping heading under a Goal, at Levels 2, 3 and 4. |
 | **Objective** | A statement of intent under a Theme, carrying Control Items. |
 | **Control Item** | The measurement method — how a target and actual are measured ("Units sold", "% of sales"). One row on the sheet. |
-| **DIC** | Division In Charge: the org unit accountable for a Control Item. |
+| **DIC** | Division In Charge: the org unit accountable for a Control Item. Shown on every screen as **Department**, since the org unit named is usually one. |
 | **Version** | A named plan snapshot: OB, PRB, 1QFC, 2QFC, 3QFC, ACT. |
 
 Levels 1–3 form the single company page; Level 4 is the division drill-down.
@@ -372,7 +372,7 @@ shared mailbox does not fill with hundreds of copies nobody reads.
 
 | Route | What it is |
 |---|---|
-| `/sheet` | The company sheet — Levels 1–3 by default, with a View toggle folding every Level 4 branch in under its Objective. Virtualised, with version selector, compare mode, four display densities, condensable quarter columns, a Division/Department scope and filters by DIC, Theme and evaluation symbol. ADMIN and OWNER (division/department leads) can edit the structure directly here |
+| `/sheet` | The company sheet — Levels 1–3 by default, with a View toggle folding every Level 4 branch in under its Objective. Virtualised, with version selector, compare mode, four display densities, condensable quarter columns, and three filters — Business unit, then Division, then Department — read outside-in. Rows can be dragged into a new order among their own siblings. ADMIN and OWNER (division/department leads) can edit the structure directly here |
 | `/division/[code]` | The same Level 4 sheet, pre-scoped to one division and its departments — a narrower, single-division view of what "+ Departments" on the company sheet shows for everyone |
 | `/cascade` | A read-only, one-page alignment map from every Company Goal down to the Department work laddering into it — see below |
 | `/insights` | A read-only symbol-distribution heatmap, one Division per row, one month per column — see below |
@@ -455,6 +455,30 @@ stored figures"); only a second, explicit confirmation removes anything. The
 same two-step confirmation guards deleting a Control Item that already has data
 keyed against it.
 
+#### Reordering by dragging
+
+In edit mode every row also grows a grip on its right-hand end. Dragging it
+moves the row **among its own siblings at its own level** — a Theme moves
+among Themes under the same Goal, a measure among the measures under the same
+Objective — and a drop line shows where it will land. Drag it anywhere else
+and no line appears, because there is nowhere valid to drop it.
+
+"Within their level" is not cosmetic. A Level 2 Objective can carry Level 3
+Themes continuing the company breakdown *and* Level 4 department branches
+laddering into it, side by side under one parent. Reordering the Themes must
+leave those branches exactly where they were, so `lib/structure/reorder.ts`
+treats the positions the same-level rows occupy as fixed slots and reshuffles
+only what sits in them. Nothing else moves.
+
+The server writes `sort_order` and nothing else — never `parent_id`, never
+`org_unit_id` — so a reorder can rearrange a list and can never re-file a row
+under a parent its author has no business touching. The target sibling is sent
+by id rather than by index, and one that is not a sibling at the same level is
+refused outright. Authority is the same as renaming, because that is what a
+reorder is: it changes how the plan reads, not what it records. Locked
+versions are deliberately not consulted for the same reason; `canEditInKi`
+still applies, so a closed year stays closed.
+
 #### Level 4, and who may touch it
 
 `lib/structure/actions.ts` draws one hard line: **Levels 1-3 are ADMIN-only.**
@@ -492,7 +516,7 @@ The company sheet's **View** toggle folds Level 4 in on demand: "Company"
 shows Levels 1-3 exactly as before, "+ Departments" nests every Level 4 branch
 directly beneath the Level 1-3 Objective it ladders into — no separate page,
 no second fetch to reconcile. Once departments are on the sheet, a **Division**
-selector narrows the DIC filter to one division and everything beneath it in
+selector narrows the **Department** filter to one division and everything beneath it in
 one click ("Departments in a Division"), and picking a specific department
 chip narrows it to just that ("just the Department"). The per-division
 `/division/[code]` page still exists for a narrower, single-division view with
@@ -502,7 +526,7 @@ the same editing rights.
 
 Divisions are seeded; Departments are not fixed — Admin → Departments lets an
 ADMIN add one under an existing division (a code and a name) or remove one,
-which is what populates the DIC picker everywhere else on the sheet. Removing
+which is what populates the Department picker everywhere else on the sheet. Removing
 a department never cascades: Postgres's default behaviour on an optional
 foreign key is to silently `SET NULL` rather than block, which for a
 department would strip a Level 4 branch of the department it belongs to, or
@@ -530,6 +554,17 @@ evaluation symbol per Control Item — but small and quiet, never the point of
 the page; there is no rollup or invented "worst" verdict for a branch, which
 would misrepresent a scale where the two extreme bands (□ far above, ■ far
 below) are not simply good and bad ends of one line.
+
+Each measure carries its four quarters down the right-hand side, one figure
+per quarter, so a reader can see where the work stands without opening the
+sheet. Which figure it is belongs to the calendar rather than to the reader:
+once a quarter has closed the **actual** is shown, set in ink and carrying its
+evaluation symbol; while a quarter is still running or still ahead the
+**target** is shown instead, quieter and italic. A closed quarter nobody has
+keyed a figure into yet falls back to its target and is marked as one — a
+blank would read as "we scored nothing" rather than "nobody has told us".
+The rule is `components/sheet/quarter-figures.ts`, tested in
+`lib/calc/quarter-figures.test.ts`.
 
 The one thing this page insists on showing is the gap: most Objectives in a
 given Ki have no Level 4 branch yet, and rather than rendering nothing under
@@ -573,7 +608,7 @@ the counts are exactly what the sheet's own month cells already carry.
 ### Exporting to Excel
 
 "Export to Excel" downloads the sheet currently on screen — same rows, same
-target basis, same filtering by DIC and Theme are not applied to the export
+target basis, same filtering by business unit and Department are not applied to the export
 (it always contains everything you are allowed to see) but the pinned target
 version travels with it. The workbook has three tabs:
 
@@ -626,7 +661,7 @@ macOS Safari need a run on those platforms.
 ```bash
 npm run lint          # ESLint, zero warnings
 npm run typecheck     # tsc --noEmit
-npm test              # 266 tests, about four seconds
+npm test              # 329 tests, about six seconds
 npm run test:unit     # the pure modules only, no database needed
 ```
 
@@ -649,6 +684,12 @@ reason is written where a reader will meet it.
 - `lib/calc/cascade-tree.test.ts` — rebuilding the Level 1–4 tree from the flat
   row list, so a department branch always lands under the objective it ladders
   into and nothing is dropped or duplicated
+- `lib/calc/quarter-figures.test.ts` — the cascade's one-figure-per-quarter
+  rule: actual once a quarter has closed, target while it is open, and the
+  fallback when a closed quarter has nothing keyed into it yet
+- `lib/calc/reorder.test.ts` — dragging a row among its siblings, including
+  that a Level 4 department branch keeps its position when a Level 3 Theme
+  beside it moves
 - `lib/calc/heatmap.test.ts` — symbol distribution per division per month,
   including that a department's figures count toward its parent division and
   that a cell never collapses to one representative symbol

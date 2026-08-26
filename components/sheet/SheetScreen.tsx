@@ -2,7 +2,11 @@
 
 /**
  * The screen around the grid: version selector, compare mode, display density
- * and the three filters. Everything here is view state; nothing recalculates.
+ * and the filters. Everything here is view state; nothing recalculates.
+ *
+ * The filters read outside-in - Business unit, then Division, then Department
+ * - because that is the order a reviewer narrows in: which product line, whose
+ * division, whose desk.
  */
 
 import { useCallback, useMemo, useState } from "react";
@@ -30,10 +34,10 @@ import {
   deleteNode,
   renameControlItem,
   renameNode,
+  reorderRow,
   type DeletionImpact,
 } from "@/lib/structure/actions";
 import { DISPLAY_MODES, type DisplayMode } from "./SheetCellView";
-import { EvaluationSymbol } from "./EvaluationSymbol";
 import { ALL_QUARTERS } from "./columns";
 import type { QuarterCode } from "@/lib/domain/period";
 
@@ -97,7 +101,7 @@ export function SheetScreen({
 }) {
   const [displayMode, setDisplayMode] = useState<DisplayMode>("FULL");
   const [filters, setFilters] = useState<SheetFilters>(EMPTY_FILTERS);
-  // Narrows the DIC picker to one Division and its Departments, so choosing
+  // Narrows the Department picker to one Division and its Departments, so choosing
   // "Departments in a Division" or "just the Department" is two clicks
   // instead of hand-picking every department code. Only meaningful once
   // Level 4 rows are on the sheet at all - a plain Level 1-3 view has no
@@ -225,6 +229,7 @@ export function SheetScreen({
           onAddMeasure: (nodeId) => setAdding({ kind: "MEASURE", parentId: nodeId, under: labelFor(nodeId) }),
           onDeleteNode: (id) => requestDelete("NODE", id),
           onDeleteControlItem: (id) => requestDelete("MEASURE", id),
+          onReorder: (request) => run(() => reorderRow(request), afterChange),
         }
       : undefined;
   // Folding quarters one at a time is a third state, and the toggle says so by
@@ -339,6 +344,17 @@ export function SheetScreen({
 
         <span className="mx-1 h-4 w-px bg-rule" aria-hidden />
 
+        {model.businessUnits.length > 1 && (
+          <MultiSelect
+            label="Business unit"
+            selected={filters.businessUnits}
+            options={model.businessUnits.map((unit) => ({
+              value: unit.code,
+              label: `${unit.code} — ${unit.name}`,
+            }))}
+            onChange={(businessUnits) => setFilters((previous) => ({ ...previous, businessUnits }))}
+          />
+        )}
         {hasDepartments && (
           <Select
             label="Division"
@@ -355,46 +371,14 @@ export function SheetScreen({
             }}
           />
         )}
-        {model.businessUnits.length > 1 && (
-          <MultiSelect
-            label="Business unit"
-            selected={filters.businessUnits}
-            options={model.businessUnits.map((unit) => ({
-              value: unit.code,
-              label: `${unit.code} — ${unit.name}`,
-            }))}
-            onChange={(businessUnits) => setFilters((previous) => ({ ...previous, businessUnits }))}
-          />
-        )}
         <MultiSelect
-          label={hasDepartments && divisionScope ? "Department" : "DIC"}
+          label="Department"
           selected={filters.dics}
           options={scopedDicOptions.map((dic) => ({
             value: dic.code,
             label: dic.type === "DEPARTMENT" ? `${dic.parentCode} / ${dic.code} — ${dic.name}` : `${dic.code} — ${dic.name}`,
           }))}
           onChange={(dics) => setFilters((previous) => ({ ...previous, dics }))}
-        />
-        <MultiSelect
-          label="Theme"
-          selected={filters.themeIds}
-          options={model.themes.map((theme) => ({ value: theme.id, label: theme.statement }))}
-          onChange={(themeIds) => setFilters((previous) => ({ ...previous, themeIds }))}
-        />
-        <MultiSelect
-          label="Evaluation"
-          selected={filters.symbols}
-          options={model.bands.map((band) => ({ value: band.symbol, label: band.label }))}
-          onChange={(symbols) => setFilters((previous) => ({ ...previous, symbols }))}
-          renderOption={(value, label) => {
-            const band = model.bands.find((candidate) => candidate.symbol === value);
-            return (
-              <span className="flex items-center gap-1.5">
-                <EvaluationSymbol symbol={value} label={label} color={band?.colorHex} size={13} />
-                {label}
-              </span>
-            );
-          }}
         />
 
         {canEditStructure && (
@@ -429,10 +413,8 @@ export function SheetScreen({
           </>
         )}
 
-        {(filters.dics.length > 0 ||
-          filters.themeIds.length > 0 ||
-          filters.symbols.length > 0 ||
-          filters.businessUnits.length > 0 ||
+        {(filters.businessUnits.length > 0 ||
+          filters.dics.length > 0 ||
           divisionScope !== "") && (
           <Button
             variant="quiet"

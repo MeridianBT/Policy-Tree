@@ -33,6 +33,7 @@ import {
   requireSession,
   type AuthenticatedUser,
 } from "@/lib/auth/session";
+import { ReorderError, reorderWithinLevel } from "./reorder";
 
 export type StructureResult =
   | { ok: true; message: string; id?: string }
@@ -506,6 +507,123 @@ function describeImpact(statement: string, impact: DeletionImpact): string {
   return `Deleting "${quoted}" also removes ${parts.join(", ")}. That cannot be undone.`;
 }
 
+// ---------------------------------------------------------------- Ordering
+
+const reorderSchema = z.object({
+  kind: z.enum(["NODE", "MEASURE"]),
+  id: z.string().min(1),
+  /**
+   * The sibling the row should land in front of, or null to land last. Sent
+   * as a neighbour rather than as an index so a stale sheet cannot silently
+   * drop a row somewhere nobody pointed at: an id that is not a sibling at the
+   * same level is refused outright.
+   */
+  beforeId: z.string().min(1).nullable(),
+});
+
+/**
+ * Moving a row among its siblings. Only `sort_order` is written - never
+ * `parent_id`, never `org_unit_id` - so a reorder can rearrange a list and can
+ * never re-file a row under a parent its author has no business touching.
+ *
+ * Locked versions are deliberately not consulted. A lock protects the figures
+ * that were committed, and the order rows are printed in is not one of them;
+ * this is the same reasoning that lets `renameNode` through. What does apply
+ * is `canEditInKi`, so a closed year stays closed.
+ */
+export async function reorderRow(input: unknown): Promise<StructureResult> {
+  try {
+    const user = await requireSession();
+    const { kind, id, beforeId } = reorderSchema.parse(input);
+    return kind === "NODE"
+      ? await reorderNode(user, id, beforeId)
+      : await reorderControlItem(user, id, beforeId);
+  } catch (error) {
+    if (error instanceof ReorderError) return { ok: false, message: error.message };
+    return permissionAware(error);
+  }
+}
+
+async function reorderNode(
+  user: AuthenticatedUser,
+  id: string,
+  beforeId: string | null,
+): Promise<StructureResult> {
+  const node = await prisma.node.findUnique({
+    where: { id },
+    select: { kiId: true, parentId: true, level: true, orgUnitId: true },
+  });
+  if (!node) return { ok: false, message: "That row no longer exists." };
+  if (!(await canEditStructureAt(user, node.level, node.orgUnitId))) throw new NotPermitted();
+  if (!(await canEditInKi(user, node.kiId))) {
+    throw new NotPermitted("That year is closed. Only a super admin can change it.");
+  }
+
+  const siblings = await prisma.node.findMany({
+    where: { kiId: node.kiId, parentId: node.parentId },
+    orderBy: [{ sortOrder: "asc" }, { id: "asc" }],
+    select: { id: true, level: true },
+  });
+
+  const updates = reorderWithinLevel(siblings, id, beforeId);
+  await prisma.$transaction(
+    updates.map((update) =>
+      prisma.node.update({ where: { id: update.id }, data: { sortOrder: update.sortOrder } }),
+    ),
+  );
+
+  revalidate();
+  return { ok: true, message: "Moved." };
+}
+
+async function reorderControlItem(
+  user: AuthenticatedUser,
+  id: string,
+  beforeId: string | null,
+): Promise<StructureResult> {
+  const item = await prisma.controlItem.findUnique({
+    where: { id },
+    select: {
+      nodeId: true,
+      dicOrgUnitId: true,
+      node: { select: { level: true, kiId: true } },
+    },
+  });
+  if (!item) return { ok: false, message: "That Control Item no longer exists." };
+  if (!(await canControlItemScope(user, item.node.level, item.dicOrgUnitId))) {
+    throw new NotPermitted();
+  }
+  if (!(await canEditInKi(user, item.node.kiId))) {
+    throw new NotPermitted("That year is closed. Only a super admin can change it.");
+  }
+
+  // Every Control Item under one Objective sits at that Objective's level, so
+  // they are all at the same level by construction and the slot machinery in
+  // reorderWithinLevel simply reorders the whole list.
+  const siblings = await prisma.controlItem.findMany({
+    where: { nodeId: item.nodeId },
+    orderBy: [{ sortOrder: "asc" }, { id: "asc" }],
+    select: { id: true },
+  });
+
+  const updates = reorderWithinLevel(
+    siblings.map((sibling) => ({ id: sibling.id, level: item.node.level })),
+    id,
+    beforeId,
+  );
+  await prisma.$transaction(
+    updates.map((update) =>
+      prisma.controlItem.update({
+        where: { id: update.id },
+        data: { sortOrder: update.sortOrder },
+      }),
+    ),
+  );
+
+  revalidate();
+  return { ok: true, message: "Moved." };
+}
+
 // ------------------------------------------------------------ Control Items
 
 const addControlItemSchema = z.object({
@@ -516,7 +634,7 @@ const addControlItemSchema = z.object({
   direction: z.enum(["HIGHER_BETTER", "LOWER_BETTER"]),
   aggregation: z.enum(["SUM", "AVERAGE", "LATEST"]),
   decimalPlaces: z.coerce.number().int().min(0).max(4),
-  dicOrgUnitId: z.string().min(1, "A Control Item needs a Division in charge."),
+  dicOrgUnitId: z.string().min(1, "A Control Item needs a Department in charge."),
   businessUnitId: z.string().min(1, "A Control Item needs a business unit."),
 });
 

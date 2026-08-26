@@ -50,7 +50,7 @@ export interface ControlItemRow {
   /** Level 4 only: the Level 1-3 objective this ladders into. */
   laddersTo: string | null;
   cells: SheetCell[];
-  /** Ki-level symbol, used by the symbol filter. */
+  /** Ki-level symbol, lifted out of the cells for callers that want only it. */
   kiSymbol: string | null;
 }
 
@@ -78,7 +78,12 @@ export interface SheetModel {
     type: "DIVISION" | "DEPARTMENT";
     parentCode: string | null;
   }>;
-  /** Theme statements present, for the filter control. */
+  /**
+   * Theme statements present. The sheet no longer filters by Theme - the
+   * outline itself groups by one, so a filter that repeated it earned no
+   * space in a toolbar with three that do not. Kept because
+   * scripts/export-preview.ts still ships them with a preview snapshot.
+   */
   themes: Array<{ id: string; statement: string }>;
   /**
    * Every business unit, for the filter control and the add-measure form.

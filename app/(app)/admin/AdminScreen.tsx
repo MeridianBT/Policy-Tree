@@ -331,7 +331,7 @@ export function AdminScreen({
             <Field label="Decimal places">
               <input name="decimalPlaces" type="number" min={0} max={4} defaultValue={0} className={inputClass} />
             </Field>
-            <Field label="DIC (required)">
+            <Field label="Department (required)">
               <select name="dicOrgUnitId" className={inputClass}>
                 {orgUnits
                   .filter((unit) => unit.type !== "COMPANY")
@@ -482,7 +482,7 @@ export function AdminScreen({
           </div>
         </Panel>
 
-                <Panel title="Users" hint="Accountability (DIC) and data entry (responsible) are separate. A division lead can key anything in their own org unit.">
+                <Panel title="Users" hint="Accountability (Department) and data entry (responsible) are separate. A division lead can key anything in their own org unit.">
           <table className="w-full border-collapse text-[12px]">
             <tbody>
               {users.map((user) => (

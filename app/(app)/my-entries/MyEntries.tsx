@@ -128,7 +128,7 @@ export function MyEntries({
               <tr>
                 <th className="border-b border-rule-strong px-2 py-1.5 text-left font-medium">Control Item</th>
                 <th className="border-b border-rule-strong px-2 py-1.5 text-left font-medium">Objective</th>
-                <th className="border-b border-rule-strong px-2 py-1.5 text-left font-medium">DIC</th>
+                <th className="border-b border-rule-strong px-2 py-1.5 text-left font-medium">Department</th>
                 <th className="border-b border-rule-strong px-2 py-1.5 text-right font-medium">Target</th>
                 <th className="border-b border-rule-strong px-2 py-1.5 text-right font-medium">Actual</th>
                 <th className="border-b border-rule-strong px-2 py-1.5 text-right font-medium">Gap</th>

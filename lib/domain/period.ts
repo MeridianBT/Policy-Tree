@@ -79,6 +79,30 @@ export function quarterOf(key: PeriodKey): QuarterCode {
   return "Q4";
 }
 
+/**
+ * How far through a fiscal quarter the calendar has got.
+ *
+ * COMPLETE means the quarter's last month has passed, so its actuals are in
+ * (or should be); CURRENT is the quarter being lived through; FUTURE has not
+ * started. Read in UTC, like every other Date crossing this module's boundary,
+ * and with `today` injectable so the rule can be tested without waiting a year.
+ */
+export type QuarterProgress = "COMPLETE" | "CURRENT" | "FUTURE";
+
+export function quarterProgress(
+  kiStartYear: number,
+  quarter: QuarterCode,
+  today: Date = new Date(),
+): QuarterProgress {
+  const months = quarterMonths(kiStartYear, quarter);
+  // "YYYY-MM" sorts lexicographically the same way it sorts chronologically,
+  // which is the whole reason a period is carried around as a string.
+  const now = dateToPeriod(today);
+  if (months[months.length - 1] < now) return "COMPLETE";
+  if (months[0] > now) return "FUTURE";
+  return "CURRENT";
+}
+
 /** Fiscal index of a period within its Ki: 0 for April .. 11 for March. */
 export function fiscalMonthIndex(key: PeriodKey): number {
   const { month } = parsePeriodKey(key);

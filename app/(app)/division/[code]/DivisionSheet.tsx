@@ -65,7 +65,7 @@ export function DivisionSheet({
         </h1>
         <p className="mt-2 max-w-lg text-[12px] text-ink-muted">
           This division has no Level 4 structure in {model.kiCode} yet. Its company-level Control
-          Items appear on the company sheet, filtered by DIC.
+          Items appear on the company sheet, filtered by Department.
         </p>
         {currentUser && currentUser.role !== "VIEWER" && (
           <p className="mt-2 max-w-lg text-[12px] text-ink-muted">

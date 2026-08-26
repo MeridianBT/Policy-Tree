@@ -26,12 +26,81 @@ export { EMPTY_FILTERS, type SheetFilters };
 import { columnClass, columnWidth, sheetColumns } from "./columns";
 import type { QuarterCode } from "@/lib/domain/period";
 import { groupHeading, indentPx } from "./outline";
-import { InlineRename, RowActions, type DicOption } from "./StructureControls";
+import { DragHandle, InlineRename, RowActions, type DicOption } from "./StructureControls";
 import { canAddDepartmentBranch, canEditStructureAt, type EditingUser } from "./permissions";
 import { SheetCellView, rowHeightFor, type DisplayMode } from "./SheetCellView";
 import { EvaluationSymbol } from "./EvaluationSymbol";
 
 const GROUP_ROW_HEIGHT = 28;
+
+/**
+ * A row picked up by its grip: enough to decide, for every other row on the
+ * sheet, whether it is a place this one may be dropped.
+ *
+ * Reordering is offered "within their level", which here means three things at
+ * once must match: the same parent, the same level, and the same sort of row.
+ * A Level 2 Objective can carry Level 3 Themes and Level 4 department branches
+ * as siblings, and a Theme dragged past a branch would otherwise reshuffle work
+ * belonging to a department its author may not touch. The server enforces all
+ * three again; this is what stops the drop line from ever appearing somewhere
+ * the drop would be refused.
+ */
+interface DraggedRow {
+  id: string;
+  parentId: string | null;
+  level: number;
+  isControlItem: boolean;
+}
+
+interface DropTarget {
+  rowId: string;
+  edge: "TOP" | "BOTTOM";
+  /** Pixel offset inside the virtualised body, for the insertion line. */
+  top: number;
+}
+
+/** A row's parent is simply the last id in the ancestor chain it already carries. */
+function parentOf(row: SheetRowModel): string | null {
+  return row.path.length ? row.path[row.path.length - 1] : null;
+}
+
+function isDropTarget(dragged: DraggedRow, row: SheetRowModel): boolean {
+  if (row.id === dragged.id) return false;
+  return (
+    parentOf(row) === dragged.parentId &&
+    row.level === dragged.level &&
+    (row.kind === "CONTROL_ITEM") === dragged.isControlItem
+  );
+}
+
+/**
+ * The sibling the dragged row should land in front of, or null for last.
+ *
+ * Read off the full row list rather than the filtered one on purpose: a
+ * neighbour hidden by a business unit filter is still a neighbour, and
+ * resolving the drop against what happens to be on screen would quietly move
+ * the row past rows the reader cannot see.
+ */
+function dropBeforeId(
+  rows: readonly SheetRowModel[],
+  dragged: DraggedRow,
+  target: DropTarget,
+): string | null {
+  const siblings = rows.filter(
+    (row) => row.id === dragged.id || isDropTarget(dragged, row),
+  );
+  const without = siblings.filter((row) => row.id !== dragged.id);
+  const index = without.findIndex((row) => row.id === target.rowId);
+  if (index === -1) return null;
+  const insertAt = target.edge === "TOP" ? index : index + 1;
+  return insertAt < without.length ? without[insertAt].id : null;
+}
+
+export interface ReorderRequest {
+  kind: "NODE" | "MEASURE";
+  id: string;
+  beforeId: string | null;
+}
 
 export interface EditingHandlers {
   user: EditingUser;
@@ -46,6 +115,13 @@ export interface EditingHandlers {
   onAddMeasure: (nodeId: string) => void;
   onDeleteNode: (id: string) => void;
   onDeleteControlItem: (id: string) => void;
+  onReorder: (request: ReorderRequest) => void;
+}
+
+/** What a row view needs to offer its grip; absent when editing is off. */
+export interface RowDragHandlers {
+  onStart: (row: SheetRowModel, event: React.DragEvent) => void;
+  onEnd: () => void;
 }
 
 export function SheetGrid({
@@ -72,6 +148,8 @@ export function SheetGrid({
   const scrollRef = useRef<HTMLDivElement>(null);
   const [collapsed, setCollapsed] = useState<Set<string>>(() => new Set());
   const [topRowIndex, setTopRowIndex] = useState(0);
+  const [dragged, setDragged] = useState<DraggedRow | null>(null);
+  const [dropTarget, setDropTarget] = useState<DropTarget | null>(null);
 
   const columns = useMemo(
     () => sheetColumns(model.kiStartYear, { condensedQuarters }),
@@ -127,6 +205,31 @@ export function SheetGrid({
     });
   }, []);
 
+  const beginDrag = useCallback((row: SheetRowModel, event: React.DragEvent) => {
+    // Firefox refuses to start a drag at all unless the payload is set, even
+    // though the row being dragged is tracked in state rather than read back
+    // out of the transfer.
+    event.dataTransfer.setData("text/plain", row.id);
+    event.dataTransfer.effectAllowed = "move";
+    setDragged({
+      id: row.id,
+      parentId: parentOf(row),
+      level: row.level,
+      isControlItem: row.kind === "CONTROL_ITEM",
+    });
+    setDropTarget(null);
+  }, []);
+
+  const endDrag = useCallback(() => {
+    setDragged(null);
+    setDropTarget(null);
+  }, []);
+
+  const rowDrag = useMemo<RowDragHandlers | undefined>(
+    () => (editing ? { onStart: beginDrag, onEnd: endDrag } : undefined),
+    [editing, beginDrag, endDrag],
+  );
+
   const context = useMemo(() => contextFor(visible, topRowIndex), [visible, topRowIndex]);
   const itemCount = visible.filter((row) => row.kind === "CONTROL_ITEM").length;
 
@@ -142,13 +245,63 @@ export function SheetGrid({
           <ContextBar context={context} />
 
           <div style={{ height: virtualizer.getTotalSize(), position: "relative" }}>
+            {dropTarget && (
+              <div
+                aria-hidden
+                className="pointer-events-none absolute left-0 z-50 h-0.5 w-full bg-ink"
+                style={{ top: dropTarget.top }}
+              />
+            )}
             {virtualizer.getVirtualItems().map((virtualRow) => {
               const row = visible[virtualRow.index];
+              const droppable = dragged !== null && isDropTarget(dragged, row);
               return (
                 <div
                   key={row.id}
                   className="absolute left-0 flex w-full"
                   style={{ top: 0, height: virtualRow.size, transform: `translateY(${virtualRow.start}px)` }}
+                  onDragOver={
+                    dragged
+                      ? (event) => {
+                          if (!droppable) {
+                            setDropTarget(null);
+                            return;
+                          }
+                          // preventDefault is what marks this a valid drop
+                          // zone; without it the browser refuses the drop.
+                          event.preventDefault();
+                          event.dataTransfer.dropEffect = "move";
+                          const bounds = event.currentTarget.getBoundingClientRect();
+                          const edge =
+                            event.clientY - bounds.top < bounds.height / 2 ? "TOP" : "BOTTOM";
+                          const top =
+                            edge === "TOP" ? virtualRow.start : virtualRow.start + virtualRow.size;
+                          setDropTarget((previous) =>
+                            previous && previous.rowId === row.id && previous.edge === edge
+                              ? previous
+                              : { rowId: row.id, edge, top },
+                          );
+                        }
+                      : undefined
+                  }
+                  onDrop={
+                    dragged
+                      ? (event) => {
+                          event.preventDefault();
+                          const target = dropTarget;
+                          const moved = dragged;
+                          endDrag();
+                          if (!target || !editing) return;
+                          const beforeId = dropBeforeId(model.rows, moved, target);
+                          if (beforeId === moved.id) return;
+                          editing.onReorder({
+                            kind: moved.isControlItem ? "MEASURE" : "NODE",
+                            id: moved.id,
+                            beforeId,
+                          });
+                        }
+                      : undefined
+                  }
                 >
                   {row.kind === "CONTROL_ITEM" ? (
                     <ControlItemRowView
@@ -162,6 +315,7 @@ export function SheetGrid({
                       columns={columns}
                       displayMode={displayMode}
                       editing={editing}
+                      drag={rowDrag}
                     />
                   ) : (
                     <GroupRowView
@@ -170,6 +324,7 @@ export function SheetGrid({
                       onToggle={() => toggle(row.id)}
                       width={gridWidth}
                       editing={editing}
+                      drag={rowDrag}
                     />
                   )}
                 </div>
@@ -288,12 +443,14 @@ function GroupRowView({
   onToggle,
   width,
   editing,
+  drag,
 }: {
   row: GroupRow;
   collapsed: boolean;
   onToggle: () => void;
   width: number;
   editing?: EditingHandlers;
+  drag?: RowDragHandlers;
 }) {
   const tone =
     row.kind === "GOAL"
@@ -345,7 +502,18 @@ function GroupRowView({
             row.kind !== "OBJECTIVE" || row.level === 2;
           const canAddChild =
             row.level < 4 ? companyWide && childContinues : owns && childContinues;
+          // Moving a row is the same authority as renaming it: it changes how
+          // the plan reads, not what it records.
+          const canReorder = row.level < 4 ? companyWide : owns;
           return (
+            <>
+            {drag && canReorder && (
+              <DragHandle
+                label={`Reorder "${row.statement}" among its siblings`}
+                onDragStart={(event) => drag.onStart(row as SheetRowModel, event)}
+                onDragEnd={drag.onEnd}
+              />
+            )}
             <RowActions
               canAddChild={canAddChild}
               childLabel={row.kind === "THEME" ? "objective" : "theme"}
@@ -361,6 +529,7 @@ function GroupRowView({
               onRename={() => editing.onStartRename(row.id)}
               onDelete={() => editing.onDeleteNode(row.id)}
             />
+            </>
           );
         })()}
       </div>
@@ -386,6 +555,7 @@ function ControlItemRowView({
   columns,
   displayMode,
   editing,
+  drag,
 }: {
   row: ControlItemRow;
   compare: ControlItemRow | null;
@@ -393,6 +563,7 @@ function ControlItemRowView({
   columns: ReturnType<typeof sheetColumns>;
   displayMode: DisplayMode;
   editing?: EditingHandlers;
+  drag?: RowDragHandlers;
 }) {
   const cellByKey = useMemo(() => new Map(row.cells.map((cell) => [cell.key, cell])), [row.cells]);
   const compareByKey = useMemo(
@@ -418,6 +589,9 @@ function ControlItemRowView({
         ) : (
           <Link
             href={`/control-item/${row.id}`}
+            // A link is a drag source by default, so dragging a measure by its
+            // name would start dragging its URL instead of reordering the row.
+            draggable={false}
             className="min-w-0 flex-1 truncate text-[12px] hover:underline"
             title={`${row.name} (${row.code})`}
           >
@@ -429,21 +603,30 @@ function ControlItemRowView({
         (row.level < 4
           ? editing.user.role === "SUPER_ADMIN" || editing.user.role === "EXECUTIVE"
           : canEditStructureAt(editing.user, editing.dics, row.level, row.dicOrgUnitId)) ? (
-          <RowActions
-            canAddChild={false}
-            childLabel=""
-            canAddMeasure={false}
-            canRename
-            canDelete
-            onAddChild={() => {}}
-            onAddMeasure={() => {}}
-            onRename={() => editing.onStartRename(row.id)}
-            onDelete={() => editing.onDeleteControlItem(row.id)}
-          />
+          <>
+            {drag && (
+              <DragHandle
+                label={`Reorder "${row.name}" among the measures beside it`}
+                onDragStart={(event) => drag.onStart(row as SheetRowModel, event)}
+                onDragEnd={drag.onEnd}
+              />
+            )}
+            <RowActions
+              canAddChild={false}
+              childLabel=""
+              canAddMeasure={false}
+              canRename
+              canDelete
+              onAddChild={() => {}}
+              onAddMeasure={() => {}}
+              onRename={() => editing.onStartRename(row.id)}
+              onDelete={() => editing.onDeleteControlItem(row.id)}
+            />
+          </>
         ) : (
           <span
             className="shrink-0 rounded-sm border border-rule px-1 text-[10px] text-ink-muted"
-            title={`Division in charge: ${row.dicName}`}
+            title={`In charge: ${row.dicName}`}
           >
             {row.dicCode}
           </span>

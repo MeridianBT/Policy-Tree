@@ -14,7 +14,7 @@
  */
 
 import { useState, useTransition } from "react";
-import { Check, Pencil, Plus, Trash2, X } from "lucide-react";
+import { Check, GripVertical, Pencil, Plus, Trash2, X } from "lucide-react";
 import type { DeletionImpact, StructureResult } from "@/lib/structure/actions";
 
 export interface DicOption {
@@ -92,6 +92,39 @@ export function RowActions({
           <Trash2 size={11} />
         </button>
       )}
+    </span>
+  );
+}
+
+/**
+ * The grip a row is dragged by.
+ *
+ * Only the grip is draggable, not the whole row: the row carries a link to the
+ * Control Item detail screen and inline text, and making either of those a
+ * drag source means every attempt to click through or select a name starts a
+ * drag instead. A grip is also the only honest way to say a row is movable at
+ * all - nothing else on the row looks any different.
+ */
+export function DragHandle({
+  label,
+  onDragStart,
+  onDragEnd,
+}: {
+  label: string;
+  onDragStart: (event: React.DragEvent) => void;
+  onDragEnd: () => void;
+}) {
+  return (
+    <span
+      draggable
+      onDragStart={onDragStart}
+      onDragEnd={onDragEnd}
+      role="button"
+      aria-label={label}
+      title={label}
+      className={`${ICON_BUTTON} cursor-grab active:cursor-grabbing`}
+    >
+      <GripVertical size={11} />
     </span>
   );
 }
@@ -305,7 +338,7 @@ export function InlineAddMeasure({
           className={`${field} w-44`}
         />
       </Labelled>
-      <Labelled label="DIC">
+      <Labelled label="Department">
         <select value={dicOrgUnitId} onChange={(e) => setDic(e.target.value)} className={field}>
           {dics.map((dic) => (
             <option key={dic.id} value={dic.id}>{dic.code}</option>
