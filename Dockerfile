@@ -11,6 +11,16 @@ RUN npm ci
 FROM base AS build
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
+# `next build` imports every route to collect page data, which reaches
+# lib/db.ts, which refuses to load without a connection string. Nothing
+# connects during a build - no query runs and no migration is applied - but the
+# import has to succeed, so the build stage is given a placeholder.
+#
+# It cannot leak into the running app: the runtime stage below starts from
+# `base` rather than from here, so nothing set in this stage survives. The real
+# DATABASE_URL arrives as an environment variable at container start, and
+# lib/db.ts still refuses to run without one.
+ENV DATABASE_URL="postgresql://build:build@127.0.0.1:5432/build?schema=public"
 RUN npx prisma generate && npm run build
 
 FROM base AS runtime
