@@ -73,13 +73,13 @@ export type Item = {
   agg: "SUM" | "AVERAGE" | "LATEST";
   dic: string;
   /**
-   * Business unit: AUTO, MC, PP or ALL. Optional, defaulting to AUTO -
+   * Business unit: AUTO, MC, PP or SHARED. Optional, defaulting to AUTO -
    * the automobile plan was written before the other product lines existed
    * and every one of its measures belongs there, so tagging each of the
    * original 54 would be noise. A motorcycle or power-products measure says
    * so explicitly.
    */
-  bu?: "AUTO" | "MC" | "PP" | "ALL";
+  bu?: "AUTO" | "MC" | "PP" | "SHARED";
   /** Monthly target on PRB. A single number is repeated across the year. */
   target: number | number[];
   /** Apr-Jul actuals. The Ki is four months old, so the rest is unkeyed. */

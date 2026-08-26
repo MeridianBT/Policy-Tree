@@ -250,7 +250,8 @@ model ControlItem {
   /// Which business unit this measure belongs to. Required: a measure that
   /// belongs to no business unit would be indistinguishable from one somebody
   /// forgot to tag, and the filter could not tell them apart. Genuinely
-  /// group-wide measures - engagement, group revenue, safety - carry ALL.
+  /// measures shared across the units - engagement, group revenue, safety
+  /// - carry SHARED.
   businessUnitId    String            @map("business_unit_id")
   responsibleUserId String?           @map("responsible_user_id")
   sortOrder         Int               @default(0) @map("sort_order")

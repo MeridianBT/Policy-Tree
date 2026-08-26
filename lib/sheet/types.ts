@@ -41,7 +41,7 @@ export interface ControlItemRow {
   dicCode: string;
   dicName: string;
   dicOrgUnitId: string;
-  /** The business unit this measure belongs to: AUTO, MC, PP or ALL. */
+  /** The business unit this measure belongs to: AUTO, MC, PP or SHARED. */
   businessUnitCode: string;
   businessUnitName: string;
   responsibleUserName: string | null;
