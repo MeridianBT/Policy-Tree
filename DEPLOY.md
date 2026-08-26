@@ -113,6 +113,22 @@ SEED_ON_BOOT: 14 accounts already exist — leaving the database untouched.
 
 To re-seed deliberately, empty the year from Admin first, or drop the database.
 
+**`SEED_PASSWORD` only applies to an empty database.** The guard above is what
+makes `SEED_ON_BOOT` safe to leave set, and it has a consequence worth being
+explicit about: once the accounts exist, their password hashes are written and
+changing `SEED_PASSWORD` on the platform does nothing at all. To actually
+change a password on a running deployment, rewrite the hash:
+
+```bash
+npm run set-password -- --email=md@honda.example --password='…'
+npm run set-password -- --all --password='…'
+```
+
+`--all` skips accounts that have no password, because those are invite-only
+through Microsoft and handing them one would open a second way in. Run it
+wherever `DATABASE_URL` points at the deployment - `railway ssh`, or your own
+machine against `DATABASE_PUBLIC_URL`.
+
 **The other way — a shell**, if you have one and prefer it:
 
 ```bash
@@ -148,8 +164,12 @@ the screen says so, and a reader has no way to tell.
 
 So:
 
-- **Set `SEED_PASSWORD`.** Do not deploy with `hoshin`, which is in this
-  repository and in every document written about it.
+- **Set `SEED_PASSWORD` before the first boot.** Do not deploy with `hoshin`,
+  which is in this repository and in every document written about it. If the
+  database is already seeded, setting the variable changes nothing — use
+  `npm run set-password -- --all --password='…'` instead.
+- **Change it again if it has been written down anywhere** — pasted into a
+  chat, a ticket or a transcript. Same command.
 - **Say the numbers are invented**, out loud, when you demo. Being real about
   the structure is what makes the figures beside it look real.
 - **Take it down when the demo is over.** Railway → Settings → Delete Service.

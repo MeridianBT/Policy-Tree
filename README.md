@@ -77,6 +77,25 @@ Sign in with `admin@example.com` / `hoshin`, which lands on the company sheet.
 Custom-format dumps (`pg_dump -Fc`), so a restore can be parallelised and single
 tables can be pulled out without replaying everything.
 
+### Changing a password
+
+```bash
+npm run set-password -- --email=md@honda.example --password='…'
+npm run set-password -- --all --password='…'
+```
+
+`SEED_PASSWORD` sets the password every seeded account starts with, and it only
+ever applies to an *empty* database — `prisma/seed-if-empty.ts` refuses to
+touch one that already has accounts, which is what makes `SEED_ON_BOOT` safe to
+leave set. So on a deployment that has already been seeded, changing that
+variable changes nothing; this rewrites the hash instead.
+
+`--all` deliberately skips accounts with no password at all. Those are
+invite-only through Microsoft, and issuing them one would open a second way in
+that nobody asked for — the same reason password sign-in is off in production
+unless `AUTH_ALLOW_PASSWORD` says otherwise. Naming an account with `--email`
+applies no such skip: that is a decision rather than a sweep.
+
 ## Domain
 
 | Term | Meaning |
@@ -711,7 +730,7 @@ macOS Safari need a run on those platforms.
 ```bash
 npm run lint          # ESLint, zero warnings
 npm run typecheck     # tsc --noEmit
-npm test              # 361 tests, about six seconds
+npm test              # 365 tests, about six seconds
 npm run test:unit     # the pure modules only, no database needed
 ```
 
@@ -734,6 +753,8 @@ reason is written where a reader will meet it.
 - `lib/calc/cascade-tree.test.ts` — rebuilding the Level 1–4 tree from the flat
   row list, so a department branch always lands under the objective it ladders
   into and nothing is dropped or duplicated
+- `lib/calc/rotate.test.ts` — that a bulk password rotate never issues a
+  password to a Microsoft-only account
 - `lib/calc/entry-state.test.ts` — what a keyable box shows and when a blur is
   worth a write: a formula seeded as written rather than as its result, a
   plain number seeded without thousands separators, and a tab-through that
