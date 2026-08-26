@@ -68,3 +68,48 @@ describe("entraConfigured", () => {
     expect(await entraConfigured()).toBe(false);
   });
 });
+
+describe("entraConfigured, against a half-filled .env.example", () => {
+  // The exact values from .env.example. Copying that file into a deployment
+  // and filling in only some of it is the ordinary way to get this wrong, and
+  // it used to take the login screen down entirely rather than fall back to
+  // the password form.
+  const PLACEHOLDERS = {
+    AUTH_MICROSOFT_ENTRA_ID_ID: "<Application (client) ID>",
+    AUTH_MICROSOFT_ENTRA_ID_SECRET: "<Client secret value>",
+    AUTH_MICROSOFT_ENTRA_ID_ISSUER:
+      "https://login.microsoftonline.com/<Directory (tenant) ID>/v2.0",
+  };
+
+  it("treats the untouched placeholders as unconfigured", async () => {
+    Object.assign(process.env, PLACEHOLDERS);
+    expect(await entraConfigured()).toBe(false);
+  });
+
+  it("still refuses when only the tenant is left as a placeholder", async () => {
+    Object.assign(process.env, PLACEHOLDERS, {
+      AUTH_MICROSOFT_ENTRA_ID_ID: "11111111-2222-3333-4444-555555555555",
+      AUTH_MICROSOFT_ENTRA_ID_SECRET: "a-real-looking-secret",
+    });
+    expect(await entraConfigured()).toBe(false);
+  });
+
+  it("refuses an issuer that is not https", async () => {
+    Object.assign(process.env, {
+      AUTH_MICROSOFT_ENTRA_ID_ID: "11111111-2222-3333-4444-555555555555",
+      AUTH_MICROSOFT_ENTRA_ID_SECRET: "a-real-looking-secret",
+      AUTH_MICROSOFT_ENTRA_ID_ISSUER: "login.microsoftonline.com/tenant/v2.0",
+    });
+    expect(await entraConfigured()).toBe(false);
+  });
+
+  it("accepts three genuinely filled-in values", async () => {
+    Object.assign(process.env, {
+      AUTH_MICROSOFT_ENTRA_ID_ID: "11111111-2222-3333-4444-555555555555",
+      AUTH_MICROSOFT_ENTRA_ID_SECRET: "a-real-looking-secret",
+      AUTH_MICROSOFT_ENTRA_ID_ISSUER:
+        "https://login.microsoftonline.com/11111111-2222-3333-4444-555555555555/v2.0",
+    });
+    expect(await entraConfigured()).toBe(true);
+  });
+});
