@@ -18,5 +18,9 @@ export const config = {
   // carries a shared secret rather than a session cookie - left in, the
   // middleware would redirect it to /login and the reminders would silently
   // never run. That route does its own authorisation; it is not open.
-  matcher: ["/((?!api/auth|api/reminders|login|_next/static|_next/image|favicon.ico).*)"],
+  //
+  // `api/health` is excluded for the same shape of reason: a platform health
+  // checker carries no cookie, and a 302 to /login would read as healthy while
+  // the database was unreachable.
+  matcher: ["/((?!api/auth|api/reminders|api/health|login|_next/static|_next/image|favicon.ico).*)"],
 };

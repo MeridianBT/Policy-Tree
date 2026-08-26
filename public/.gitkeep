@@ -1,0 +1,7 @@
+Next.js serves this directory as static files at the site root, and the
+Dockerfile copies it into the runtime image. Git does not track empty
+directories, so without this file a clean clone has no public/ and the
+image build fails at that COPY - locally it would still work, because an
+untracked public/ is usually sitting there from an earlier run.
+
+Put a favicon or a company logo here when there is one.

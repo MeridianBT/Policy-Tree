@@ -1,0 +1,22 @@
+# The build stage does `COPY . .`, so anything listed here never reaches the
+# image. Two reasons it matters:
+#
+#   .env holds real secrets. Baking one into an image ships those secrets to
+#   wherever the image goes, and nothing in the app would ever tell you.
+#
+#   node_modules, .next and generated/ are rebuilt inside the image against
+#   its own platform. Copying a host build in makes the image both slower to
+#   build and wrong - native modules compiled for the host do not run there.
+.env
+.env.*
+node_modules
+.next
+/generated
+*.tsbuildinfo
+next-env.d.ts
+
+.git
+.github
+backups
+*.md
+!README.md
