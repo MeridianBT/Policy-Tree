@@ -26,11 +26,13 @@ const createKiSchema = z.object({
   startYear: z.coerce.number().int().min(2000).max(2100),
   /**
    * What this year is called in the business. Optional: left blank it derives
-   * "Ki 2026" from the start year, which is fine for a demo but not what most
-   * companies say. Numbered fiscal periods - "103KI", "104KI" - are common and
-   * carry no year in them at all, so the name cannot be computed and has to be
-   * typed. Only the start date decides which months the year covers; the code
-   * is a label throughout.
+   * the numbered code from the start year - April 2026 is 103KI, April 2027 is
+   * 104KI, one number per year unbroken - so opening next year does not depend
+   * on anyone remembering which number comes next.
+   *
+   * Still accepted explicitly, because the derivation encodes one company's
+   * numbering and another's will differ. Only the start date decides which
+   * months the year covers; the code is a label throughout.
    */
   code: z.string().trim().min(1).max(30).optional(),
   makeCurrent: z.boolean().default(true),
@@ -38,7 +40,7 @@ const createKiSchema = z.object({
 
 export async function createKi(input: unknown): Promise<AdminResult> {
   try {
-    await requireRole("ADMIN");
+    await requireRole("SUPER_ADMIN");
     const { startYear, code: given, makeCurrent } = createKiSchema.parse(input);
     const code = given || kiCodeFor(startYear);
 
@@ -70,7 +72,7 @@ export async function createKi(input: unknown): Promise<AdminResult> {
 
 export async function setCurrentKi(kiId: string): Promise<AdminResult> {
   try {
-    await requireRole("ADMIN");
+    await requireRole("SUPER_ADMIN");
     await prisma.$transaction([
       prisma.ki.updateMany({ data: { isCurrent: false } }),
       prisma.ki.update({ where: { id: kiId }, data: { isCurrent: true } }),
@@ -87,7 +89,7 @@ export async function setCurrentKi(kiId: string): Promise<AdminResult> {
 
 export async function setVersionLock(planVersionId: string, locked: boolean): Promise<AdminResult> {
   try {
-    await requireRole("ADMIN");
+    await requireRole("SUPER_ADMIN");
     const version = await prisma.planVersion.findUniqueOrThrow({ where: { id: planVersionId } });
     await prisma.planVersion.update({
       where: { id: planVersionId },
@@ -119,7 +121,7 @@ const bandSchema = z.object({
 
 export async function saveBands(input: unknown): Promise<AdminResult> {
   try {
-    await requireRole("ADMIN");
+    await requireRole("SUPER_ADMIN");
     const bands = z.array(bandSchema).min(1).parse(input);
 
     // Refuse a scale with a hole or an overlap: it would mis-evaluate silently.
@@ -146,13 +148,13 @@ const userSchema = z.object({
   // Omitted for the normal case: an invitation redeemable only by signing in
   // through Microsoft, with no password to set, send or ever rotate.
   password: z.string().min(8).optional(),
-  role: z.enum(["ADMIN", "OWNER", "VIEWER"]),
+  role: z.enum(["SUPER_ADMIN", "EXECUTIVE", "OWNER", "VIEWER"]),
   orgUnitId: z.string().nullable(),
 });
 
 export async function createUser(input: unknown): Promise<AdminResult> {
   try {
-    await requireRole("ADMIN");
+    await requireRole("SUPER_ADMIN");
     const data = userSchema.parse(input);
     const email = data.email.toLowerCase();
     if (await prisma.appUser.findUnique({ where: { email } })) {
@@ -181,7 +183,7 @@ export async function createUser(input: unknown): Promise<AdminResult> {
 
 export async function setUserActive(userId: string, isActive: boolean): Promise<AdminResult> {
   try {
-    await requireRole("ADMIN");
+    await requireRole("SUPER_ADMIN");
     await prisma.appUser.update({ where: { id: userId }, data: { isActive } });
     revalidatePath("/admin");
     return { ok: true, message: isActive ? "Account reactivated." : "Account deactivated." };
@@ -199,7 +201,7 @@ export async function setUserActive(userId: string, isActive: boolean): Promise<
  */
 export async function copyStructure(fromKiId: string, toKiId: string): Promise<AdminResult> {
   try {
-    await requireRole("ADMIN");
+    await requireRole("SUPER_ADMIN");
     if (fromKiId === toKiId) return { ok: false, message: "Pick two different Ki." };
 
     const [source, target] = await Promise.all([
@@ -289,7 +291,7 @@ const nodeSchema = z.object({
 
 export async function createNode(input: unknown): Promise<AdminResult> {
   try {
-    await requireRole("ADMIN");
+    await requireRole("SUPER_ADMIN");
     const data = nodeSchema.parse(input);
     await assertLadderValid(data.parentId, data.level, data.kind);
 
@@ -322,7 +324,7 @@ const controlItemSchema = z.object({
 
 export async function createControlItem(input: unknown): Promise<AdminResult> {
   try {
-    await requireRole("ADMIN");
+    await requireRole("SUPER_ADMIN");
     const data = controlItemSchema.parse(input);
 
     const node = await prisma.node.findUniqueOrThrow({ where: { id: data.nodeId } });
@@ -415,7 +417,7 @@ const createDepartmentSchema = z.object({
 /** Adds a Department to the pick list, filed under an existing Division. */
 export async function createDepartment(input: unknown): Promise<AdminResult> {
   try {
-    await requireRole("ADMIN");
+    await requireRole("SUPER_ADMIN");
     const data = createDepartmentSchema.parse(input);
 
     const division = await prisma.orgUnit.findUnique({ where: { id: data.divisionId } });
@@ -462,7 +464,7 @@ export async function createDepartment(input: unknown): Promise<AdminResult> {
  */
 export async function deleteDepartment(id: string): Promise<AdminResult> {
   try {
-    await requireRole("ADMIN");
+    await requireRole("SUPER_ADMIN");
 
     const department = await prisma.orgUnit.findUnique({ where: { id } });
     if (!department) return { ok: false, message: "That department no longer exists." };
@@ -516,7 +518,7 @@ export type KiResetResult =
 
 /** What a reset would destroy, counted before anything is touched. */
 export async function kiResetImpact(kiId: string): Promise<KiResetImpact | null> {
-  await requireRole("ADMIN");
+  await requireRole("SUPER_ADMIN");
   const ki = await prisma.ki.findUnique({ where: { id: kiId }, select: { code: true } });
   if (!ki) return null;
 
@@ -545,7 +547,7 @@ export async function kiResetImpact(kiId: string): Promise<KiResetImpact | null>
  */
 export async function resetKi(kiId: string, confirmation?: string): Promise<KiResetResult> {
   try {
-    await requireRole("ADMIN");
+    await requireRole("SUPER_ADMIN");
 
     const ki = await prisma.ki.findUnique({ where: { id: kiId } });
     if (!ki) return { ok: false, message: "That Ki no longer exists." };

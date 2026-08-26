@@ -25,7 +25,7 @@ export interface CandidateUser {
   id: string;
   name: string;
   email: string;
-  role: "ADMIN" | "OWNER" | "VIEWER";
+  role: "SUPER_ADMIN" | "EXECUTIVE" | "OWNER" | "VIEWER";
   orgUnitId: string | null;
   /**
    * True when this person's org unit is the company itself, rather than a

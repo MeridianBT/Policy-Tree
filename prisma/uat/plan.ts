@@ -46,7 +46,7 @@ export const DEPARTMENTS = [
 ] as const;
 
 export const PEOPLE = [
-  { email: "md@driveaus.example", name: "Managing Director", role: "ADMIN", org: null },
+  { email: "md@driveaus.example", name: "Managing Director", role: "SUPER_ADMIN", org: null },
   { email: "sales.director@driveaus.example", name: "Sales & Network Director", role: "OWNER", org: "SLS" },
   { email: "aftersales.director@driveaus.example", name: "Aftersales Director", role: "OWNER", org: "AFT" },
   { email: "marketing.director@driveaus.example", name: "Marketing Director", role: "OWNER", org: "MKT" },

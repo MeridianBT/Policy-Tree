@@ -91,7 +91,7 @@ export async function outstandingForUser(
   const controlItems = await prisma.controlItem.findMany({
     where: {
       node: { kiId: ki.id },
-      ...(user.role === "ADMIN" && !personal
+      ...((user.role === "SUPER_ADMIN" || user.role === "EXECUTIVE") && !personal
         ? {}
         : {
             OR: [

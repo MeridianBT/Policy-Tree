@@ -17,7 +17,7 @@ vi.mock("next/cache", () => ({ revalidatePath: () => {} }));
 vi.mock("@/lib/auth/session", async () => {
   const permissions = await import("@/lib/auth/permissions");
   const errors = await import("@/lib/auth/errors");
-  const admin = { id: "admin", name: "Admin", email: "a@t.local", role: "ADMIN" as const, orgUnitId: null, orgUnitCode: null };
+  const admin = { id: "admin", name: "Admin", email: "a@t.local", role: "SUPER_ADMIN" as const, orgUnitId: null, orgUnitCode: null };
   return {
     ...permissions,
     ...errors,

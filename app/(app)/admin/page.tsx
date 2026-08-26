@@ -5,7 +5,7 @@ import { AdminScreen } from "./AdminScreen";
 export const dynamic = "force-dynamic";
 
 export default async function AdminPage() {
-  await requireRole("ADMIN");
+  await requireRole("SUPER_ADMIN");
 
   const [kis, orgUnits, users, bands] = await Promise.all([
     prisma.ki.findMany({

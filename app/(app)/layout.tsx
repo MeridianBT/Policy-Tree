@@ -53,12 +53,12 @@ export default async function AppLayout({ children }: { children: React.ReactNod
               ))}
             </div>
           </details>
-          {user.role === "ADMIN" && <NavLink href="/admin">Admin</NavLink>}
+          {user.role === "SUPER_ADMIN" && <NavLink href="/admin">Admin</NavLink>}
           <NavLink href="/symbols">Symbols</NavLink>
         </div>
 
         <div className="ml-auto flex items-center gap-2 text-[11px] text-ink-muted">
-          {user.role === "ADMIN" && <KiSwitcher />}
+          {(user.role === "SUPER_ADMIN" || user.role === "EXECUTIVE") && <KiSwitcher />}
           <span title={user.email}>
             {user.name} · {user.role}
             {user.orgUnitCode ? ` · ${user.orgUnitCode}` : ""}

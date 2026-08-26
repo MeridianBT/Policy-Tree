@@ -21,7 +21,15 @@ enum OrgUnitType {
 }
 
 enum UserRole {
-  ADMIN
+  /// Everything, including locking a version, emptying a year, and any edit
+  /// to a Ki that is neither current nor still being built.
+  SUPER_ADMIN
+  /// Directors and general managers. The company structure (Levels 1-3) and
+  /// any unlocked figure, in the current Ki or a future one they are building.
+  /// Never a locked version, never a past year, never the lock itself.
+  EXECUTIVE
+  /// A division or department lead: their own Level 4 branch and their own
+  /// numbers, scoped to their org unit and anything beneath it.
   OWNER
   VIEWER
 }

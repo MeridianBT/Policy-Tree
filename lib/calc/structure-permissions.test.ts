@@ -38,9 +38,58 @@ describe("orgUnitCoversClient", () => {
 });
 
 describe("canEditStructureAt", () => {
-  it("lets ADMIN edit any level, any org unit", () => {
-    expect(canEditStructureAt({ role: "ADMIN", orgUnitId: null }, DICS, 1, null)).toBe(true);
-    expect(canEditStructureAt({ role: "ADMIN", orgUnitId: null }, DICS, 4, "auto-d1")).toBe(true);
+  it("lets SUPER_ADMIN edit any level, any org unit", () => {
+    expect(canEditStructureAt({ role: "SUPER_ADMIN", orgUnitId: null }, DICS, 1, null)).toBe(true);
+    expect(canEditStructureAt({ role: "SUPER_ADMIN", orgUnitId: null }, DICS, 4, "auto-d1")).toBe(true);
+  });
+
+  it("lets EXECUTIVE edit the company structure at Levels 1 to 3, any org unit", () => {
+    const exec = { role: "EXECUTIVE" as const, orgUnitId: null };
+    expect(canEditStructureAt(exec, DICS, 1, null)).toBe(true);
+    expect(canEditStructureAt(exec, DICS, 2, null)).toBe(true);
+    expect(canEditStructureAt(exec, DICS, 3, null)).toBe(true);
+  });
+
+  it("refuses EXECUTIVE at Level 4, whoever owns it", () => {
+    // A department's branch belongs to the lead who built it. A director
+    // restructures the company-wide plan, not one department's corner of it -
+    // and unlike the other refusals here, this one holds regardless of org
+    // unit, because an EXECUTIVE is not scoped to one.
+    const exec = { role: "EXECUTIVE" as const, orgUnitId: null };
+    expect(canEditStructureAt(exec, DICS, 4, "auto")).toBe(false);
+    expect(canEditStructureAt(exec, DICS, 4, "auto-d1")).toBe(false);
+    expect(canEditStructureAt(exec, DICS, 4, null)).toBe(false);
+
+    const scopedExec = { role: "EXECUTIVE" as const, orgUnitId: "auto" };
+    expect(canEditStructureAt(scopedExec, DICS, 4, "auto")).toBe(false);
+  });
+
+  it("refuses VIEWER at every level", () => {
+    const viewer = { role: "VIEWER" as const, orgUnitId: "auto" };
+    for (const level of [1, 2, 3, 4]) {
+      expect(canEditStructureAt(viewer, DICS, level, "auto")).toBe(false);
+    }
+  });
+
+  it("gives each role a different answer for the same row", () => {
+    // The whole point of four roles: one Level 3 row, four verdicts.
+    const row = (role: "SUPER_ADMIN" | "EXECUTIVE" | "OWNER" | "VIEWER") =>
+      canEditStructureAt({ role, orgUnitId: "auto" }, DICS, 3, null);
+    expect([row("SUPER_ADMIN"), row("EXECUTIVE"), row("OWNER"), row("VIEWER")]).toEqual([
+      true,
+      true,
+      false,
+      false,
+    ]);
+
+    const l4 = (role: "SUPER_ADMIN" | "EXECUTIVE" | "OWNER" | "VIEWER") =>
+      canEditStructureAt({ role, orgUnitId: "auto" }, DICS, 4, "auto-d1");
+    expect([l4("SUPER_ADMIN"), l4("EXECUTIVE"), l4("OWNER"), l4("VIEWER")]).toEqual([
+      true,
+      false,
+      true,
+      false,
+    ]);
   });
 
   it("never lets OWNER touch Levels 1-3", () => {
@@ -84,11 +133,13 @@ describe("canEditStructureAt", () => {
 });
 
 describe("canAddDepartmentBranch", () => {
-  it("offers it on a Level 2 or 3 Objective, to ADMIN and OWNER alike", () => {
+  it("offers it on a Level 2 or 3 Objective, to every role but VIEWER", () => {
     const objective2 = { kind: "OBJECTIVE", level: 2 };
     const objective3 = { kind: "OBJECTIVE", level: 3 };
-    expect(canAddDepartmentBranch({ role: "ADMIN", orgUnitId: null }, objective2)).toBe(true);
+    expect(canAddDepartmentBranch({ role: "SUPER_ADMIN", orgUnitId: null }, objective2)).toBe(true);
+    expect(canAddDepartmentBranch({ role: "EXECUTIVE", orgUnitId: null }, objective2)).toBe(true);
     expect(canAddDepartmentBranch({ role: "OWNER", orgUnitId: "auto" }, objective3)).toBe(true);
+    expect(canAddDepartmentBranch({ role: "VIEWER", orgUnitId: "auto" }, objective2)).toBe(false);
   });
 
   it("never offers it on a Goal, a Theme, or a Level 4 Objective", () => {

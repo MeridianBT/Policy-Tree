@@ -96,9 +96,29 @@ export function kiStartYearOf(key: PeriodKey): number {
   return month >= 4 ? year : year - 1;
 }
 
-/** Ki code, e.g. "Ki 2026", for a Ki starting in the given calendar year. */
+/**
+ * The numbered Ki code for a Ki starting in the given calendar year.
+ *
+ * The company counts its fiscal years rather than naming them after a
+ * calendar: 103KI runs April 2026 to March 2027, 104KI the year after, and so
+ * on, one number per year without a break. That makes the code derivable from
+ * the start year, so a new year does not depend on someone remembering which
+ * number comes next.
+ *
+ * A Ki can still be given an explicit code when it needs one - the derivation
+ * is the default, not a constraint - which is what keeps this usable for a
+ * company that numbers its years differently.
+ */
+export const KI_EPOCH_NUMBER = 103;
+export const KI_EPOCH_START_YEAR = 2026;
+
 export function kiCode(kiStartYear: number): string {
-  return `Ki ${kiStartYear}`;
+  return `${KI_EPOCH_NUMBER + (kiStartYear - KI_EPOCH_START_YEAR)}KI`;
+}
+
+/** The calendar year a numbered Ki starts in - the inverse of `kiCode`. */
+export function kiStartYearFor(kiNumber: number): number {
+  return KI_EPOCH_START_YEAR + (kiNumber - KI_EPOCH_NUMBER);
 }
 
 /** Inclusive range of period keys, used by formula range shorthand. */

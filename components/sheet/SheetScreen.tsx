@@ -72,9 +72,9 @@ export function SheetScreen({
   onCompareVersionChange: (value: string) => void;
   /**
    * Signed-in user, for deciding which structure-edit affordances to draw.
-   * ADMIN sees everything; OWNER sees only what their own org unit covers at
-   * Level 4; VIEWER sees none of it. The server re-checks every call
-   * regardless of what this shows.
+   * SUPER_ADMIN sees everything; EXECUTIVE sees Levels 1-3; OWNER sees only
+   * what their own org unit covers at Level 4; VIEWER sees none of it. The
+   * server re-checks every call regardless of what this shows.
    */
   currentUser?: EditingUser;
   onStructureChanged?: () => void;
@@ -129,14 +129,15 @@ export function SheetScreen({
   >(null);
   const { pending: saving, result, setResult, run } = useStructureAction();
 
-  // The full division/department list is only appropriate for an ADMIN. An
-  // OWNER may only file a new Level 4 branch or Control Item under their own
-  // org unit, so both the "add department" and "add measure" pickers use a
-  // narrower list, fetched once - scoped server-side, not merely hidden - the
-  // moment edit mode turns on for them.
+  // The full division/department list is only appropriate for someone who
+  // works company-wide. An OWNER may only file a new Level 4 branch or Control
+  // Item under their own org unit, so both the "add department" and "add
+  // measure" pickers use a narrower list, fetched once - scoped server-side,
+  // not merely hidden - the moment edit mode turns on for them.
   const [scopedDics, setScopedDics] = useState<DicOption[] | null>(null);
-  const isAdmin = currentUser?.role === "ADMIN";
-  const formDics = isAdmin ? model.dics : scopedDics;
+  const companyWide =
+    currentUser?.role === "SUPER_ADMIN" || currentUser?.role === "EXECUTIVE";
+  const formDics = companyWide ? model.dics : scopedDics;
 
   const enterEditMode = useCallback(async () => {
     setEditMode(true);
@@ -144,10 +145,10 @@ export function SheetScreen({
     setDeleting(null);
     setRenamingId(null);
     setResult(null);
-    if (currentUser && currentUser.role !== "ADMIN" && scopedDics === null) {
+    if (currentUser && !companyWide && scopedDics === null) {
       setScopedDics(await assignableDics());
     }
-  }, [currentUser, scopedDics, setResult]);
+  }, [currentUser, companyWide, scopedDics, setResult]);
 
   const labelFor = (id: string) => {
     const row = model.rows.find((candidate) => candidate.id === id);
@@ -186,8 +187,9 @@ export function SheetScreen({
             run(() => renameControlItem({ id, statement }), afterChange),
           onAddChild: (parentId, kind) => {
             // A Level 4 Theme's continuation is its own Objective, scoped to
-            // whoever owns that branch; everything above Level 4 is a plain,
-            // ADMIN-only continuation of the company-wide tree.
+            // whoever owns that branch; everything above Level 4 is a plain
+            // continuation of the company-wide tree, for a SUPER_ADMIN or an
+            // EXECUTIVE.
             const parentRow = model.rows.find((row) => row.id === parentId);
             if (parentRow && parentRow.level === 4 && parentRow.kind !== "CONTROL_ITEM") {
               setAdding({ kind: "DEPARTMENT_OBJECTIVE", parentThemeId: parentId, under: labelFor(parentId) });
@@ -390,7 +392,7 @@ export function SheetScreen({
             >
               {editMode ? "Done editing" : "Edit structure"}
             </Button>
-            {editMode && currentUser?.role === "ADMIN" && (
+            {editMode && companyWide && (
               <Button
                 onClick={() =>
                   setAdding({ kind: "NODE", parentId: null, label: "goal", under: model.kiCode })

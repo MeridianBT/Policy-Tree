@@ -6,22 +6,25 @@
  * anything this mirror got wrong, so a stale or manipulated client can hide or
  * show a button but never actually act outside its scope.
  *
- * ADMIN  - edits anything, always.
- * OWNER  - edits Level 4 rows within their own org unit or a department
- *          beneath it. Levels 1-3 are read-only to them, because they are
- *          what every division ladders into.
- * VIEWER - edits nothing.
+ * SUPER_ADMIN - edits anything, always.
+ * EXECUTIVE   - edits Levels 1-3, the company-wide structure. Level 4 is
+ *               read-only to them: a department's branch belongs to the lead
+ *               who built it.
+ * OWNER       - edits Level 4 rows within their own org unit or a department
+ *               beneath it. Levels 1-3 are read-only to them, because they are
+ *               what every division ladders into.
+ * VIEWER      - edits nothing.
  *
  * "Add department" is the one exception: it hangs off a Level 2 or 3
- * Objective, which is company-wide and owned by nobody in particular, so any
- * ADMIN or OWNER may open the form there - what the form then restricts is
- * *which* org unit the new branch may be filed under.
+ * Objective, which is company-wide and owned by nobody in particular, so
+ * anyone but a VIEWER may open the form there - what the form then restricts
+ * is *which* org unit the new branch may be filed under.
  */
 
 import type { DicOption } from "./StructureControls";
 
 export interface EditingUser {
-  role: "ADMIN" | "OWNER" | "VIEWER";
+  role: "SUPER_ADMIN" | "EXECUTIVE" | "OWNER" | "VIEWER";
   orgUnitId: string | null;
 }
 
@@ -49,7 +52,8 @@ export function canEditStructureAt(
   level: number,
   orgUnitId: string | null | undefined,
 ): boolean {
-  if (user.role === "ADMIN") return true;
+  if (user.role === "SUPER_ADMIN") return true;
+  if (user.role === "EXECUTIVE") return level >= 1 && level <= 3;
   if (user.role !== "OWNER") return false;
   if (level < 4) return false;
   if (!user.orgUnitId || !orgUnitId) return false;

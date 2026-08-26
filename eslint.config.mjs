@@ -71,7 +71,7 @@ export default tseslint.config(
 
   {
     // Scripts are operator tools run from a terminal. Printing is the output.
-    files: ["scripts/**/*.ts", "prisma/seed.ts", "prisma/seed-data.ts"],
+    files: ["scripts/**/*.ts", "prisma/seed.ts", "prisma/seed-data.ts", "prisma/uat/**/*.ts"],
     rules: { "no-console": "off" },
   },
 

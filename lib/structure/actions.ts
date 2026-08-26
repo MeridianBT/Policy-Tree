@@ -28,6 +28,7 @@ import { z } from "zod";
 import { prisma } from "@/lib/db";
 import {
   assignableOrgUnitIds,
+  canEditInKi,
   canEditStructureAt,
   requireSession,
   type AuthenticatedUser,
@@ -104,8 +105,13 @@ export async function addNode(input: unknown): Promise<StructureResult> {
     const user = await requireSession();
     const { kiId, parentId, statement } = addNodeSchema.parse(input);
 
-    if (user.role !== "ADMIN") {
-      throw new NotPermitted("Only an admin can extend the company structure (Levels 1 to 3).");
+    if (!(await canEditStructureAt(user, 1, null))) {
+      throw new NotPermitted(
+        "Only a super admin or an executive can extend the company structure (Levels 1 to 3).",
+      );
+    }
+    if (!(await canEditInKi(user, kiId))) {
+      throw new NotPermitted("That year is closed. Only a super admin can add to it.");
     }
 
     const options = await childOptions(parentId);
@@ -252,10 +258,16 @@ export async function renameNode(input: unknown): Promise<StructureResult> {
     const user = await requireSession();
     const { id, statement } = renameSchema.parse(input);
 
-    const node = await prisma.node.findUnique({ where: { id }, select: { level: true, orgUnitId: true } });
+    const node = await prisma.node.findUnique({
+      where: { id },
+      select: { level: true, orgUnitId: true, kiId: true },
+    });
     if (!node) return { ok: false, message: "That row no longer exists." };
     if (!(await canEditStructureAt(user, node.level, node.orgUnitId))) {
       throw new NotPermitted();
+    }
+    if (!(await canEditInKi(user, node.kiId))) {
+      throw new NotPermitted("That year is closed. Only a super admin can change it.");
     }
 
     await prisma.node.update({ where: { id }, data: { statement } });
@@ -289,31 +301,73 @@ export async function renameControlItem(input: unknown): Promise<StructureResult
 }
 
 /**
- * ADMIN may rename any Control Item's name. An OWNER may only rename one at
- * Level 4 within their own org unit - the same rule as everything else here,
- * plus the Level-1-3 Control Items ADMIN alone may touch.
+ * A SUPER_ADMIN may rename any Control Item. Everyone else falls through to
+ * the same level-and-org-unit rule as the rest of this module: an EXECUTIVE at
+ * Levels 1-3, an OWNER at Level 4 within their own org unit.
  */
 async function canControlItemScope(
   user: AuthenticatedUser,
   level: number,
   dicOrgUnitId: string,
 ): Promise<boolean> {
-  if (user.role === "ADMIN") return true;
+  if (user.role === "SUPER_ADMIN") return true;
   return canEditStructureAt(user, level, dicOrgUnitId);
 }
 
 /** Everything that would go with a node: itself, its descendants, their data. */
-async function measureNodeDeletion(nodeId: string): Promise<DeletionImpact> {
+async function measureNodeDeletion(
+  nodeId: string,
+): Promise<DeletionImpact & { controlItemIds: string[] }> {
   const nodeIds = await descendantNodeIds(nodeId);
   const controlItems = await prisma.controlItem.findMany({
     where: { nodeId: { in: nodeIds } },
     select: { id: true },
   });
-  const entries = controlItems.length
-    ? await prisma.entry.count({ where: { controlItemId: { in: controlItems.map((c) => c.id) } } })
+  const controlItemIds = controlItems.map((c) => c.id);
+  const entries = controlItemIds.length
+    ? await prisma.entry.count({ where: { controlItemId: { in: controlItemIds } } })
     : 0;
 
-  return { nodes: nodeIds.length, controlItems: controlItems.length, entries };
+  return { nodes: nodeIds.length, controlItems: controlItems.length, entries, controlItemIds };
+}
+
+/**
+ * The locked plan versions holding at least one figure among these Control
+ * Items, by code, for a refusal message that names what is in the way.
+ *
+ * This is the guard that was missing. Deleting a node removes its Control
+ * Items and their entries by database cascade
+ * (`onDelete: Cascade` on control_item.node_id and entry.control_item_id), so
+ * no application code was ever asked whether a version was locked - and a
+ * closed forecast could be erased by deleting the row above it, which is
+ * exactly the history-rewrite that lib/entries/save.ts refuses outright.
+ *
+ * Locked means locked here too, for every role including SUPER_ADMIN. The one
+ * sanctioned way to destroy a closed year is Admin -> Empty year, which is
+ * about the year rather than one row and carries its own two guards.
+ */
+async function lockedVersionsHolding(controlItemIds: string[]): Promise<string[]> {
+  if (!controlItemIds.length) return [];
+  const rows = await prisma.entry.findMany({
+    where: {
+      controlItemId: { in: controlItemIds },
+      planVersion: { lockedAt: { not: null } },
+    },
+    select: { planVersion: { select: { code: true } } },
+    distinct: ["planVersionId"],
+  });
+  return rows.map((row) => row.planVersion.code);
+}
+
+function lockedRefusal(what: string, versions: string[]): StructureResult {
+  const list = versions.join(", ");
+  return {
+    ok: false,
+    message:
+      `${what} holds figures in ${versions.length === 1 ? "a locked version" : "locked versions"} ` +
+      `(${list}). A closed version is the record of what was committed, so nothing may remove it - ` +
+      "not even an administrator. Unlock it first if it genuinely needs to change.",
+  };
 }
 
 async function descendantNodeIds(nodeId: string): Promise<string[]> {
@@ -344,20 +398,31 @@ export async function deleteNode(input: unknown): Promise<StructureResult> {
 
     const node = await prisma.node.findUnique({
       where: { id },
-      select: { statement: true, kind: true, level: true, orgUnitId: true },
+      select: { statement: true, kind: true, level: true, orgUnitId: true, kiId: true },
     });
     if (!node) return { ok: false, message: "That row no longer exists." };
     if (!(await canEditStructureAt(user, node.level, node.orgUnitId))) {
       throw new NotPermitted();
     }
+    if (!(await canEditInKi(user, node.kiId))) {
+      throw new NotPermitted(
+        "That year is closed. Only a super admin can change a Ki that is no longer current.",
+      );
+    }
 
     const impact = await measureNodeDeletion(id);
 
+    // Before anything is reported or removed: a closed version's figures are
+    // not this delete's to take.
+    const locked = await lockedVersionsHolding(impact.controlItemIds);
+    if (locked.length) return lockedRefusal(`"${node.statement}"`, locked);
+
     if (!confirm && (impact.nodes > 1 || impact.controlItems > 0)) {
+      const { nodes, controlItems, entries } = impact;
       return {
         ok: false,
         needsConfirmation: true,
-        impact,
+        impact: { nodes, controlItems, entries },
         message: describeImpact(node.statement, impact),
       };
     }
@@ -384,12 +449,24 @@ export async function deleteControlItem(input: unknown): Promise<StructureResult
 
     const item = await prisma.controlItem.findUnique({
       where: { id },
-      select: { name: true, dicOrgUnitId: true, node: { select: { level: true } } },
+      select: {
+        name: true,
+        dicOrgUnitId: true,
+        node: { select: { level: true, kiId: true } },
+      },
     });
     if (!item) return { ok: false, message: "That Control Item no longer exists." };
     if (!(await canControlItemScope(user, item.node.level, item.dicOrgUnitId))) {
       throw new NotPermitted();
     }
+    if (!(await canEditInKi(user, item.node.kiId))) {
+      throw new NotPermitted(
+        "That year is closed. Only a super admin can change a Ki that is no longer current.",
+      );
+    }
+
+    const locked = await lockedVersionsHolding([id]);
+    if (locked.length) return lockedRefusal(`"${item.name}"`, locked);
 
     const entries = await prisma.entry.count({ where: { controlItemId: id } });
 
@@ -460,8 +537,13 @@ export async function addControlItem(input: unknown): Promise<StructureResult> {
     // an OWNER may only choose one within their own reach.
     if (node.level === 4) {
       if (!(await canEditStructureAt(user, 4, data.dicOrgUnitId))) throw new NotPermitted();
-    } else if (user.role !== "ADMIN") {
-      throw new NotPermitted("Only an admin can add a Control Item to the company structure.");
+    } else if (!(await canEditStructureAt(user, node.level, null))) {
+      throw new NotPermitted(
+        "Only a super admin or an executive can add a Control Item to the company structure.",
+      );
+    }
+    if (!(await canEditInKi(user, node.kiId))) {
+      throw new NotPermitted("That year is closed. Only a super admin can add to it.");
     }
 
     // INVERSE is a cost-item convention; the plain ratio is the only meaningful

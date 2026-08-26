@@ -22,6 +22,11 @@ import {
 } from "./seed-data.ts";
 
 const KI_START_YEAR = 2026;
+// Deliberately NOT the derived numbered code (kiCode() in lib/domain/period).
+// That numbering is one company's fiscal convention, and the UAT dataset
+// already occupies 103KI under it. This is a generic worked example for six
+// invented divisions, so it keeps a calendar name of its own - which also
+// stops `db:seed` from finding the UAT year by code and replacing it.
 const KI_CODE = `Ki ${KI_START_YEAR}`;
 
 const prisma = new PrismaClient({
@@ -99,7 +104,7 @@ async function main() {
   // ---- Users ------------------------------------------------------------
   const passwordHash = await bcrypt.hash("hoshin", 10);
   const users = [
-    { email: "admin@example.com", name: "Admin User", role: "ADMIN" as const, org: null },
+    { email: "admin@example.com", name: "Admin User", role: "SUPER_ADMIN" as const, org: null },
     { email: "auto.lead@example.com", name: "Auto Division Lead", role: "OWNER" as const, org: "AUTO" },
     { email: "ox.lead@example.com", name: "OX Division Lead", role: "OWNER" as const, org: "OX" },
     { email: "cs.lead@example.com", name: "CS Division Lead", role: "OWNER" as const, org: "CS" },

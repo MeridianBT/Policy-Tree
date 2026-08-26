@@ -16,6 +16,7 @@ export type { AuthenticatedUser, Role };
 export { NotAuthenticatedError, NotPermittedError };
 export {
   canEditControlItem,
+  canEditInKi,
   canEditStructureAt,
   assignableOrgUnitIds,
   orgUnitCovers,

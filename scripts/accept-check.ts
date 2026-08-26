@@ -22,12 +22,12 @@ const pass = (n: string, ok: boolean, detail = "") =>
 async function main() {
 
 async function adminUser() {
-  const admin = await prisma.appUser.findFirstOrThrow({ where: { role: "ADMIN" } });
+  const admin = await prisma.appUser.findFirstOrThrow({ where: { role: "SUPER_ADMIN" } });
   return {
     id: admin.id,
     name: admin.name,
     email: admin.email,
-    role: "ADMIN" as const,
+    role: "SUPER_ADMIN" as const,
     orgUnitId: admin.orgUnitId,
     orgUnitCode: null,
   };
@@ -139,7 +139,7 @@ const cell = (r: ControlItemRow, k: string) => r.cells.find((c) => c.key === k)!
   const v2 = await prisma.planVersion.findFirstOrThrow({ where: { kiId: ki.id, code: "2QFC" } });
   await prisma.planVersion.update({ where: { id: v2.id }, data: { lockedAt: new Date() } });
 
-  const users = await prisma.appUser.findMany({ where: { role: { in: ["ADMIN", "OWNER", "VIEWER"] } } });
+  const users = await prisma.appUser.findMany({ where: { role: { in: ["SUPER_ADMIN", "OWNER", "VIEWER"] } } });
   const item = byCode.get("AUTO-VOL")!;
   const refusals: string[] = [];
   for (const u of users) {

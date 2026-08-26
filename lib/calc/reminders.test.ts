@@ -170,7 +170,7 @@ describe("assignRecipients", () => {
   });
 
   it("never reaches a user who covers nothing and owns nothing", () => {
-    const admin = user({ id: "admin", role: "ADMIN", orgUnitId: null, covers: [] });
+    const admin = user({ id: "admin", role: "SUPER_ADMIN", orgUnitId: null, covers: [] });
     const recipients = assignRecipients([item(), item({ controlItemId: "ci-2" })], [admin]);
     expect(recipients).toEqual([]);
   });
@@ -192,7 +192,7 @@ describe("assignRecipients", () => {
     // the whole Ki - true, and useless as a to-do list.
     const admin = user({
       id: "admin",
-      role: "ADMIN",
+      role: "SUPER_ADMIN",
       orgUnitId: "co",
       atCompanyRoot: true,
       covers: ["co", "auto", "auto-sales", "ox"],
@@ -207,7 +207,7 @@ describe("assignRecipients", () => {
   it("still reminds a company-level person about measures they personally own", () => {
     const admin = user({
       id: "admin",
-      role: "ADMIN",
+      role: "SUPER_ADMIN",
       orgUnitId: "co",
       atCompanyRoot: true,
       covers: ["co", "auto"],

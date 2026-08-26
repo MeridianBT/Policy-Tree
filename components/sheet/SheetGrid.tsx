@@ -354,24 +354,26 @@ function GroupRowView({
         )}
         {editing && editing.renamingId !== row.id && (() => {
           const owns = canEditStructureAt(editing.user, editing.dics, row.level, row.orgUnitId);
-          const isAdmin = editing.user.role === "ADMIN";
+          const companyWide =
+            editing.user.role === "SUPER_ADMIN" || editing.user.role === "EXECUTIVE";
           // A plain continuation only exists for a Goal, a Theme, or a Level 2
           // Objective (its Level 3 Theme); everything deeper is a department
           // branch, added separately below. Continuation of the company-wide
-          // tree stays ADMIN-only; a Level 4 Theme's own continuation (its
-          // Objective) is scoped to whoever owns that branch.
+          // tree belongs to a SUPER_ADMIN or an EXECUTIVE; a Level 4 Theme's
+          // own continuation (its Objective) is scoped to whoever owns that
+          // branch.
           const childContinues =
             row.kind !== "OBJECTIVE" || row.level === 2;
           const canAddChild =
-            row.level < 4 ? isAdmin && childContinues : owns && childContinues;
+            row.level < 4 ? companyWide && childContinues : owns && childContinues;
           return (
             <RowActions
               canAddChild={canAddChild}
               childLabel={row.kind === "THEME" ? "objective" : "theme"}
               canAddDepartment={canAddDepartmentBranch(editing.user, row)}
-              canAddMeasure={row.kind === "OBJECTIVE" && (row.level < 4 ? isAdmin : owns)}
-              canRename={row.level < 4 ? isAdmin : owns}
-              canDelete={row.level < 4 ? isAdmin : owns}
+              canAddMeasure={row.kind === "OBJECTIVE" && (row.level < 4 ? companyWide : owns)}
+              canRename={row.level < 4 ? companyWide : owns}
+              canDelete={row.level < 4 ? companyWide : owns}
               onAddChild={() =>
                 editing.onAddChild(row.id, row.kind === "THEME" ? "OBJECTIVE" : "THEME")
               }
@@ -446,7 +448,7 @@ function ControlItemRowView({
         {editing &&
         editing.renamingId !== row.id &&
         (row.level < 4
-          ? editing.user.role === "ADMIN"
+          ? editing.user.role === "SUPER_ADMIN" || editing.user.role === "EXECUTIVE"
           : canEditStructureAt(editing.user, editing.dics, row.level, row.dicOrgUnitId)) ? (
           <RowActions
             canAddChild={false}

@@ -13,7 +13,7 @@
  * confirmation - runs for real, against real Postgres.
  */
 
-import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { createFixture, prisma, type Fixture } from "./fixture";
 import type { AuthenticatedUser } from "@/lib/auth/types";
 
@@ -453,5 +453,109 @@ describe("department (org unit) management - ADMIN only, never cascades", () => 
     // And it must still exist - refused, not silently orphaned via SET NULL.
     const stillThere = await prisma.orgUnit.findUnique({ where: { id: fx.orgUnits.alphaDept } });
     expect(stillThere).not.toBeNull();
+  });
+});
+
+describe("a locked version is not the delete's to take", () => {
+  /**
+   * The defect this covers: deleting a node removes its Control Items and
+   * their entries by database cascade, so no application code was ever asked
+   * whether a plan version was locked. A closed forecast could therefore be
+   * erased by deleting the row above it - exactly the history rewrite that
+   * lib/entries/save.ts refuses outright on the cell path.
+   *
+   * These run against a real database on purpose: the cascade is a schema
+   * behaviour, so a mocked Prisma would prove nothing about it.
+   */
+  let goalId: string;
+  let itemId: string;
+  let versionId: string;
+
+  beforeEach(async () => {
+    asUser(fx.users.admin);
+    const goal = await addNode({ kiId: fx.kiId, parentId: null, statement: "Locked goal" });
+    goalId = goal.ok ? goal.id! : "";
+    const theme = await addNode({ kiId: fx.kiId, parentId: goalId, statement: "Locked theme" });
+    const objective = await addNode({
+      kiId: fx.kiId,
+      parentId: theme.ok ? theme.id! : "",
+      statement: "Locked objective",
+    });
+    const item = await addControlItem({
+      nodeId: objective.ok ? objective.id! : "",
+      name: `Locked measure ${Date.now()}`,
+      measuredAs: "Units",
+      unit: "COUNT",
+      direction: "HIGHER_BETTER",
+      aggregation: "SUM",
+      decimalPlaces: 0,
+      dicOrgUnitId: fx.orgUnits.alpha,
+    });
+    itemId = item.ok ? item.id! : "";
+
+    versionId = fx.versions.PRB;
+    await prisma.entry.create({
+      data: {
+        controlItemId: itemId,
+        period: new Date(Date.UTC(2026, 3, 1)),
+        planVersionId: versionId,
+        rawValue: "100",
+      },
+    });
+    await prisma.planVersion.update({
+      where: { id: versionId },
+      data: { lockedAt: new Date() },
+    });
+  });
+
+  afterEach(async () => {
+    await prisma.planVersion.update({ where: { id: versionId }, data: { lockedAt: null } });
+    await prisma.node.deleteMany({ where: { id: goalId } });
+  });
+
+  it("refuses to delete a Goal whose descendants hold a locked figure", async () => {
+    const attempt = await deleteNode({ id: goalId, confirm: true });
+    expect(attempt.ok).toBe(false);
+    expect(attempt.message).toContain("PRB");
+    expect(await prisma.node.count({ where: { id: goalId } })).toBe(1);
+  });
+
+  it("refuses even with confirmation, and even for a SUPER_ADMIN", async () => {
+    // There is no override. The cell path has none either; this is the same
+    // rule reaching the same conclusion by a different route.
+    asUser(fx.users.admin);
+    expect((await deleteNode({ id: goalId, confirm: true })).ok).toBe(false);
+    expect(await prisma.entry.count({ where: { controlItemId: itemId } })).toBe(1);
+  });
+
+  it("refuses to delete the Control Item itself", async () => {
+    const attempt = await deleteControlItem({ id: itemId, confirm: true });
+    expect(attempt.ok).toBe(false);
+    expect(attempt.message).toContain("PRB");
+    expect(await prisma.controlItem.count({ where: { id: itemId } })).toBe(1);
+  });
+
+  it("allows the delete once the version is unlocked", async () => {
+    await prisma.planVersion.update({ where: { id: versionId }, data: { lockedAt: null } });
+    const attempt = await deleteNode({ id: goalId, confirm: true });
+    expect(attempt.ok).toBe(true);
+    expect(await prisma.node.count({ where: { id: goalId } })).toBe(0);
+  });
+
+  it("lets an EXECUTIVE delete a row carrying only unlocked figures", async () => {
+    // The rule is about the lock, not about emptiness: an executive may remove
+    // a Level 1-3 row that already has numbers against it, provided every one
+    // of them is still open.
+    await prisma.planVersion.update({ where: { id: versionId }, data: { lockedAt: null } });
+    asUser(fx.users.executive);
+    const attempt = await deleteNode({ id: goalId, confirm: true });
+    expect(attempt.ok).toBe(true);
+  });
+
+  it("refuses an EXECUTIVE the same delete when a figure is locked", async () => {
+    asUser(fx.users.executive);
+    const attempt = await deleteNode({ id: goalId, confirm: true });
+    expect(attempt.ok).toBe(false);
+    expect(attempt.message).toContain("PRB");
   });
 });

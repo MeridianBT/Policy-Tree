@@ -454,7 +454,8 @@ export function AdminScreen({
             </Field>
             <Field label="Role">
               <select name="role" className={inputClass} defaultValue="OWNER">
-                <option value="ADMIN">ADMIN</option>
+                <option value="SUPER_ADMIN">SUPER_ADMIN</option>
+                <option value="EXECUTIVE">EXECUTIVE</option>
                 <option value="OWNER">OWNER</option>
                 <option value="VIEWER">VIEWER</option>
               </select>

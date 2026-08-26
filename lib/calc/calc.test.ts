@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { kiMonths, quarterMonths, quarterOf, periodRange, monthLabel } from "@/lib/domain/period";
+import { kiMonths, quarterMonths, quarterOf, periodRange, monthLabel, kiCode, kiStartYearFor } from "@/lib/domain/period";
 import { rollUp } from "./aggregate";
 import { achievement, gap, gapSense } from "./achievement";
 import { DEFAULT_BANDS, bandFor, validateBands, BandConfigurationError } from "./bands";
@@ -505,5 +505,25 @@ describe("formatting", () => {
   it("signs a gap when asked", () => {
     expect(formatValue(-50, 0, "CURRENCY", { signed: true, withUnit: true })).toBe("-$50");
     expect(formatValue(50, 0, "CURRENCY", { signed: true, withUnit: true })).toBe("+$50");
+  });
+});
+
+describe("Ki numbering", () => {
+  // The company counts fiscal years rather than naming them after a calendar,
+  // and the count runs unbroken, so the code is derivable from the start year.
+  it("derives the numbered code from the start year", () => {
+    expect(kiCode(2026)).toBe("103KI");
+    expect(kiCode(2027)).toBe("104KI");
+    expect(kiCode(2030)).toBe("107KI");
+  });
+
+  it("goes backwards too, for a year before the epoch", () => {
+    expect(kiCode(2025)).toBe("102KI");
+  });
+
+  it("round-trips through the inverse", () => {
+    for (const year of [2024, 2026, 2027, 2035]) {
+      expect(kiStartYearFor(Number(kiCode(year).replace("KI", "")))).toBe(year);
+    }
   });
 });

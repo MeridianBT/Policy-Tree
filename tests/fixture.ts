@@ -8,7 +8,7 @@ import "dotenv/config";
 import { PrismaClient } from "../generated/prisma/client.ts";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { periodToDate } from "../lib/domain/period.ts";
-import type { AuthenticatedUser } from "../lib/auth/types.ts";
+import type { AuthenticatedUser, Role } from "../lib/auth/types.ts";
 
 export const prisma = new PrismaClient({
   adapter: new PrismaPg({ connectionString: process.env.DATABASE_URL! }),
@@ -49,7 +49,7 @@ export async function createFixture(): Promise<Fixture> {
 
   const makeUser = async (
     key: string,
-    role: "ADMIN" | "OWNER" | "VIEWER",
+    role: Role,
     orgUnitId: string | null,
   ): Promise<AuthenticatedUser> => {
     const record = await prisma.appUser.create({
@@ -72,7 +72,8 @@ export async function createFixture(): Promise<Fixture> {
   };
 
   const users = {
-    admin: await makeUser("admin", "ADMIN", company.id),
+    admin: await makeUser("admin", "SUPER_ADMIN", company.id),
+    executive: await makeUser("exec", "EXECUTIVE", company.id),
     alphaLead: await makeUser("alpha-lead", "OWNER", alpha.id),
     betaLead: await makeUser("beta-lead", "OWNER", beta.id),
     viewer: await makeUser("viewer", "VIEWER", company.id),
