@@ -51,5 +51,14 @@ until npx prisma migrate deploy; do
   sleep 5
 done
 
-echo "Migrations applied. Starting the application on port ${PORT:-3000}…"
+echo "Migrations applied."
+
+# Optional one-time seeding, for a platform that offers no shell. The script
+# refuses to touch a database that already has accounts, so this is safe to
+# leave set - it fills an empty database once and does nothing thereafter.
+if [ -n "$SEED_ON_BOOT" ]; then
+  npx tsx prisma/seed-if-empty.ts
+fi
+
+echo "Starting the application on port ${PORT:-3000}…"
 exec "$@"
