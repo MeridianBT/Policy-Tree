@@ -4,7 +4,8 @@ Getting the platform running on your own machine, signing in, and checking it
 actually works. About twenty minutes, most of it waiting for a Docker build.
 
 For what the thing *is* and why it is built the way it is, read
-[README.md](README.md). This file is only concerned with running it.
+[README.md](README.md). To put it on a real URL for a demo, read
+[DEPLOY.md](DEPLOY.md). This file is only concerned with running it locally.
 
 ## What you need
 

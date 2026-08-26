@@ -13,7 +13,8 @@ data.
 ## Running it
 
 New here? **[QUICKSTART.md](QUICKSTART.md)** walks through getting it running,
-signing in, a tour of every screen, and how to check it works. The rest of this
+signing in, a tour of every screen, and how to check it works.
+**[DEPLOY.md](DEPLOY.md)** puts it on a real URL for a demo. The rest of this
 file is reference.
 
 ```bash

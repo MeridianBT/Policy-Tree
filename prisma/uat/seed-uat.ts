@@ -83,7 +83,12 @@ async function main() {
   }
 
   // ----------------------------------------------------------------- people
-  const passwordHash = await bcrypt.hash("hoshin", 10);
+  // Every demo account shares one password. Fine on a laptop; not fine on a
+  // public URL, where the sign-in page, the account list in this repo and a
+  // guessable password are the whole of the lock. SEED_PASSWORD overrides it
+  // for anything reachable from the internet.
+  const password = process.env.SEED_PASSWORD || "hoshin";
+  const passwordHash = await bcrypt.hash(password, 10);
   const userByOrg = new Map<string, string>();
   for (const p of PEOPLE) {
     const orgUnitId = p.org ? orgByCode.get(p.org)! : company.id;
@@ -248,7 +253,11 @@ async function main() {
 
   const nodes = await prisma.node.count({ where: { kiId: ki.id } });
   console.log(`  org units:      ${orgByCode.size}`);
-  console.log(`  people:         ${PEOPLE.length} (password for all: "hoshin")`);
+  console.log(
+    `  people:         ${PEOPLE.length} (password for all: ` +
+      (process.env.SEED_PASSWORD ? "set from SEED_PASSWORD" : '"hoshin"') +
+      ")",
+  );
   console.log(`  ${KI.current.code}:         ${nodes} rows, ${itemCount} Control Items, ${entries.length} figures`);
   console.log(`  ${KI.next.code}:         created empty, ready to plan`);
 }
