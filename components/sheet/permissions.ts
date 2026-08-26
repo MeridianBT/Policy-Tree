@@ -7,9 +7,8 @@
  * show a button but never actually act outside its scope.
  *
  * SUPER_ADMIN - edits anything, always.
- * EXECUTIVE   - edits Levels 1-3, the company-wide structure. Level 4 is
- *               read-only to them: a department's branch belongs to the lead
- *               who built it.
+ * EXECUTIVE   - edits anything too. What they cannot do lives elsewhere: the
+ *               version lock, the admin panel, and any year already run.
  * OWNER       - edits Level 4 rows within their own org unit or a department
  *               beneath it. Levels 1-3 are read-only to them, because they are
  *               what every division ladders into.
@@ -52,8 +51,7 @@ export function canEditStructureAt(
   level: number,
   orgUnitId: string | null | undefined,
 ): boolean {
-  if (user.role === "SUPER_ADMIN") return true;
-  if (user.role === "EXECUTIVE") return level >= 1 && level <= 3;
+  if (user.role === "SUPER_ADMIN" || user.role === "EXECUTIVE") return true;
   if (user.role !== "OWNER") return false;
   if (level < 4) return false;
   if (!user.orgUnitId || !orgUnitId) return false;

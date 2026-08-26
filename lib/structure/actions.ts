@@ -302,8 +302,9 @@ export async function renameControlItem(input: unknown): Promise<StructureResult
 
 /**
  * A SUPER_ADMIN may rename any Control Item. Everyone else falls through to
- * the same level-and-org-unit rule as the rest of this module: an EXECUTIVE at
- * Levels 1-3, an OWNER at Level 4 within their own org unit.
+ * the same level-and-org-unit rule as the rest of this module, which lets an
+ * EXECUTIVE through at any level and an OWNER only at Level 4 within their
+ * own org unit.
  */
 async function canControlItemScope(
   user: AuthenticatedUser,

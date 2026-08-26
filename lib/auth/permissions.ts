@@ -81,15 +81,12 @@ export async function orgUnitSubtree(orgUnitId: string): Promise<string[]> {
  * Whether a user may add, rename or remove a piece of the plan structure.
  *
  * SUPER_ADMIN - anything, at any level
- * EXECUTIVE   - Levels 1 to 3, the company-wide structure, anywhere in it.
- *               Deliberately NOT Level 4: a department's branch belongs to
- *               the lead who built it, and a director quietly renaming
- *               someone's row would undo the one piece of the plan an OWNER
- *               genuinely owns. Deleting a Level 1-3 row whose descendants
- *               include Level 4 branches is still permitted - that is an
- *               announced, confirmed, whole-branch act that names what it
- *               removes, which is a different thing from editing one row in
- *               place.
+ * EXECUTIVE   - anything, at any level, in any org unit. A director is
+ *               answerable for the whole deployment, not a slice of it, so
+ *               the structure rules do not scope them. What separates them
+ *               from a SUPER_ADMIN is elsewhere: they cannot lock or unlock
+ *               a version, cannot reach the admin panel, and cannot touch a
+ *               year that has already been run.
  * OWNER       - Level 4 only, and only within their own org unit or a
  *               department beneath it. A division or department lead runs
  *               their own corner of the deployment; the company-wide Levels
@@ -106,8 +103,7 @@ export async function canEditStructureAt(
   level: number,
   orgUnitId: string | null,
 ): Promise<boolean> {
-  if (user.role === "SUPER_ADMIN") return true;
-  if (user.role === "EXECUTIVE") return level >= 1 && level <= 3;
+  if (user.role === "SUPER_ADMIN" || user.role === "EXECUTIVE") return true;
   if (user.role !== "OWNER") return false;
   if (level < 4) return false;
   if (!user.orgUnitId || !orgUnitId) return false;

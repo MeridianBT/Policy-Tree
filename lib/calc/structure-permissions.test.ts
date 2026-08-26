@@ -43,25 +43,18 @@ describe("canEditStructureAt", () => {
     expect(canEditStructureAt({ role: "SUPER_ADMIN", orgUnitId: null }, DICS, 4, "auto-d1")).toBe(true);
   });
 
-  it("lets EXECUTIVE edit the company structure at Levels 1 to 3, any org unit", () => {
+  it("lets EXECUTIVE edit any level, in any org unit", () => {
+    // A director is answerable for the whole deployment, so the structure
+    // rules do not scope them - including at Level 4, and including a
+    // department they have no org-unit relationship with. What separates an
+    // EXECUTIVE from a SUPER_ADMIN is the lock, the admin panel and a year
+    // already run, none of which this function decides.
     const exec = { role: "EXECUTIVE" as const, orgUnitId: null };
-    expect(canEditStructureAt(exec, DICS, 1, null)).toBe(true);
-    expect(canEditStructureAt(exec, DICS, 2, null)).toBe(true);
-    expect(canEditStructureAt(exec, DICS, 3, null)).toBe(true);
-  });
-
-  it("refuses EXECUTIVE at Level 4, whoever owns it", () => {
-    // A department's branch belongs to the lead who built it. A director
-    // restructures the company-wide plan, not one department's corner of it -
-    // and unlike the other refusals here, this one holds regardless of org
-    // unit, because an EXECUTIVE is not scoped to one.
-    const exec = { role: "EXECUTIVE" as const, orgUnitId: null };
-    expect(canEditStructureAt(exec, DICS, 4, "auto")).toBe(false);
-    expect(canEditStructureAt(exec, DICS, 4, "auto-d1")).toBe(false);
-    expect(canEditStructureAt(exec, DICS, 4, null)).toBe(false);
-
-    const scopedExec = { role: "EXECUTIVE" as const, orgUnitId: "auto" };
-    expect(canEditStructureAt(scopedExec, DICS, 4, "auto")).toBe(false);
+    for (const level of [1, 2, 3, 4]) {
+      expect(canEditStructureAt(exec, DICS, level, null)).toBe(true);
+    }
+    expect(canEditStructureAt(exec, DICS, 4, "auto-d1")).toBe(true);
+    expect(canEditStructureAt(exec, DICS, 4, "ox")).toBe(true);
   });
 
   it("refuses VIEWER at every level", () => {
@@ -82,14 +75,16 @@ describe("canEditStructureAt", () => {
       false,
     ]);
 
-    const l4 = (role: "SUPER_ADMIN" | "EXECUTIVE" | "OWNER" | "VIEWER") =>
-      canEditStructureAt({ role, orgUnitId: "auto" }, DICS, 4, "auto-d1");
-    expect([l4("SUPER_ADMIN"), l4("EXECUTIVE"), l4("OWNER"), l4("VIEWER")]).toEqual([
-      true,
-      false,
-      true,
-      false,
-    ]);
+    // At Level 4 in a department the OWNER does not cover, only the two
+    // company-wide roles get through.
+    const strangerL4 = (role: "SUPER_ADMIN" | "EXECUTIVE" | "OWNER" | "VIEWER") =>
+      canEditStructureAt({ role, orgUnitId: "ox" }, DICS, 4, "auto-d1");
+    expect([
+      strangerL4("SUPER_ADMIN"),
+      strangerL4("EXECUTIVE"),
+      strangerL4("OWNER"),
+      strangerL4("VIEWER"),
+    ]).toEqual([true, true, false, false]);
   });
 
   it("never lets OWNER touch Levels 1-3", () => {

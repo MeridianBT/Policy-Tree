@@ -559,3 +559,67 @@ describe("a locked version is not the delete's to take", () => {
     expect(attempt.message).toContain("PRB");
   });
 });
+
+describe("an EXECUTIVE reaches Level 4 as well", () => {
+  /**
+   * The company-wide roles are not scoped by org unit at any level. What is
+   * worth proving here is the case the OWNER rule refuses: a Level 4 branch
+   * belonging to a division the actor has no relationship with. An OWNER of
+   * Beta cannot touch Alpha's branch; an EXECUTIVE can, and it is the same
+   * branch and the same call.
+   */
+  let branchId: string;
+
+  beforeAll(async () => {
+    asUser(fx.users.alphaLead);
+    const branch = await addDepartmentBranch({
+      kiId: fx.kiId,
+      parentObjectiveId: fx.nodes.objective,
+      orgUnitId: fx.orgUnits.alpha,
+      statement: "Alpha's own branch",
+    });
+    branchId = (branch as { id: string }).id;
+  });
+
+  it("adds an Objective under another division's branch", async () => {
+    asUser(fx.users.executive);
+    const result = await addDepartmentObjective({
+      kiId: fx.kiId,
+      parentThemeId: branchId,
+      statement: "Objective added by an executive",
+    });
+    expect(result.ok).toBe(true);
+  });
+
+  it("renames another division's Level 4 branch", async () => {
+    asUser(fx.users.executive);
+    expect((await renameNode({ id: branchId, statement: "Renamed by an executive" })).ok).toBe(true);
+  });
+
+  it("files a new branch under a division it has no relationship with", async () => {
+    asUser(fx.users.executive);
+    const result = await addDepartmentBranch({
+      kiId: fx.kiId,
+      parentObjectiveId: fx.nodes.objective,
+      orgUnitId: fx.orgUnits.beta,
+      statement: "Executive's branch under Beta",
+    });
+    expect(result.ok).toBe(true);
+  });
+
+  it("still refuses a division lead the same reach", async () => {
+    // The rule widened for EXECUTIVE only. An OWNER's scope is unchanged.
+    asUser(fx.users.betaLead);
+    const result = await addDepartmentObjective({
+      kiId: fx.kiId,
+      parentThemeId: branchId,
+      statement: "Beta reaching into Alpha",
+    });
+    expect(result.ok).toBe(false);
+  });
+
+  it("refuses a VIEWER entirely", async () => {
+    asUser(fx.users.viewer);
+    expect((await renameNode({ id: branchId, statement: "Viewer rename" })).ok).toBe(false);
+  });
+});
