@@ -16,6 +16,7 @@ import { PrismaClient } from "../../generated/prisma/client.ts";
 import { PrismaPg } from "@prisma/adapter-pg";
 import bcrypt from "bcryptjs";
 import { PLAN_VERSIONS } from "../seed-data.ts";
+import { DEFAULT_BANDS } from "../../lib/calc/bands.ts";
 import { DIVISIONS, DEPARTMENTS, PEOPLE, type Item, type Objective } from "./plan.ts";
 import { GOALS } from "./goals.ts";
 
@@ -55,6 +56,20 @@ let businessUnitIds: Record<string, string> = {};
 
 async function main() {
   businessUnitIds = await businessUnitsByCode();
+
+  // The evaluation scale, if nobody has set one.
+  //
+  // Without bands every symbol is undefined and the sheet refuses to render at
+  // all - lib/calc/bands.ts treats an empty scale as misconfiguration rather
+  // than as "no opinion", which is right, but it means this seed cannot assume
+  // the small worked example ran first. It usually has not: a fresh deployment
+  // runs this one and nothing else.
+  //
+  // Created only when the table is empty, so an admin who has retuned the
+  // scale keeps their version through a re-seed.
+  if ((await prisma.evaluationBand.count()) === 0) {
+    for (const band of DEFAULT_BANDS) await prisma.evaluationBand.create({ data: band });
+  }
   console.log("Loading the UAT dataset…");
 
   // ------------------------------------------------------------- org units
