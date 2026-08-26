@@ -204,6 +204,28 @@ model Node {
 
 /// The thing that actually gets measured - the measurement method.
 /// One Control Item is one row on the report.
+/// A business unit: Automobiles, Motorcycles, Power Products, Corporate.
+///
+/// Deliberately NOT a level in the OrgUnit tree. Divisions, departments and
+/// people work across business units - Brand & Marketing serves all three
+/// product lines - so a tree would force either a division per business unit
+/// or a person into one they only half belong to. As its own dimension it
+/// composes with the DIC instead of colliding with it: "motorcycle measures
+/// owned by Aftersales" is the intersection of two independent tags, and the
+/// org tree keeps its one job of saying who is accountable.
+///
+/// A row rather than an enum so a new business unit is data, not a deploy.
+model BusinessUnit {
+  id        String @id @default(cuid())
+  code      String @unique
+  name      String
+  sortOrder Int    @default(0) @map("sort_order")
+
+  controlItems ControlItem[]
+
+  @@map("business_unit")
+}
+
 model ControlItem {
   id                String            @id @default(cuid())
   nodeId            String            @map("node_id")
@@ -225,11 +247,17 @@ model ControlItem {
   aggregation       Aggregation
   decimalPlaces     Int               @default(0) @map("decimal_places")
   dicOrgUnitId      String            @map("dic_org_unit_id")
+  /// Which business unit this measure belongs to. Required: a measure that
+  /// belongs to no business unit would be indistinguishable from one somebody
+  /// forgot to tag, and the filter could not tell them apart. Genuinely
+  /// group-wide measures - engagement, group revenue, safety - carry CORP.
+  businessUnitId    String            @map("business_unit_id")
   responsibleUserId String?           @map("responsible_user_id")
   sortOrder         Int               @default(0) @map("sort_order")
 
-  node            Node     @relation(fields: [nodeId], references: [id], onDelete: Cascade)
-  dicOrgUnit      OrgUnit  @relation("ControlItemDic", fields: [dicOrgUnitId], references: [id])
+  node            Node         @relation(fields: [nodeId], references: [id], onDelete: Cascade)
+  dicOrgUnit      OrgUnit      @relation("ControlItemDic", fields: [dicOrgUnitId], references: [id])
+  businessUnit    BusinessUnit @relation(fields: [businessUnitId], references: [id])
   responsibleUser AppUser? @relation("ControlItemResponsible", fields: [responsibleUserId], references: [id])
 
   entries      Entry[]
@@ -237,6 +265,7 @@ model ControlItem {
 
   @@index([nodeId])
   @@index([dicOrgUnitId])
+  @@index([businessUnitId])
   @@index([responsibleUserId])
   @@map("control_item")
 }

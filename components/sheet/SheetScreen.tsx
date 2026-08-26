@@ -39,6 +39,20 @@ import type { QuarterCode } from "@/lib/domain/period";
 
 export const LATEST_FORECAST = "LATEST";
 
+/**
+ * The print view carries whatever the reader is looking at: condensed columns,
+ * and one business unit when exactly one is selected. Several selected is not
+ * a state a single printed sheet can honestly title, so it prints everything
+ * rather than implying a filter it cannot name.
+ */
+function printUrl(base: string, condensed: boolean, businessUnits: string[]): string {
+  const params = new URLSearchParams();
+  if (condensed) params.set("columns", "quarters");
+  if (businessUnits.length === 1) params.set("bu", businessUnits[0]);
+  const query = params.toString();
+  return query ? `${base}?${query}` : base;
+}
+
 export function SheetScreen({
   model,
   title,
@@ -275,7 +289,7 @@ export function SheetScreen({
         )}
         {printHref && (
           <Link
-            href={allCondensed ? `${printHref}?columns=quarters` : printHref}
+            href={printUrl(printHref, allCondensed, filters.businessUnits)}
             target="_blank"
             className="flex items-center gap-1 rounded-sm border border-rule bg-paper px-2 py-1 text-[11px] text-ink hover:bg-paper-sunken"
           >
@@ -339,6 +353,17 @@ export function SheetScreen({
               // there silently narrowing the sheet to nothing.
               setFilters((previous) => ({ ...previous, dics: [] }));
             }}
+          />
+        )}
+        {model.businessUnits.length > 1 && (
+          <MultiSelect
+            label="Business unit"
+            selected={filters.businessUnits}
+            options={model.businessUnits.map((unit) => ({
+              value: unit.code,
+              label: `${unit.code} — ${unit.name}`,
+            }))}
+            onChange={(businessUnits) => setFilters((previous) => ({ ...previous, businessUnits }))}
           />
         )}
         <MultiSelect
@@ -407,6 +432,7 @@ export function SheetScreen({
         {(filters.dics.length > 0 ||
           filters.themeIds.length > 0 ||
           filters.symbols.length > 0 ||
+          filters.businessUnits.length > 0 ||
           divisionScope !== "") && (
           <Button
             variant="quiet"
@@ -551,6 +577,7 @@ export function SheetScreen({
           <InlineAddMeasure
             indent={12}
             dics={formDics}
+            businessUnits={model.businessUnits}
             pending={saving}
             onCommit={(values) =>
               run(
@@ -564,6 +591,7 @@ export function SheetScreen({
                     aggregation: values.aggregation,
                     decimalPlaces: values.decimalPlaces,
                     dicOrgUnitId: values.dicOrgUnitId,
+                    businessUnitId: values.businessUnitId,
                   }),
                 afterChange,
               )

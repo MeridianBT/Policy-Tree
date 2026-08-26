@@ -251,12 +251,14 @@ export function InlineAddDepartment({
 export function InlineAddMeasure({
   indent,
   dics,
+  businessUnits,
   onCommit,
   onCancel,
   pending,
 }: {
   indent: number;
   dics: DicOption[];
+  businessUnits: Array<{ id: string; code: string; name: string }>;
   onCommit: (values: {
     name: string;
     measuredAs: string;
@@ -265,6 +267,7 @@ export function InlineAddMeasure({
     aggregation: string;
     decimalPlaces: number;
     dicOrgUnitId: string;
+    businessUnitId: string;
   }) => void;
   onCancel: () => void;
   pending: boolean;
@@ -276,6 +279,7 @@ export function InlineAddMeasure({
   const [aggregation, setAggregation] = useState("SUM");
   const [decimalPlaces, setDecimalPlaces] = useState(0);
   const [dicOrgUnitId, setDic] = useState(dics[0]?.id ?? "");
+  const [businessUnitId, setBusinessUnit] = useState(businessUnits[0]?.id ?? "");
 
   const field = "border border-rule bg-paper px-1.5 py-1 text-[11px]";
 
@@ -305,6 +309,19 @@ export function InlineAddMeasure({
         <select value={dicOrgUnitId} onChange={(e) => setDic(e.target.value)} className={field}>
           {dics.map((dic) => (
             <option key={dic.id} value={dic.id}>{dic.code}</option>
+          ))}
+        </select>
+      </Labelled>
+      <Labelled label="Business unit">
+        <select
+          value={businessUnitId}
+          onChange={(e) => setBusinessUnit(e.target.value)}
+          className={field}
+        >
+          {businessUnits.map((businessUnit) => (
+            <option key={businessUnit.id} value={businessUnit.id}>
+              {businessUnit.code}
+            </option>
           ))}
         </select>
       </Labelled>
@@ -341,7 +358,7 @@ export function InlineAddMeasure({
 
       <button
         type="button"
-        disabled={!name.trim() || !dicOrgUnitId || pending}
+        disabled={!name.trim() || !dicOrgUnitId || !businessUnitId || pending}
         onClick={() =>
           onCommit({
             name: name.trim(),
@@ -351,6 +368,7 @@ export function InlineAddMeasure({
             aggregation,
             decimalPlaces,
             dicOrgUnitId,
+            businessUnitId,
           })
         }
         className="rounded-sm bg-ink px-2.5 py-1 text-[11px] text-paper disabled:opacity-50"

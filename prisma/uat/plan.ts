@@ -72,6 +72,14 @@ export type Item = {
   method: "RATIO" | "INVERSE";
   agg: "SUM" | "AVERAGE" | "LATEST";
   dic: string;
+  /**
+   * Business unit: AUTO, MC, PP or CORP. Optional, defaulting to AUTO -
+   * the automobile plan was written before the other product lines existed
+   * and every one of its measures belongs there, so tagging each of the
+   * original 54 would be noise. A motorcycle or power-products measure says
+   * so explicitly.
+   */
+  bu?: "AUTO" | "MC" | "PP" | "CORP";
   /** Monthly target on PRB. A single number is repeated across the year. */
   target: number | number[];
   /** Apr-Jul actuals. The Ki is four months old, so the rest is unkeyed. */

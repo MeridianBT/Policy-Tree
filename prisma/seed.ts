@@ -29,6 +29,14 @@ const KI_START_YEAR = 2026;
 // stops `db:seed` from finding the UAT year by code and replacing it.
 const KI_CODE = `Ki ${KI_START_YEAR}`;
 
+/**
+ * The worked example predates the business unit dimension and is all one
+ * product line, so every measure in it is filed under Automobiles. The four
+ * units themselves are created by the migration, not here - they are
+ * reference data the schema depends on, not seed content.
+ */
+let businessUnitIds: Record<string, string> = {};
+
 const prisma = new PrismaClient({
   adapter: new PrismaPg({ connectionString: process.env.DATABASE_URL! }),
 });
@@ -46,7 +54,23 @@ function noise(seed: string): number {
   return ((hash >>> 0) % 10000) / 10000;
 }
 
+
+/**
+ * The four business units are reference data created by the migration, not
+ * seed content, so this resolves them by code and fails loudly if the schema
+ * has not been migrated. A silent default here would file every measure under
+ * whichever unit happened to sort first.
+ */
+async function businessUnitsByCode(): Promise<Record<string, string>> {
+  const rows = await prisma.businessUnit.findMany({ select: { id: true, code: true } });
+  if (rows.length === 0) {
+    throw new Error("No business units found. Run `prisma migrate deploy` first.");
+  }
+  return Object.fromEntries(rows.map((row) => [row.code, row.id]));
+}
+
 async function main() {
+  businessUnitIds = await businessUnitsByCode();
   console.log("Seeding Hoshin Kanri…");
 
   // ---- Evaluation bands -------------------------------------------------
@@ -190,6 +214,7 @@ async function main() {
         achievementMethod: spec.achievementMethod,
         aggregation: spec.aggregation,
         decimalPlaces: spec.decimalPlaces,
+        businessUnitId: businessUnitIds.AUTO,
         dicOrgUnitId: orgUnitByCode.get(dic)!.id,
         responsibleUserId: userByOrg.get(dic) ?? userByOrg.get(spec.dic) ?? null,
         sortOrder,

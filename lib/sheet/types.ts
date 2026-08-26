@@ -41,6 +41,9 @@ export interface ControlItemRow {
   dicCode: string;
   dicName: string;
   dicOrgUnitId: string;
+  /** The business unit this measure belongs to: AUTO, MC, PP or CORP. */
+  businessUnitCode: string;
+  businessUnitName: string;
   responsibleUserName: string | null;
   level: number;
   path: string[];
@@ -77,4 +80,10 @@ export interface SheetModel {
   }>;
   /** Theme statements present, for the filter control. */
   themes: Array<{ id: string; statement: string }>;
+  /**
+   * Every business unit, for the filter control and the add-measure form.
+   * Every one of them, not merely those already carrying a measure: a new
+   * measure has to be assignable to a unit the plan has not reached yet.
+   */
+  businessUnits: Array<{ id: string; code: string; name: string }>;
 }

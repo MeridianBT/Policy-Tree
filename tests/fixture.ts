@@ -20,6 +20,8 @@ export interface Fixture {
   versions: Record<string, string>;
   items: Record<string, string>;
   orgUnits: Record<string, string>;
+  /** Business unit ids by code, for the write paths that now require one. */
+  businessUnits: Record<string, string>;
   users: Record<string, AuthenticatedUser>;
   /** Level 1/2 nodes, for tests exercising the structure-edit actions. */
   nodes: { goal: string; theme: string; objective: string };
@@ -31,6 +33,13 @@ let counter = 0;
 export async function createFixture(): Promise<Fixture> {
   const suffix = `T${Date.now().toString(36)}${counter++}`;
   const kiCode = `Ki TEST ${suffix}`;
+
+  // Every fixture measure is filed under Automobiles. The dimension under
+  // test elsewhere is accountability, not product line.
+  const allBusinessUnits = await prisma.businessUnit.findMany({ select: { id: true, code: true } });
+  const autoBusinessUnit = allBusinessUnits.find((unit) => unit.code === "AUTO");
+  if (!autoBusinessUnit) throw new Error("Business units missing - run `prisma migrate deploy`.");
+  const autoBusinessUnitId = autoBusinessUnit.id;
 
   const company = await prisma.orgUnit.upsert({
     where: { code: `CO-${suffix}` },
@@ -130,6 +139,7 @@ export async function createFixture(): Promise<Fixture> {
         aggregation: "SUM",
         decimalPlaces: 2,
         dicOrgUnitId: spec.dic,
+        businessUnitId: autoBusinessUnitId,
         responsibleUserId: spec.responsible,
         sortOrder: index,
       },
@@ -143,6 +153,7 @@ export async function createFixture(): Promise<Fixture> {
     versions,
     items,
     orgUnits: { company: company.id, alpha: alpha.id, beta: beta.id, alphaDept: alphaDept.id },
+    businessUnits: Object.fromEntries(allBusinessUnits.map((unit) => [unit.code, unit.id])),
     users,
     nodes: { goal: goal.id, theme: theme.id, objective: objective.id },
     async cleanup() {

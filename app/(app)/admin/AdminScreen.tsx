@@ -14,10 +14,12 @@ import { EvaluationSymbol } from "@/components/sheet/EvaluationSymbol";
 import {
   copyStructure,
   createControlItem,
+  createBusinessUnit,
   createDepartment,
   createKi,
   createNode,
   createUser,
+  deleteBusinessUnit,
   deleteDepartment,
   saveBands,
   setCurrentKi,
@@ -57,12 +59,14 @@ interface NodeRow { id: string; level: number; kind: string; statement: string; 
 export function AdminScreen({
   kis,
   orgUnits,
+  businessUnits,
   users,
   bands,
   nodes,
 }: {
   kis: KiRow[];
   orgUnits: OrgUnitRow[];
+  businessUnits: Array<{ id: string; code: string; name: string; controlItemCount: number }>;
   users: UserRow[];
   bands: EvaluationBandSpec[];
   nodes: NodeRow[];
@@ -344,6 +348,49 @@ export function AdminScreen({
             <div className="flex items-end sm:col-span-2">
               <Button type="submit" variant="primary">Add Control Item</Button>
             </div>
+          </form>
+        </Panel>
+
+        <Panel
+          title="Business units"
+          hint="The product lines a Control Item can belong to. Nothing is ever summed across them - the whole-company sheet shows every unit's rows side by side rather than merging them."
+        >
+          <table className="w-full border-collapse text-[12px]">
+            <tbody>
+              {businessUnits.map((unit) => (
+                <tr key={unit.id} className="border-b border-rule">
+                  <td className="py-1.5 pl-1">
+                    <span className="font-medium">{unit.code}</span> — {unit.name}
+                  </td>
+                  <td className="py-1.5 text-right text-ink-faint">
+                    {unit.controlItemCount} Control {unit.controlItemCount === 1 ? "Item" : "Items"}
+                  </td>
+                  <td className="py-1.5 text-right">
+                    <Button onClick={() => run(() => deleteBusinessUnit(unit.id))}>Remove</Button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+
+          <form
+            className="mt-3 flex flex-wrap items-end gap-2 border-t border-rule pt-3"
+            action={(formData) =>
+              run(() =>
+                createBusinessUnit({
+                  code: String(formData.get("code")),
+                  name: String(formData.get("name")),
+                }),
+              )
+            }
+          >
+            <Field label="Code">
+              <input name="code" required className={inputClass} placeholder="MARINE" />
+            </Field>
+            <Field label="Name">
+              <input name="name" required className={inputClass} placeholder="Marine" />
+            </Field>
+            <Button type="submit" variant="primary">Add business unit</Button>
           </form>
         </Panel>
 

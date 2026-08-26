@@ -18,6 +18,11 @@ import { useVirtualizer } from "@tanstack/react-virtual";
 import Link from "next/link";
 import { ChevronDown, ChevronRight } from "lucide-react";
 import type { SheetModel, ControlItemRow, GroupRow, SheetRowModel } from "@/lib/sheet/types";
+import { matchRows, EMPTY_FILTERS, type SheetFilters } from "./filters";
+
+// Re-exported so callers keep importing their filter types from the grid they
+// belong to; the implementation lives apart only so it can be tested.
+export { EMPTY_FILTERS, type SheetFilters };
 import { columnClass, columnWidth, sheetColumns } from "./columns";
 import type { QuarterCode } from "@/lib/domain/period";
 import { groupHeading, indentPx } from "./outline";
@@ -27,14 +32,6 @@ import { SheetCellView, rowHeightFor, type DisplayMode } from "./SheetCellView";
 import { EvaluationSymbol } from "./EvaluationSymbol";
 
 const GROUP_ROW_HEIGHT = 28;
-
-export interface SheetFilters {
-  dics: string[];
-  themeIds: string[];
-  symbols: string[];
-}
-
-export const EMPTY_FILTERS: SheetFilters = { dics: [], themeIds: [], symbols: [] };
 
 export interface EditingHandlers {
   user: EditingUser;
@@ -195,24 +192,6 @@ export function SheetGrid({
 
 function countControlItems(rows: SheetRowModel[]): number {
   return rows.filter((row) => row.kind === "CONTROL_ITEM").length;
-}
-
-function matchRows(rows: SheetRowModel[], filters: SheetFilters): SheetRowModel[] {
-  const noFilter =
-    filters.dics.length === 0 && filters.themeIds.length === 0 && filters.symbols.length === 0;
-  if (noFilter) return rows;
-
-  const kept = new Set<string>();
-  for (const row of rows) {
-    if (row.kind !== "CONTROL_ITEM") continue;
-    const item = row as ControlItemRow;
-    if (filters.dics.length && !filters.dics.includes(item.dicCode)) continue;
-    if (filters.themeIds.length && !item.path.some((id) => filters.themeIds.includes(id))) continue;
-    if (filters.symbols.length && !(item.kiSymbol && filters.symbols.includes(item.kiSymbol))) continue;
-    kept.add(item.id);
-    for (const ancestor of item.path) kept.add(ancestor);
-  }
-  return rows.filter((row) => kept.has(row.id));
 }
 
 /** The Goal › Theme › Objective the topmost visible row sits under. */

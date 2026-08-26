@@ -253,6 +253,10 @@ export async function copyStructure(fromKiId: string, toKiId: string): Promise<A
               code: `${item.code}@${target.code.replace(/\s+/g, "")}`,
               name: item.name,
               measuredAs: item.measuredAs,
+              // Copied forward as-is: next year's plan starts from this
+              // year's, and a measure does not change business unit by
+              // crossing a year boundary.
+              businessUnitId: item.businessUnitId,
               unit: item.unit,
               direction: item.direction,
               achievementMethod: item.achievementMethod,
@@ -319,6 +323,7 @@ const controlItemSchema = z.object({
   aggregation: z.enum(["SUM", "AVERAGE", "LATEST"]),
   decimalPlaces: z.coerce.number().int().min(0).max(4),
   dicOrgUnitId: z.string().min(1),
+  businessUnitId: z.string().min(1, "A Control Item needs a business unit."),
   responsibleUserId: z.string().nullable(),
 });
 
@@ -587,6 +592,76 @@ export async function resetKi(kiId: string, confirmation?: string): Promise<KiRe
         `${ki.code} emptied — ${impact.nodes} rows, ${impact.controlItems} Control Items ` +
         `and ${impact.entries} figures removed. Its plan versions are intact.`,
     };
+  } catch (error) {
+    return fail(error);
+  }
+}
+
+// ----------------------------------------------------------- Business units
+
+const createBusinessUnitSchema = z.object({
+  code: z.string().trim().min(1).max(12).regex(/^[A-Za-z0-9-]+$/, "Use letters, digits or dashes."),
+  name: z.string().trim().min(1).max(80),
+});
+
+/**
+ * A business unit is data, not an enum, so a company that starts a fourth
+ * product line adds one here rather than waiting on a deploy.
+ */
+export async function createBusinessUnit(input: unknown): Promise<AdminResult> {
+  try {
+    await requireRole("SUPER_ADMIN");
+    const data = createBusinessUnitSchema.parse(input);
+
+    const code = data.code.toUpperCase();
+    if (await prisma.businessUnit.findUnique({ where: { code } })) {
+      return { ok: false, message: `${code} is already in use.` };
+    }
+
+    const existing = await prisma.businessUnit.count();
+    await prisma.businessUnit.create({ data: { code, name: data.name, sortOrder: existing } });
+
+    revalidatePath("/admin");
+    revalidatePath("/sheet");
+    return { ok: true, message: `${code} added.` };
+  } catch (error) {
+    return fail(error);
+  }
+}
+
+/**
+ * Refuses outright while any measure still points at it, and never cascades.
+ * The same reasoning as deleting a department: a business unit is an identity
+ * other rows depend on, not plan content with a value of its own, and the
+ * database would otherwise refuse anyway - the foreign key is ON DELETE
+ * RESTRICT. Better to say which measures are in the way than to surface a
+ * constraint violation.
+ */
+export async function deleteBusinessUnit(id: string): Promise<AdminResult> {
+  try {
+    await requireRole("SUPER_ADMIN");
+
+    const unit = await prisma.businessUnit.findUnique({ where: { id } });
+    if (!unit) return { ok: false, message: "That business unit no longer exists." };
+
+    const inUse = await prisma.controlItem.count({ where: { businessUnitId: id } });
+    if (inUse > 0) {
+      return {
+        ok: false,
+        message:
+          `${unit.code} still carries ${inUse} Control ${inUse === 1 ? "Item" : "Items"}. ` +
+          "Move them to another business unit first.",
+      };
+    }
+
+    if ((await prisma.businessUnit.count()) === 1) {
+      return { ok: false, message: "There has to be at least one business unit." };
+    }
+
+    await prisma.businessUnit.delete({ where: { id } });
+    revalidatePath("/admin");
+    revalidatePath("/sheet");
+    return { ok: true, message: `${unit.code} removed.` };
   } catch (error) {
     return fail(error);
   }

@@ -53,6 +53,8 @@ function item(id: string, dicCode: string, cells: SheetCell[]): SheetRowModel {
     dicCode,
     dicName: dicCode,
     dicOrgUnitId: dicCode,
+    businessUnitCode: "AUTO",
+    businessUnitName: "Automobiles",
     responsibleUserName: null,
     level: 2,
     path: [],

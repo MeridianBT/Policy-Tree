@@ -68,6 +68,7 @@ beforeAll(async () => {
   const item = await prisma.controlItem.create({
     data: {
       nodeId: objective.id,
+      businessUnitId: (await prisma.businessUnit.findUniqueOrThrow({ where: { code: "AUTO" } })).id,
       code: `RST-CI-${suffix}`,
       name: "Measure",
       unit: "COUNT",

@@ -126,6 +126,18 @@ function ControlItemLine({
           {dic.code}
         </span>
       )}
+      {/*
+        The business unit sits beside the DIC as a second, equally quiet badge.
+        It is a tag on the measure rather than a level in the tree, so it never
+        becomes a grouping here: a Level 4 branch renders where it structurally
+        attaches, and nesting by business unit would contradict the sheet.
+      */}
+      <span
+        className="shrink-0 rounded-sm border border-rule px-1 text-[10px] text-ink-faint"
+        title={`Business unit: ${row.businessUnitName}`}
+      >
+        {row.businessUnitCode}
+      </span>
       {kiCell && (
         <span className="num ml-auto shrink-0 text-[11px] text-ink-faint">{formatAchievement(kiCell.achievement)}</span>
       )}

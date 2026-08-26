@@ -36,7 +36,25 @@ const month = (startYear: number, index: number) => {
 const spread = (t: number | number[]): number[] =>
   Array.isArray(t) ? t : Array.from({ length: 12 }, () => t);
 
+
+/**
+ * The four business units are reference data created by the migration, not
+ * seed content, so this resolves them by code and fails loudly if the schema
+ * has not been migrated. A silent default here would file every measure under
+ * whichever unit happened to sort first.
+ */
+async function businessUnitsByCode(): Promise<Record<string, string>> {
+  const rows = await prisma.businessUnit.findMany({ select: { id: true, code: true } });
+  if (rows.length === 0) {
+    throw new Error("No business units found. Run `prisma migrate deploy` first.");
+  }
+  return Object.fromEntries(rows.map((row) => [row.code, row.id]));
+}
+
+let businessUnitIds: Record<string, string> = {};
+
 async function main() {
+  businessUnitIds = await businessUnitsByCode();
   console.log("Loading the UAT dataset…");
 
   // ------------------------------------------------------------- org units
@@ -127,6 +145,7 @@ async function main() {
           measuredAs: item.measuredAs,
           unit: item.unit,
           direction: item.dir,
+          businessUnitId: businessUnitIds[item.bu ?? "AUTO"],
           achievementMethod: item.method,
           aggregation: item.agg,
           decimalPlaces: item.dp,

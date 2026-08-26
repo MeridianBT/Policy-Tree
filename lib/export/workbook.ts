@@ -50,41 +50,49 @@ export async function buildWorkbook(options: ExportOptions): Promise<ArrayBuffer
 
 // ---------------------------------------------------------------- "Sheet"
 
+/**
+ * The frozen label block on the Sheet tab: Measures, Control Item, DIC, BU.
+ * Named because the month columns are positioned relative to it, and a
+ * literal would have to be right in six separate places.
+ */
+const LABEL_COLUMNS = 4;
+
 function buildSheetTab(workbook: ExcelJS.Workbook, { model, title, basisLabel }: ExportOptions) {
   const sheet = workbook.addWorksheet("Sheet", {
-    views: [{ state: "frozen", xSplit: 3, ySplit: 4 }],
+    views: [{ state: "frozen", xSplit: LABEL_COLUMNS, ySplit: 4 }],
     // A3 landscape, matching the print route.
     pageSetup: { orientation: "landscape", paperSize: 8 as never, fitToPage: true, fitToWidth: 1 },
   });
 
   const columns = sheetColumns(model.kiStartYear);
 
-  sheet.mergeCells(1, 1, 1, 3 + columns.length);
+  sheet.mergeCells(1, 1, 1, LABEL_COLUMNS + columns.length);
   const heading = sheet.getCell(1, 1);
   heading.value = title;
   heading.font = { bold: true, size: 13, color: { argb: INK } };
 
-  sheet.mergeCells(2, 1, 2, 3 + columns.length);
+  sheet.mergeCells(2, 1, 2, LABEL_COLUMNS + columns.length);
   const stamp = sheet.getCell(2, 1);
   stamp.value = `${model.kiCode} · ${basisLabel} · exported ${new Date().toLocaleDateString("en-GB")}`;
   stamp.font = { size: 9, color: { argb: "FF57564F" } };
 
   // Header: period across, then target/actual/achievement stacked in the rows.
   const headerRow = sheet.getRow(4);
-  headerRow.values = ["Measures", "Control Item", "DIC", ...columns.map((c) => c.label)];
+  headerRow.values = ["Measures", "Control Item", "DIC", "BU", ...columns.map((c) => c.label)];
   headerRow.font = { bold: true, size: 9 };
   headerRow.alignment = { vertical: "bottom" };
   headerRow.eachCell((cell, index) => {
     cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: BAND_STRONG } };
     cell.border = { bottom: { style: "thin", color: { argb: INK } } };
-    if (index > 3) cell.alignment = { horizontal: "right", vertical: "bottom" };
+    if (index > LABEL_COLUMNS) cell.alignment = { horizontal: "right", vertical: "bottom" };
   });
 
   sheet.getColumn(1).width = 44;
   sheet.getColumn(2).width = 26;
   sheet.getColumn(3).width = 7;
+  sheet.getColumn(4).width = 7;
   for (let i = 0; i < columns.length; i++) {
-    sheet.getColumn(4 + i).width = columns[i].kind === "MONTH" ? 11 : 13;
+    sheet.getColumn(LABEL_COLUMNS + 1 + i).width = columns[i].kind === "MONTH" ? 11 : 13;
   }
 
   let rowNumber = 5;
@@ -99,7 +107,7 @@ function buildSheetTab(workbook: ExcelJS.Workbook, { model, title, basisLabel }:
         italic: group.kind === "OBJECTIVE",
         size: group.kind === "GOAL" ? 11 : 10,
       };
-      for (let i = 1; i <= 3 + columns.length; i++) {
+      for (let i = 1; i <= LABEL_COLUMNS + columns.length; i++) {
         excelRow.getCell(i).fill = {
           type: "pattern",
           pattern: "solid",
@@ -122,16 +130,19 @@ function buildSheetTab(workbook: ExcelJS.Workbook, { model, title, basisLabel }:
     targetRow.getCell(1).alignment = { indent: indentSteps(item) * 2 };
     targetRow.getCell(2).value = item.measuredAs;
     targetRow.getCell(3).value = item.dicCode;
+    targetRow.getCell(4).value = item.businessUnitCode;
     sheet.mergeCells(targetRow.number, 1, achRow.number, 1);
     sheet.mergeCells(targetRow.number, 2, achRow.number, 2);
     sheet.mergeCells(targetRow.number, 3, achRow.number, 3);
+    sheet.mergeCells(targetRow.number, 4, achRow.number, 4);
     targetRow.getCell(1).alignment = { vertical: "middle", wrapText: true, indent: indentSteps(item) * 2 };
     targetRow.getCell(2).alignment = { vertical: "middle", wrapText: true };
     targetRow.getCell(3).alignment = { vertical: "middle", horizontal: "center" };
+    targetRow.getCell(4).alignment = { vertical: "middle", horizontal: "center" };
 
     columns.forEach((column, index) => {
       const cell = cellByKey.get(column.key);
-      const at = 4 + index;
+      const at = LABEL_COLUMNS + 1 + index;
 
       const target = targetRow.getCell(at);
       target.value = cell?.target ?? null;
@@ -183,6 +194,7 @@ function buildDataTab(workbook: ExcelJS.Workbook, { model, basisLabel }: ExportO
     { header: "Control Item", key: "controlItem", width: 26 },
     { header: "Code", key: "code", width: 14 },
     { header: "DIC", key: "dic", width: 7 },
+    { header: "Business unit", key: "businessUnit", width: 14 },
     { header: "Unit", key: "unit", width: 10 },
     { header: "Aggregation", key: "aggregation", width: 12 },
     { header: "Direction", key: "direction", width: 15 },
@@ -226,6 +238,7 @@ function buildDataTab(workbook: ExcelJS.Workbook, { model, basisLabel }: ExportO
         controlItem: item.measuredAs,
         code: item.code,
         dic: item.dicCode,
+        businessUnit: item.businessUnitCode,
         unit: item.unit,
         aggregation: item.aggregation,
         direction: item.direction === "HIGHER_BETTER" ? "Higher is better" : "Lower is better",

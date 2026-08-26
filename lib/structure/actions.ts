@@ -517,6 +517,7 @@ const addControlItemSchema = z.object({
   aggregation: z.enum(["SUM", "AVERAGE", "LATEST"]),
   decimalPlaces: z.coerce.number().int().min(0).max(4),
   dicOrgUnitId: z.string().min(1, "A Control Item needs a Division in charge."),
+  businessUnitId: z.string().min(1, "A Control Item needs a business unit."),
 });
 
 export async function addControlItem(input: unknown): Promise<StructureResult> {
@@ -564,6 +565,7 @@ export async function addControlItem(input: unknown): Promise<StructureResult> {
         aggregation: data.aggregation,
         decimalPlaces: data.decimalPlaces,
         dicOrgUnitId: data.dicOrgUnitId,
+        businessUnitId: data.businessUnitId,
         sortOrder: siblings,
       },
     });

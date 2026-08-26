@@ -15,7 +15,13 @@ import { buildSymbolHeatmap, divisionCodes, type HeatmapCell } from "@/lib/calc/
 import { monthLabel } from "@/lib/domain/period";
 import type { SheetModel } from "@/lib/sheet/types";
 
-export function InsightsView({ model }: { model: SheetModel }) {
+export function InsightsView({
+  model,
+  businessUnit,
+}: {
+  model: SheetModel;
+  businessUnit?: string | null;
+}) {
   const divisions = divisionCodes(model.dics, model.rows);
   const cells = buildSymbolHeatmap(model.rows, model.dics, model.months);
   const cellFor = new Map(cells.map((cell) => [cell.divisionCode + "|" + cell.period, cell]));
@@ -30,6 +36,22 @@ export function InsightsView({ model }: { model: SheetModel }) {
             Department figures count toward their Division.
           </p>
         </header>
+
+        {model.businessUnits.length > 1 && (
+          <nav className="mb-4 flex flex-wrap items-center gap-1.5 text-[11px]">
+            <span className="mr-1 text-ink-faint">Business unit</span>
+            <BusinessUnitLink code={null} label="All" active={!businessUnit} />
+            {model.businessUnits.map((unit) => (
+              <BusinessUnitLink
+                key={unit.code}
+                code={unit.code}
+                label={unit.code}
+                title={unit.name}
+                active={businessUnit === unit.code}
+              />
+            ))}
+          </nav>
+        )}
 
         <Legend model={model} />
 
@@ -55,6 +77,38 @@ export function InsightsView({ model }: { model: SheetModel }) {
         </div>
       </div>
     </div>
+  );
+}
+
+/**
+ * Plain links rather than a control with state: the filter lives in the URL so
+ * a filtered view can be linked to and printed, and this page is read-only
+ * everywhere else too.
+ */
+function BusinessUnitLink({
+  code,
+  label,
+  title,
+  active,
+}: {
+  code: string | null;
+  label: string;
+  title?: string;
+  active: boolean;
+}) {
+  return (
+    <a
+      href={code ? `/insights?bu=${encodeURIComponent(code)}` : "/insights"}
+      title={title}
+      aria-current={active ? "page" : undefined}
+      className={`rounded-sm border px-1.5 py-0.5 ${
+        active
+          ? "border-ink bg-paper-band-strong font-medium text-ink"
+          : "border-rule text-ink-muted hover:border-rule-strong"
+      }`}
+    >
+      {label}
+    </a>
   );
 }
 

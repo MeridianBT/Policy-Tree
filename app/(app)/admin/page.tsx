@@ -7,7 +7,7 @@ export const dynamic = "force-dynamic";
 export default async function AdminPage() {
   await requireRole("SUPER_ADMIN");
 
-  const [kis, orgUnits, users, bands] = await Promise.all([
+  const [kis, orgUnits, users, bands, businessUnitRows] = await Promise.all([
     prisma.ki.findMany({
       orderBy: { startDate: "desc" },
       include: {
@@ -21,6 +21,10 @@ export default async function AdminPage() {
       include: { orgUnit: { select: { code: true } } },
     }),
     prisma.evaluationBand.findMany({ orderBy: { sortOrder: "asc" } }),
+    prisma.businessUnit.findMany({
+      orderBy: { sortOrder: "asc" },
+      include: { _count: { select: { controlItems: true } } },
+    }),
   ]);
 
   const nodes = await prisma.node.findMany({
@@ -44,6 +48,12 @@ export default async function AdminPage() {
           isActual: version.isActual,
           lockedAt: version.lockedAt?.toISOString() ?? null,
         })),
+      }))}
+      businessUnits={businessUnitRows.map((unit) => ({
+        id: unit.id,
+        code: unit.code,
+        name: unit.name,
+        controlItemCount: unit._count.controlItems,
       }))}
       orgUnits={orgUnits.map((unit) => ({
         id: unit.id,

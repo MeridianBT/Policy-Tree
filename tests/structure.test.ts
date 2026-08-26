@@ -258,6 +258,7 @@ describe("editing an existing Level 4 branch", () => {
       aggregation: "SUM",
       decimalPlaces: 0,
       dicOrgUnitId: fx.orgUnits.alpha,
+      businessUnitId: fx.businessUnits.AUTO,
     });
     expect(result.ok).toBe(true);
   });
@@ -273,6 +274,7 @@ describe("editing an existing Level 4 branch", () => {
       aggregation: "SUM",
       decimalPlaces: 0,
       dicOrgUnitId: fx.orgUnits.beta,
+      businessUnitId: fx.businessUnits.AUTO,
     });
     expect(result.ok).toBe(false);
   });
@@ -288,6 +290,7 @@ describe("editing an existing Level 4 branch", () => {
       aggregation: "SUM",
       decimalPlaces: 0,
       dicOrgUnitId: fx.orgUnits.alpha,
+      businessUnitId: fx.businessUnits.AUTO,
     });
     expect(result.ok).toBe(true);
     if (result.ok && result.id) {
@@ -398,6 +401,7 @@ describe("Control Item deletion, scoped the same way", () => {
       aggregation: "SUM",
       decimalPlaces: 0,
       dicOrgUnitId: fx.orgUnits.alpha,
+      businessUnitId: fx.businessUnits.AUTO,
     });
     const itemId = (item as { id: string }).id;
 
@@ -490,6 +494,7 @@ describe("a locked version is not the delete's to take", () => {
       aggregation: "SUM",
       decimalPlaces: 0,
       dicOrgUnitId: fx.orgUnits.alpha,
+      businessUnitId: fx.businessUnits.AUTO,
     });
     itemId = item.ok ? item.id! : "";
 

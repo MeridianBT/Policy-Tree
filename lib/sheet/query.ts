@@ -83,6 +83,7 @@ export async function loadSheet(options: LoadSheetOptions): Promise<SheetModel> 
       },
       include: {
         dicOrgUnit: { select: { code: true, name: true } },
+        businessUnit: { select: { code: true, name: true } },
         responsibleUser: { select: { name: true } },
       },
       orderBy: { sortOrder: "asc" },
@@ -242,6 +243,8 @@ export async function loadSheet(options: LoadSheetOptions): Promise<SheetModel> 
         dicCode: item.dicOrgUnit.code,
         dicName: item.dicOrgUnit.name,
         dicOrgUnitId: item.dicOrgUnitId,
+        businessUnitCode: item.businessUnit.code,
+        businessUnitName: item.businessUnit.name,
         responsibleUserName: item.responsibleUser?.name ?? null,
         level: node.level,
         path,
@@ -264,6 +267,10 @@ export async function loadSheet(options: LoadSheetOptions): Promise<SheetModel> 
     orderBy: [{ type: "asc" }, { sortOrder: "asc" }],
     select: { id: true, code: true, name: true, type: true, parentId: true },
   });
+  const businessUnitRows = await prisma.businessUnit.findMany({
+    orderBy: { sortOrder: "asc" },
+    select: { id: true, code: true, name: true },
+  });
   const orgUnitCodeById = new Map(orgUnitRows.map((unit) => [unit.id, unit.code]));
 
   return {
@@ -283,6 +290,7 @@ export async function loadSheet(options: LoadSheetOptions): Promise<SheetModel> 
         unit.type === "DEPARTMENT" && unit.parentId ? orgUnitCodeById.get(unit.parentId) ?? null : null,
     })),
     themes,
+    businessUnits: businessUnitRows,
   };
 }
 
