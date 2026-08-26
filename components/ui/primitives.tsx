@@ -72,6 +72,11 @@ export function Select({
   );
 }
 
+/** Panel geometry, shared by the measurement and the panel itself so the two
+ *  cannot disagree about how much room it needs. */
+const PANEL_WIDTH_PX = 256;
+const PANEL_MARGIN_PX = 8;
+
 export function MultiSelect({
   label,
   selected,
@@ -86,23 +91,66 @@ export function MultiSelect({
   renderOption?: (value: string, label: string) => ReactNode;
 }) {
   const [open, setOpen] = useState(false);
+  // Which edge the panel hangs from. Decided when it opens, because a panel
+  // anchored left from a button near the right of the window runs off the
+  // screen - and there is nothing to scroll to reach it, so the options simply
+  // are not there. See `openPanel`.
+  const [alignRight, setAlignRight] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
+  const button = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
     if (!open) return;
-    function onPointerDown(event: MouseEvent) {
+    /*
+     * Dismissal listens on `pointerdown` rather than `mousedown` so that a
+     * touch or a pen closes the panel the same way a mouse does, and on
+     * `focusin` as well so that tabbing away closes it too - a panel left
+     * hanging over the sheet after the keyboard moved on is the "menu that
+     * would not go away".
+     */
+    function onAway(event: Event) {
       if (ref.current && !ref.current.contains(event.target as Node)) setOpen(false);
     }
-    function onKeyDown(event: KeyboardEvent) {
-      if (event.key === "Escape") setOpen(false);
+    // A resize has no meaningful target - `event.target` is the window, and
+    // `Node.contains(window)` throws rather than returning false, which is
+    // enough to swallow the close entirely. Nothing to test: the window moved,
+    // so the panel's measured position is stale by definition.
+    function onWindowChange() {
+      setOpen(false);
     }
-    document.addEventListener("mousedown", onPointerDown);
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        setOpen(false);
+        button.current?.focus();
+      }
+    }
+    document.addEventListener("pointerdown", onAway);
+    document.addEventListener("focusin", onAway);
     document.addEventListener("keydown", onKeyDown);
+    // A panel positioned against the window has to go when the window moves
+    // under it, rather than float over content it no longer belongs to.
+    window.addEventListener("resize", onWindowChange);
     return () => {
-      document.removeEventListener("mousedown", onPointerDown);
+      document.removeEventListener("pointerdown", onAway);
+      document.removeEventListener("focusin", onAway);
       document.removeEventListener("keydown", onKeyDown);
+      window.removeEventListener("resize", onWindowChange);
     };
   }, [open]);
+
+  /**
+   * Opening measures the button against the window and picks the edge that
+   * keeps the whole panel on screen. Done here, in the event handler, because
+   * the button's position is known at the moment of the click and nothing has
+   * to re-render to find it out.
+   */
+  function openPanel() {
+    if (!open) {
+      const rect = button.current?.getBoundingClientRect();
+      if (rect) setAlignRight(rect.left + PANEL_WIDTH_PX > window.innerWidth - PANEL_MARGIN_PX);
+    }
+    setOpen((previous) => !previous);
+  }
 
   function toggle(value: string) {
     onChange(selected.includes(value) ? selected.filter((v) => v !== value) : [...selected, value]);
@@ -111,8 +159,9 @@ export function MultiSelect({
   return (
     <div ref={ref} className="relative">
       <button
+        ref={button}
         type="button"
-        onClick={() => setOpen((previous) => !previous)}
+        onClick={openPanel}
         aria-expanded={open}
         aria-haspopup="listbox"
         className={`flex items-center gap-1 rounded-sm border px-2 py-1 text-[11px] ${
@@ -128,7 +177,10 @@ export function MultiSelect({
         <div
           role="listbox"
           aria-multiselectable
-          className="absolute left-0 top-full z-50 mt-1 max-h-72 w-64 overflow-auto rounded-sm border border-rule-strong bg-paper py-1 shadow-lg"
+          className={`absolute top-full z-50 mt-1 max-h-72 overflow-auto rounded-sm border border-rule-strong bg-paper py-1 shadow-lg ${
+            alignRight ? "right-0" : "left-0"
+          }`}
+          style={{ width: PANEL_WIDTH_PX }}
         >
           {options.length === 0 && (
             <p className="px-2 py-1 text-[11px] text-ink-faint">Nothing to filter on.</p>

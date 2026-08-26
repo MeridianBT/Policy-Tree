@@ -15,6 +15,10 @@ import { buildSymbolHeatmap, divisionCodes, type HeatmapCell } from "@/lib/calc/
 import { monthLabel } from "@/lib/domain/period";
 import type { SheetModel } from "@/lib/sheet/types";
 
+/** Column geometry, shared by the template and the minimum width it implies. */
+const LABEL_COL_PX = 140;
+const MONTH_COL_PX = 64;
+
 export function InsightsView({
   model,
   businessUnit,
@@ -28,7 +32,10 @@ export function InsightsView({
 
   return (
     <div className="min-h-0 flex-1 overflow-auto bg-paper">
-      <div className="mx-auto max-w-5xl px-8 py-6">
+      {/* Wide enough for the label column plus twelve months without the grid
+          needing to scroll at all at a normal window size. The grid's own
+          minWidth is what guarantees the months exist when it does. */}
+      <div className="mx-auto max-w-7xl px-8 py-6">
         <header className="mb-4">
           <h1 className="text-[15px] font-semibold">Insights</h1>
           <p className="mt-0.5 text-[11px] text-ink-muted">
@@ -58,7 +65,14 @@ export function InsightsView({
         <div className="mt-4 overflow-x-auto border border-rule-strong">
           <div
             className="grid text-[11px]"
-            style={{ gridTemplateColumns: `140px repeat(${model.months.length}, minmax(64px, 1fr))` }}
+            style={{
+              gridTemplateColumns: `${LABEL_COL_PX}px repeat(${model.months.length}, minmax(${MONTH_COL_PX}px, 1fr))`,
+              // Without a floor the tracks collapse under their own minimum
+              // and the last months are cropped away silently - no scrollbar,
+              // a clean right border, and March simply gone. With it the grid
+              // holds its size and the wrapper actually scrolls.
+              minWidth: LABEL_COL_PX + model.months.length * MONTH_COL_PX,
+            }}
           >
             <div className="border-b border-rule-strong bg-paper-band-strong px-2 py-1.5" />
             {model.months.map((period) => (

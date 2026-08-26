@@ -732,7 +732,17 @@ npm run lint          # ESLint, zero warnings
 npm run typecheck     # tsc --noEmit
 npm test              # 365 tests, about six seconds
 npm run test:unit     # the pure modules only, no database needed
+npm run check:ui      # browser checks, against a running dev server
 ```
+
+`check:ui` covers what a unit test cannot see, and every assertion in it is a
+bug that was actually found rather than a hypothetical: a filter panel opening
+off the right edge of the window with no way to reach the options past it; a
+filter panel that would not close by pen, by touch, by tabbing past its last
+option, or when the window was resized under it; and the Insights heatmap
+silently cropping February and March behind a clean right border with no
+scrollbar to suggest anything was missing. It runs at five window widths, from
+a 1024px laptop to 1920px, and exits non-zero on the first failure.
 
 `npm run build` runs the linter and the type checker itself, so a build is the
 single command that proves all three. The lint config

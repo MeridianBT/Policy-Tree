@@ -103,7 +103,7 @@ export function AdminScreen({
         </p>
       )}
 
-      <div className="mt-4 grid gap-4 xl:grid-cols-2">
+      <div className="mt-4 grid items-start gap-4 xl:grid-cols-2">
         <Panel title="Ki and plan versions" hint="Locking a version makes its cells read-only for every role, including admins.">
           <table className="w-full border-collapse text-[12px]">
             <tbody>
@@ -677,7 +677,7 @@ function BandEditor({
             <th className="pb-1 text-left font-medium">Symbol</th>
             <th className="pb-1 text-left font-medium">Label</th>
             <th className="pb-1 text-right font-medium">From %</th>
-            <th className="pb-1 text-right font-medium">To %</th>
+            <th className="pb-1 pr-3 text-right font-medium">To %</th>
             <th className="pb-1 text-left font-medium">Colour</th>
           </tr>
         </thead>

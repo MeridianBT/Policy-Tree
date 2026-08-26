@@ -23,7 +23,8 @@
     "backup": "./scripts/backup.sh",
     "check:acceptance": "tsx scripts/accept-check.ts",
     "remind": "tsx scripts/send-reminders.ts",
-    "set-password": "tsx scripts/set-password.ts"
+    "set-password": "tsx scripts/set-password.ts",
+    "check:ui": "node scripts/ui-check.cjs"
   },
   "dependencies": {
     "@prisma/adapter-pg": "^7.9.1",
