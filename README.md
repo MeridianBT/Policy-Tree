@@ -395,7 +395,7 @@ shared mailbox does not fill with hundreds of copies nobody reads.
 
 | Route | What it is |
 |---|---|
-| `/sheet` | The company sheet — Levels 1–3 by default, with a View toggle folding every Level 4 branch in under its Objective. Virtualised, with version selector, compare mode, four display densities, condensable quarter columns, and three filters — Business unit, then Division, then Department — read outside-in. Rows can be dragged into a new order among their own siblings, and month cells become keyable when a specific unlocked version is pinned ADMIN and OWNER (division/department leads) can edit the structure directly here |
+| `/sheet` | The company sheet — Levels 1–3 by default, with a View toggle folding every Level 4 branch in under its Objective. Virtualised, with version selector, compare mode, four display densities, condensable quarter columns, three filters — Business unit, then Division, then Department — read outside-in, and a one-click **Below target** preset. Rows can be dragged into a new order among their own siblings, and month cells become keyable when a specific unlocked version is pinned ADMIN and OWNER (division/department leads) can edit the structure directly here |
 | `/division/[code]` | The same Level 4 sheet, pre-scoped to one division and its departments — a narrower, single-division view of what "+ Departments" on the company sheet shows for everyone |
 | `/cascade` | A read-only, one-page alignment map from every Company Goal down to the Department work laddering into it — see below |
 | `/insights` | A read-only symbol-distribution heatmap, one Division per row, one month per column — see below |
@@ -501,6 +501,42 @@ purpose — being *named responsible* for a measure is enough on its own,
 whichever division it is filed under. A row somebody else keys shows its
 figure greyed with the reason in its tooltip rather than showing nothing,
 because "not yours" and "no target set" must not look the same.
+
+#### Pasting a block of figures
+
+Copy a range out of a spreadsheet, click the cell it should start at, and
+paste. The block lands from that cell — across the month columns **currently
+on screen** and down the **visible** measure rows — so a paste made with a
+filter on, or with quarters condensed, fills the cells the reader can see
+rather than ones they cannot. A single value still pastes like typing.
+
+This exists because there was no bulk path into targets at all: `copyStructure`
+carries a new Ki's structure but no values, there is no import anywhere, and
+planning a year therefore meant keying 82 measures × 12 months by hand. Pasting
+the column somebody already has in their budget spreadsheet is most of an
+importer's value with none of its file formats.
+
+The rules are the ordinary ones, applied per cell. Every cell in a block goes
+through `saveEntry` exactly as a hand-keyed one does — the permission check,
+the refusal on a locked version, the audit row, the downstream recompute. The
+block travels in one request rather than one per cell, and one cell's refusal
+never aborts the rest: the paste files everything it may and then says what it
+could not, by count and by reason —
+
+```
+Pasted 12 of 20 cells — 8 outside your scope.
+Pasted 2 of 6 cells — 4 past the edge of the sheet.
+```
+
+A block wider or taller than the grid is **clipped, never wrapped**. A wrapped
+figure would be filed against a month nobody chose, on a measure nobody
+selected, and would look exactly like a successful paste. A paste is capped at
+500 cells, enforced on the server as well as in the browser.
+
+Deliberately not a CSV parser: every spreadsheet puts plain TSV on the
+clipboard and only quotes a cell containing a tab, a newline or a quote — which
+a figure never does. Anything that will not parse is refused per cell by
+`saveEntry`, named and visible, rather than coerced.
 
 **Actuals are not keyed here.** They belong to `/my-entries`, which is scoped
 to the month being closed. Keeping "what we promised" and "what happened" on
@@ -763,7 +799,7 @@ macOS Safari need a run on those platforms.
 ```bash
 npm run lint          # ESLint, zero warnings
 npm run typecheck     # tsc --noEmit
-npm test              # 377 tests, about six seconds
+npm test              # 401 tests, about seven seconds
 npm run test:unit     # the pure modules only, no database needed
 npm run check:ui      # browser checks, against a running dev server
 ```
@@ -796,6 +832,13 @@ reason is written where a reader will meet it.
 - `lib/calc/cascade-tree.test.ts` — rebuilding the Level 1–4 tree from the flat
   row list, so a department branch always lands under the objective it ladders
   into and nothing is dropped or duplicated
+- `lib/calc/paste.test.ts` — laying a pasted block over the grid: Excel's
+  trailing newline discarded rather than clearing a row nobody selected, and a
+  block wider than the year clipped rather than wrapped onto the next measure
+- `lib/calc/below-target.test.ts` — what "currently below target" means, with
+  the two wrong answers pinned as the thing it must not do: the Ki total (a
+  year of target against a part-year of actual) and the calendar month (which
+  is usually not keyed yet)
 - `lib/calc/rotate.test.ts` — that a bulk password rotate never issues a
   password to a Microsoft-only account
 - `lib/calc/entry-state.test.ts` — what a keyable box shows and when a blur is

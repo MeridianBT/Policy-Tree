@@ -23,7 +23,8 @@ import {
 } from "./SheetGrid";
 import { cellKey, retireSaved, type CellEditState } from "./entry-state";
 import { canEnterFigures, type EditingUser } from "./permissions";
-import { saveEntryAction } from "@/lib/entries/actions";
+import { saveEntriesAction, saveEntryAction } from "@/lib/entries/actions";
+import { MAX_PASTE_CELLS, type PasteCell } from "./paste";
 import type { ControlItemRow } from "@/lib/sheet/types";
 import {
   DeleteConfirm,
@@ -245,6 +246,125 @@ export function SheetScreen({
     [targetVersionId, scheduleReload],
   );
 
+  const { pending: saving, result, setResult, run } = useStructureAction();
+
+  /**
+   * A pasted block.
+   *
+   * Every cell is marked in flight straight away so the grid shows the shape
+   * of what is landing, then the whole block goes in one request that runs
+   * each cell through `saveEntry` in order. Cells the reader may not key are
+   * dropped before the request rather than sent to be refused - the server
+   * would say no, but making it say no eighty times to prove a point the
+   * client already knows is not worth the round trip.
+   */
+  const pasteFigures = useCallback(
+    (cells: PasteCell[], dropped: number) => {
+      if (!currentUser) return;
+      const byId = new Map(
+        model.rows
+          .filter((row): row is ControlItemRow => row.kind === "CONTROL_ITEM")
+          .map((row) => [row.id, row]),
+      );
+
+      const writable: Array<{ cell: PasteCell; row: ControlItemRow }> = [];
+      let refusedByScope = 0;
+      for (const cell of cells) {
+        const row = byId.get(cell.rowId);
+        if (!row) continue;
+        if (!canEnterFigures(currentUser, model.dics, row)) {
+          refusedByScope += 1;
+          continue;
+        }
+        writable.push({ cell, row });
+      }
+
+      if (writable.length === 0) {
+        setResult({
+          ok: false,
+          message: refusedByScope
+            ? `Nothing pasted — none of those ${refusedByScope} cells belong to you.`
+            : "Nothing to paste there.",
+        });
+        return;
+      }
+      if (writable.length > MAX_PASTE_CELLS) {
+        setResult({
+          ok: false,
+          message: `That block is ${writable.length} cells. Paste up to ${MAX_PASTE_CELLS} at a time.`,
+        });
+        return;
+      }
+
+      setEdited((previous) => {
+        const next = new Map(previous);
+        for (const { cell } of writable) {
+          next.set(cellKey(cell.rowId, cell.period), {
+            input: cell.raw,
+            status: "SAVING",
+            value: null,
+            error: null,
+          });
+        }
+        return next;
+      });
+
+      void (async () => {
+        const outcomes = await saveEntriesAction(
+          writable.map(({ cell }) => ({
+            controlItemId: cell.rowId,
+            period: cell.period,
+            planVersionId: targetVersionId,
+            input: cell.raw === "" ? null : cell.raw,
+          })),
+        );
+
+        let failed = 0;
+        setEdited((previous) => {
+          const next = new Map(previous);
+          for (const outcome of outcomes) {
+            const entry = writable[outcome.index];
+            if (!entry) continue;
+            const key = cellKey(entry.cell.rowId, entry.cell.period);
+            if (outcome.ok) {
+              if (outcome.error) failed += 1;
+              next.set(key, {
+                input: entry.cell.raw,
+                status: outcome.error ? "ERROR" : "SAVED",
+                value: outcome.value,
+                error: outcome.error,
+              });
+            } else {
+              failed += 1;
+              next.set(key, {
+                input: entry.cell.raw,
+                status: "ERROR",
+                value: null,
+                error: outcome.message,
+              });
+            }
+          }
+          return next;
+        });
+
+        const notes: string[] = [];
+        if (failed) notes.push(`${failed} refused`);
+        if (refusedByScope) notes.push(`${refusedByScope} outside your scope`);
+        if (dropped) notes.push(`${dropped} past the edge of the sheet`);
+        setResult({
+          // The banner's type is a union, so the arm is chosen rather than
+          // computed - a paste with a refusal in it is not an "ok" result.
+          ...(failed === 0 ? { ok: true as const } : { ok: false as const }),
+          message:
+            `Pasted ${writable.length - failed} of ${writable.length + refusedByScope + dropped} cells` +
+            (notes.length ? ` — ${notes.join(", ")}.` : "."),
+        });
+        scheduleReload();
+      })();
+    },
+    [currentUser, model.rows, model.dics, targetVersionId, scheduleReload, setResult],
+  );
+
   const entry: EntryHandlers | undefined =
     entryMode && currentUser && pinnedVersion
       ? {
@@ -253,6 +373,7 @@ export function SheetScreen({
           canEdit: (row) => canEnterFigures(currentUser, model.dics, row),
           edited,
           onCommit: commitFigure,
+          onPaste: pasteFigures,
         }
       : undefined;
   const [renamingId, setRenamingId] = useState<string | null>(null);
@@ -267,7 +388,6 @@ export function SheetScreen({
   const [deleting, setDeleting] = useState<
     { kind: "NODE" | "MEASURE"; id: string; message: string; impact: DeletionImpact | null } | null
   >(null);
-  const { pending: saving, result, setResult, run } = useStructureAction();
 
   // The full division/department list is only appropriate for someone who
   // works company-wide. An OWNER may only file a new Level 4 branch or Control
@@ -508,6 +628,19 @@ export function SheetScreen({
             }}
           />
         )}
+        {/* A preset, not a fourth picker: one click for the question people
+            actually arrive with. It filters through matchRows with the rest,
+            so "Clear filters" clears it too. */}
+        <Button
+          variant={filters.belowTarget ? "primary" : "default"}
+          onClick={() =>
+            setFilters((previous) => ({ ...previous, belowTarget: !previous.belowTarget }))
+          }
+          title="Only measures behind as of their own last reported month"
+        >
+          Below target
+        </Button>
+
         <MultiSelect
           label="Department"
           selected={filters.dics}
@@ -565,6 +698,7 @@ export function SheetScreen({
 
         {(filters.businessUnits.length > 0 ||
           filters.dics.length > 0 ||
+          filters.belowTarget ||
           divisionScope !== "") && (
           <Button
             variant="quiet"
@@ -589,8 +723,10 @@ export function SheetScreen({
         <p className="border border-rule bg-paper-sunken px-3 py-1.5 text-[12px] text-ink-muted" role="status">
           Keying <strong className="text-ink">{pinnedVersion.code}</strong> targets. Tab saves and
           moves across; Enter saves and drops to the next measure; Escape reverts. A value
-          beginning with <code className="num">=</code> is a formula. Quarters and the Ki total are
-          derived from the months, so they are not keyed. Actuals are entered in{" "}
+          beginning with <code className="num">=</code> is a formula. Paste a block from a
+          spreadsheet to fill many cells at once — it lands from the cell you are in, across the
+          months on screen and down the rows. Quarters and the Ki total are derived from the
+          months, so they are not keyed. Actuals are entered in{" "}
           <Link href="/my-entries" className="underline hover:text-ink">
             My entries
           </Link>

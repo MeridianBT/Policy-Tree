@@ -32,6 +32,7 @@ import { canAddDepartmentBranch, canEditStructureAt, type EditingUser } from "./
 import { SheetCellView, rowHeightFor, type DisplayMode } from "./SheetCellView";
 import { SheetCellInput, SheetCellReadOnly } from "./SheetCellInput";
 import { cellKey, displayFor, isDirty, seedInput, type CellEditState } from "./entry-state";
+import { isSingleCell, parseClipboardGrid, planPaste, type PasteCell } from "./paste";
 import { EvaluationSymbol } from "./EvaluationSymbol";
 
 const GROUP_ROW_HEIGHT = 28;
@@ -127,6 +128,12 @@ export interface EntryHandlers {
   /** Cells this session has touched, by `cellKey`. */
   edited: Map<string, CellEditState>;
   onCommit: (row: ControlItemRow, period: string, raw: string) => void;
+  /**
+   * A block pasted from a spreadsheet, already laid over the grid. The grid
+   * works out which cells the block covers, because only it knows what is on
+   * screen; the screen writes them, because only it talks to the server.
+   */
+  onPaste: (cells: PasteCell[], dropped: number) => void;
 }
 
 export interface EditingHandlers {
@@ -277,6 +284,33 @@ export function SheetGrid({
     [visible, virtualizer],
   );
 
+  /**
+   * Lay a pasted block over the grid from the focused cell.
+   *
+   * Both axes come from what is actually rendered: the visible Control Item
+   * rows in their current order, and the month columns still on screen. So a
+   * paste made while a filter is on, or while quarters are condensed, fills
+   * the cells the reader can see rather than ones they cannot.
+   */
+  const pasteFrom = useCallback(
+    (anchorRowId: string, anchorPeriod: string, text: string): boolean => {
+      if (!entry || isSingleCell(text)) return false;
+      const block = parseClipboardGrid(text);
+      if (block.length === 0) return false;
+
+      const rowIds = visible.filter((row) => row.kind === "CONTROL_ITEM").map((row) => row.id);
+      const periods = columns
+        .filter((column) => column.kind === "MONTH")
+        .map((column) => column.key);
+
+      const plan = planPaste(block, { rowId: anchorRowId, period: anchorPeriod }, rowIds, periods);
+      if (plan.cells.length === 0 && plan.dropped === 0) return false;
+      entry.onPaste(plan.cells, plan.dropped);
+      return true;
+    },
+    [entry, visible, columns],
+  );
+
   const registerInput = useCallback((key: string, element: HTMLInputElement | null) => {
     if (element) inputs.current.set(key, element);
     else inputs.current.delete(key);
@@ -396,6 +430,7 @@ export function SheetGrid({
                       entry={entry}
                       registerInput={registerInput}
                       onEnterKey={focusNextMeasure}
+                      onPasteFrom={pasteFrom}
                     />
                   ) : (
                     <GroupRowView
@@ -639,6 +674,7 @@ function ControlItemRowView({
   entry,
   registerInput,
   onEnterKey,
+  onPasteFrom,
 }: {
   row: ControlItemRow;
   compare: ControlItemRow | null;
@@ -650,6 +686,7 @@ function ControlItemRowView({
   entry?: EntryHandlers;
   registerInput: (key: string, element: HTMLInputElement | null) => void;
   onEnterKey: (fromRowId: string, columnKey: string) => void;
+  onPasteFrom: (rowId: string, period: string, text: string) => boolean;
 }) {
   const cellByKey = useMemo(() => new Map(row.cells.map((cell) => [cell.key, cell])), [row.cells]);
   const compareByKey = useMemo(
@@ -742,6 +779,7 @@ function ControlItemRowView({
                 entry={entry}
                 registerInput={registerInput}
                 onEnterKey={onEnterKey}
+                onPasteFrom={onPasteFrom}
               />
             ) : (
               cell && (
@@ -788,6 +826,7 @@ function MonthEntryCell({
   entry,
   registerInput,
   onEnterKey,
+  onPasteFrom,
 }: {
   row: ControlItemRow;
   cell: SheetCell;
@@ -797,6 +836,7 @@ function MonthEntryCell({
   entry: EntryHandlers;
   registerInput: (key: string, element: HTMLInputElement | null) => void;
   onEnterKey: (fromRowId: string, columnKey: string) => void;
+  onPasteFrom: (rowId: string, period: string, text: string) => boolean;
 }) {
   const key = cellKey(row.id, period);
   const edited = entry.edited.get(key);
@@ -819,6 +859,7 @@ function MonthEntryCell({
             commit(raw);
             onEnterKey(row.id, columnKey);
           }}
+          onPasteBlock={(text) => onPasteFrom(row.id, period, text)}
           registerRef={(element) => registerInput(`${row.id}|${columnKey}`, element)}
         />
       ) : (

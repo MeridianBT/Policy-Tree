@@ -9,9 +9,15 @@
  * Three dimensions, in the order the toolbar offers them: business unit, then
  * Division, then Department. They intersect rather than replace one another,
  * so "motorcycle measures owned by Product Planning" is one selection in each.
+ *
+ * "Below target" joins them as a fourth, and intersects the same way - it is a
+ * one-click preset rather than a fourth picker, but it filters here with the
+ * rest so that clearing filters clears all of it and no screen has to remember
+ * a second way of hiding rows.
  */
 
 import type { ControlItemRow, SheetRowModel } from "@/lib/sheet/types";
+import { isBelowTarget } from "./below-target";
 
 export interface SheetFilters {
   /**
@@ -22,15 +28,22 @@ export interface SheetFilters {
   businessUnits: string[];
   /** Division and Department codes, matched against the row's own DIC. */
   dics: string[];
+  /**
+   * Keep only measures behind as of their own last reported month. See
+   * components/sheet/below-target.ts for why that month and not another.
+   */
+  belowTarget: boolean;
 }
 
 export const EMPTY_FILTERS: SheetFilters = {
   businessUnits: [],
   dics: [],
+  belowTarget: false,
 };
 
 export function matchRows(rows: SheetRowModel[], filters: SheetFilters): SheetRowModel[] {
-  const noFilter = filters.businessUnits.length === 0 && filters.dics.length === 0;
+  const noFilter =
+    filters.businessUnits.length === 0 && filters.dics.length === 0 && !filters.belowTarget;
   if (noFilter) return rows;
 
   const kept = new Set<string>();
@@ -41,6 +54,7 @@ export function matchRows(rows: SheetRowModel[], filters: SheetFilters): SheetRo
       continue;
     }
     if (filters.dics.length && !filters.dics.includes(item.dicCode)) continue;
+    if (filters.belowTarget && !isBelowTarget(item)) continue;
     kept.add(item.id);
     for (const ancestor of item.path) kept.add(ancestor);
   }

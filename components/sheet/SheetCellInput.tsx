@@ -25,6 +25,7 @@ export function SheetCellInput({
   ariaLabel,
   onCommit,
   onEnter,
+  onPasteBlock,
   registerRef,
 }: {
   /** What the box should show when it is not being typed in. */
@@ -33,6 +34,12 @@ export function SheetCellInput({
   ariaLabel: string;
   onCommit: (raw: string) => void;
   onEnter: (raw: string) => void;
+  /**
+   * A multi-cell block arriving from a spreadsheet. Returns true when it took
+   * the paste, so a single value can still fall through to the browser's own
+   * handling and behave like typing.
+   */
+  onPasteBlock: (text: string) => boolean;
   registerRef: (element: HTMLInputElement | null) => void;
 }) {
   /*
@@ -55,6 +62,10 @@ export function SheetCellInput({
         // box. Hovering has to be able to show the whole of it.
         title={edited?.error ?? (shown.startsWith("=") ? shown : undefined)}
         onFocus={(event) => event.target.select()}
+        onPaste={(event) => {
+          const text = event.clipboardData.getData("text/plain");
+          if (onPasteBlock(text)) event.preventDefault();
+        }}
         onChange={(event) => setDraft(event.target.value)}
         onBlur={(event) => {
           setDraft(null);
