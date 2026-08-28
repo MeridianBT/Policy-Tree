@@ -289,6 +289,12 @@ const updateControlItemSchema = z.object({
   decimalPlaces: z.coerce.number().int().min(0).max(4),
   dicOrgUnitId: z.string().min(1, "A Control Item needs a Department in charge."),
   businessUnitId: z.string().min(1, "A Control Item needs a business unit."),
+  /**
+   * Who keys the number. Optional: `dicOrgUnitId` remains the required
+   * accountability, and this names the individual within it. Naming somebody
+   * narrows the month-end reminder to them - see lib/reminders/match.ts.
+   */
+  responsibleUserId: z.string().min(1).nullable().default(null),
 });
 
 /**
@@ -347,6 +353,11 @@ export async function updateControlItem(input: unknown): Promise<StructureResult
     if (!(await canEditInKi(user, item.node.kiId))) {
       throw new NotPermitted("That year is closed. Only a super admin can change it.");
     }
+    if (!(await canAssignTo(user, data.responsibleUserId))) {
+      throw new NotPermitted(
+        "You can only make someone in your own division or department responsible for a measure.",
+      );
+    }
 
     const changesMeaning =
       data.direction !== item.direction || data.aggregation !== item.aggregation;
@@ -383,6 +394,7 @@ export async function updateControlItem(input: unknown): Promise<StructureResult
         decimalPlaces: data.decimalPlaces,
         dicOrgUnitId: data.dicOrgUnitId,
         businessUnitId: data.businessUnitId,
+        responsibleUserId: data.responsibleUserId,
       },
     });
 
@@ -728,6 +740,12 @@ const addControlItemSchema = z.object({
   decimalPlaces: z.coerce.number().int().min(0).max(4),
   dicOrgUnitId: z.string().min(1, "A Control Item needs a Department in charge."),
   businessUnitId: z.string().min(1, "A Control Item needs a business unit."),
+  /**
+   * Who keys the number. Optional: `dicOrgUnitId` remains the required
+   * accountability, and this names the individual within it. Naming somebody
+   * narrows the month-end reminder to them - see lib/reminders/match.ts.
+   */
+  responsibleUserId: z.string().min(1).nullable().default(null),
 });
 
 export async function addControlItem(input: unknown): Promise<StructureResult> {
@@ -757,6 +775,11 @@ export async function addControlItem(input: unknown): Promise<StructureResult> {
     if (!(await canEditInKi(user, node.kiId))) {
       throw new NotPermitted("That year is closed. Only a super admin can add to it.");
     }
+    if (!(await canAssignTo(user, data.responsibleUserId))) {
+      throw new NotPermitted(
+        "You can only make someone in your own division or department responsible for a measure.",
+      );
+    }
 
     // INVERSE is a cost-item convention; the plain ratio is the only meaningful
     // reading for a higher-is-better item, so it is chosen here rather than asked.
@@ -776,6 +799,7 @@ export async function addControlItem(input: unknown): Promise<StructureResult> {
         decimalPlaces: data.decimalPlaces,
         dicOrgUnitId: data.dicOrgUnitId,
         businessUnitId: data.businessUnitId,
+        responsibleUserId: data.responsibleUserId,
         sortOrder: siblings,
       },
     });
@@ -857,6 +881,74 @@ export async function assignableDics(): Promise<AssignableDic[]> {
     type: row.type as "DIVISION" | "DEPARTMENT",
     parentCode: row.type === "DEPARTMENT" && row.parentId ? codeById.get(row.parentId) ?? null : null,
   }));
+}
+
+/**
+ * Which people the signed-in user may name responsible for a measure.
+ *
+ * Same shape and same reasoning as `assignableDics` above: scoped on the
+ * server rather than fetched whole and filtered on screen, so a stale or
+ * manipulated client cannot offer somebody it should not.
+ *
+ * Only existing, active accounts. This never creates or provisions anyone -
+ * if a person has not been invited they simply do not appear, and the lead
+ * knows to ask an admin. Invite-only has to keep meaning something.
+ */
+export interface AssignableUser {
+  id: string;
+  name: string;
+  email: string;
+  orgUnitCode: string | null;
+}
+
+export async function assignableUsers(): Promise<AssignableUser[]> {
+  const user = await requireSession();
+  const scope = await assignableOrgUnitIds(user);
+  if (scope !== "ALL" && scope.length === 0) return [];
+
+  const rows = await prisma.appUser.findMany({
+    where: {
+      isActive: true,
+      ...(scope === "ALL" ? {} : { orgUnitId: { in: scope } }),
+    },
+    orderBy: { name: "asc" },
+    select: { id: true, name: true, email: true, orgUnit: { select: { code: true } } },
+  });
+
+  return rows.map((row) => ({
+    id: row.id,
+    name: row.name,
+    email: row.email,
+    orgUnitCode: row.orgUnit?.code ?? null,
+  }));
+}
+
+/**
+ * Whether this user may hand a measure to that person. Re-derived from the
+ * database on every write rather than trusted from the form.
+ */
+async function canAssignTo(
+  user: AuthenticatedUser,
+  responsibleUserId: string | null,
+): Promise<boolean> {
+  // Clearing the field is always allowed - it hands the measure back to the
+  // org unit, which is where it started.
+  if (!responsibleUserId) return true;
+  if (user.role === "SUPER_ADMIN" || user.role === "EXECUTIVE") {
+    const exists = await prisma.appUser.findFirst({
+      where: { id: responsibleUserId, isActive: true },
+      select: { id: true },
+    });
+    return Boolean(exists);
+  }
+  const scope = await assignableOrgUnitIds(user);
+  if (scope === "ALL") return true;
+  if (scope.length === 0) return false;
+  const match = await prisma.appUser.findFirst({
+    where: { id: responsibleUserId, isActive: true, orgUnitId: { in: scope } },
+    select: { id: true },
+  });
+  return Boolean(match);
 }
 
 function permissionAware(error: unknown): StructureResult {

@@ -560,6 +560,38 @@ stored figures"); only a second, explicit confirmation removes anything. The
 same two-step confirmation guards deleting a Control Item that already has data
 keyed against it.
 
+#### Who is responsible for a measure
+
+The measure form carries an optional **Responsible** field: the individual who
+keys the number. It is optional on purpose — the Department stays the required
+accountability, and this names a person inside it.
+
+Naming somebody has two consequences, and the second is the point.
+
+They can key that measure. `canEditControlItem` already treats a named
+responsible person as authorised *before* it checks org units, so they can
+enter its actuals and its targets on any unlocked version whatever division it
+is filed under. That is how a measure owned by one division but kept by a named
+person in another gets its numbers, without handing anyone a whole division.
+
+**The month-end reminder narrows to them.** A measure with somebody named is
+chased at that person and not at their division lead; a measure with nobody
+named falls back to org-unit coverage as before. Without the narrowing, naming
+someone would only ever add mail rather than move responsibility, and a lead
+would keep receiving a chase for every measure in their division — the surest
+way to teach them to filter these to trash. The one exception is a name
+pointing at a deactivated account: they are not among the candidates at all, so
+the fallback applies and the lead is chased. A measure must not go quiet
+because somebody left.
+
+Who may be named is scoped server-side by `assignableUsers()`, the same shape
+and the same reasoning as `assignableDics()`: a SUPER_ADMIN or EXECUTIVE may
+name anyone active, an OWNER only people in their own org unit or a department
+beneath it. The picker offers existing accounts only and never creates one — if
+somebody has not been invited they do not appear, and the lead knows to ask an
+admin. The measure's current holder is always listed even when outside the
+picker's scope, so an edit cannot silently unassign someone.
+
 #### Editing a measure
 
 The pencil on a measure row opens its whole form, not an inline rename: a
@@ -799,7 +831,7 @@ macOS Safari need a run on those platforms.
 ```bash
 npm run lint          # ESLint, zero warnings
 npm run typecheck     # tsc --noEmit
-npm test              # 401 tests, about seven seconds
+npm test              # 417 tests, about seven seconds
 npm run test:unit     # the pure modules only, no database needed
 npm run check:ui      # browser checks, against a running dev server
 ```
@@ -832,6 +864,9 @@ reason is written where a reader will meet it.
 - `lib/calc/cascade-tree.test.ts` — rebuilding the Level 1–4 tree from the flat
   row list, so a department branch always lands under the objective it ladders
   into and nothing is dropped or duplicated
+- `lib/calc/next-path.test.ts` — where a sign-in may send someone: every case
+  is a way past a naive `startsWith("/")` guard, which is what makes them worth
+  pinning — the failure is silent and only shows itself on another domain
 - `lib/calc/paste.test.ts` — laying a pasted block over the grid: Excel's
   trailing newline discarded rather than clearing a row nobody selected, and a
   block wider than the year clipped rather than wrapped onto the next measure

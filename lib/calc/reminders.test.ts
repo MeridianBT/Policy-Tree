@@ -154,14 +154,44 @@ describe("assignRecipients", () => {
     expect(recipients).toEqual([]);
   });
 
-  it("reminds both the named owner and the covering lead - both are answerable", () => {
+  it("chases the named owner instead of the covering lead, not as well", () => {
+    // Naming somebody has to move responsibility rather than only add mail.
+    // Otherwise a lead keeps getting a chase for every measure in their
+    // division, which is the surest way to teach them to filter these away.
     const owner = user({ id: "owner", covers: [] });
     const lead = user({ id: "lead", email: "lead@example.com", covers: ["auto", "auto-sales"] });
     const recipients = assignRecipients(
       [item({ responsibleUserId: "owner", dicOrgUnitId: "auto-sales" })],
       [owner, lead],
     );
-    expect(recipients.map((r) => r.userId).sort()).toEqual(["lead", "owner"]);
+    expect(recipients.map((r) => r.userId)).toEqual(["owner"]);
+  });
+
+  it("still chases the lead for measures nobody is named on", () => {
+    const owner = user({ id: "owner", covers: [] });
+    const lead = user({ id: "lead", email: "lead@example.com", covers: ["auto", "auto-sales"] });
+    const recipients = assignRecipients(
+      [
+        item({ controlItemId: "named", responsibleUserId: "owner", dicOrgUnitId: "auto-sales" }),
+        item({ controlItemId: "unnamed", dicOrgUnitId: "auto-sales" }),
+      ],
+      [owner, lead],
+    );
+    const byUser = Object.fromEntries(
+      recipients.map((r) => [r.userId, r.items.map((i) => i.controlItemId)]),
+    );
+    expect(byUser).toEqual({ owner: ["named"], lead: ["unnamed"] });
+  });
+
+  it("falls back to the lead when the named person is no longer active", () => {
+    // Deactivated users are not among the candidates at all. A measure must
+    // not go quiet because somebody left the company.
+    const lead = user({ id: "lead", email: "lead@example.com", covers: ["auto", "auto-sales"] });
+    const recipients = assignRecipients(
+      [item({ responsibleUserId: "someone-who-left", dicOrgUnitId: "auto-sales" })],
+      [lead],
+    );
+    expect(recipients.map((r) => r.userId)).toEqual(["lead"]);
   });
 
   it("leaves out anyone with nothing outstanding, rather than mailing an empty list", () => {

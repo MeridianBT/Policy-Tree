@@ -47,9 +47,18 @@ export interface Recipient {
 /**
  * Match unkeyed items to the people accountable for them.
  *
- * A single item can reach more than one person - the named owner and their
- * division lead - and that is intended: both are answerable, and a lead who
- * never hears about it cannot chase it.
+ * Naming somebody responsible *narrows* the chase to them. A measure with a
+ * named person reaches that person and not their division lead; a measure
+ * with nobody named falls back to org-unit coverage, which is what makes a
+ * lead answerable for everything in their division that has not been
+ * delegated. Without the narrowing, naming someone would only ever add mail
+ * rather than move responsibility, and a lead would keep receiving a chase
+ * for every measure in their division - the surest way to teach them to
+ * filter these to trash.
+ *
+ * The one exception is a named person who is no longer active. They are not
+ * among the candidates at all, so the fallback applies and their lead is
+ * chased instead. A measure must not go quiet because somebody left.
  *
  * Two exclusions keep this from becoming noise, and both were found by
  * running it against real data rather than reasoned about in advance:
@@ -70,12 +79,24 @@ export function assignRecipients(
 ): Recipient[] {
   const out: Recipient[] = [];
 
+  // Which items have a named person who could actually receive the mail. A
+  // name pointing at a deactivated account is treated as no name at all, so
+  // the org-unit fallback catches it.
+  const activeIds = new Set(users.map((user) => user.id));
+  const namedAndActive = new Set(
+    items
+      .filter((item) => item.responsibleUserId && activeIds.has(item.responsibleUserId))
+      .map((item) => item.controlItemId),
+  );
+
   for (const user of users) {
     if (user.role === "VIEWER") continue;
 
     const covered = new Set(user.atCompanyRoot ? [] : user.covers);
-    const mine = items.filter(
-      (item) => item.responsibleUserId === user.id || covered.has(item.dicOrgUnitId),
+    const mine = items.filter((item) =>
+      namedAndActive.has(item.controlItemId)
+        ? item.responsibleUserId === user.id
+        : covered.has(item.dicOrgUnitId),
     );
     if (mine.length === 0) continue;
     out.push({

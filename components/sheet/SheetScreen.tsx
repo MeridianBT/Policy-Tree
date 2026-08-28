@@ -32,6 +32,7 @@ import {
   InlineAddDepartment,
   InlineMeasureForm,
   type MeasureValues,
+  type UserOption,
   useStructureAction,
   type DicOption,
 } from "./StructureControls";
@@ -41,6 +42,7 @@ import {
   addDepartmentObjective,
   addNode,
   assignableDics,
+  assignableUsers,
   deleteControlItem,
   deleteNode,
   renameNode,
@@ -395,6 +397,9 @@ export function SheetScreen({
   // measure" pickers use a narrower list, fetched once - scoped server-side,
   // not merely hidden - the moment edit mode turns on for them.
   const [scopedDics, setScopedDics] = useState<DicOption[] | null>(null);
+  // Who this user may hand a measure to. Scoped server-side like the DIC
+  // list, and fetched once when edit mode turns on rather than with the sheet.
+  const [users, setUsers] = useState<UserOption[] | null>(null);
   const companyWide =
     currentUser?.role === "SUPER_ADMIN" || currentUser?.role === "EXECUTIVE";
   const formDics = companyWide ? model.dics : scopedDics;
@@ -408,7 +413,8 @@ export function SheetScreen({
     if (currentUser && !companyWide && scopedDics === null) {
       setScopedDics(await assignableDics());
     }
-  }, [currentUser, companyWide, scopedDics, setResult]);
+    if (currentUser && users === null) setUsers(await assignableUsers());
+  }, [currentUser, companyWide, scopedDics, users, setResult]);
 
   const labelFor = (id: string) => {
     const row = model.rows.find((candidate) => candidate.id === id);
@@ -458,6 +464,7 @@ export function SheetScreen({
                 decimalPlaces: row.decimalPlaces,
                 dicOrgUnitId: row.dicOrgUnitId,
                 businessUnitId: row.businessUnitId,
+                responsibleUserId: row.responsibleUserId,
               },
             }),
           onAddChild: (parentId, kind) => {
@@ -860,6 +867,7 @@ export function SheetScreen({
             indent={12}
             dics={formDics}
             businessUnits={model.businessUnits}
+            users={users ?? []}
             initial={adding.initial}
             submitLabel="Save measure"
             pendingLabel="Saving…"
@@ -877,6 +885,7 @@ export function SheetScreen({
                     decimalPlaces: values.decimalPlaces,
                     dicOrgUnitId: values.dicOrgUnitId,
                     businessUnitId: values.businessUnitId,
+                    responsibleUserId: values.responsibleUserId,
                   }),
                 afterChange,
               )
@@ -904,6 +913,7 @@ export function SheetScreen({
             indent={12}
             dics={formDics}
             businessUnits={model.businessUnits}
+            users={users ?? []}
             pending={saving}
             onCommit={(values) =>
               run(
@@ -918,6 +928,7 @@ export function SheetScreen({
                     decimalPlaces: values.decimalPlaces,
                     dicOrgUnitId: values.dicOrgUnitId,
                     businessUnitId: values.businessUnitId,
+                    responsibleUserId: values.responsibleUserId,
                   }),
                 afterChange,
               )

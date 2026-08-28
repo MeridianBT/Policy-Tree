@@ -284,6 +284,12 @@ export function InlineAddDepartment({
  * derived are asked for; `achievement_method` follows from the direction and
  * the code is generated from the name.
  */
+export interface UserOption {
+  id: string;
+  name: string;
+  orgUnitCode: string | null;
+}
+
 export interface MeasureValues {
   name: string;
   measuredAs: string;
@@ -293,6 +299,8 @@ export interface MeasureValues {
   decimalPlaces: number;
   dicOrgUnitId: string;
   businessUnitId: string;
+  /** Who keys the number. Null means nobody in particular - the org unit answers. */
+  responsibleUserId: string | null;
 }
 
 /**
@@ -307,6 +315,7 @@ export function InlineMeasureForm({
   indent,
   dics,
   businessUnits,
+  users,
   initial,
   submitLabel = "Add measure",
   pendingLabel = "Adding…",
@@ -317,6 +326,8 @@ export function InlineMeasureForm({
   indent: number;
   dics: DicOption[];
   businessUnits: Array<{ id: string; code: string; name: string }>;
+  /** People this user may hand the measure to, scoped server-side. */
+  users: UserOption[];
   /** Absent when adding; the measure as it stands when editing. */
   initial?: MeasureValues;
   submitLabel?: string;
@@ -335,6 +346,7 @@ export function InlineMeasureForm({
   const [businessUnitId, setBusinessUnit] = useState(
     initial?.businessUnitId ?? businessUnits[0]?.id ?? "",
   );
+  const [responsibleUserId, setResponsible] = useState(initial?.responsibleUserId ?? "");
 
   const field = "border border-rule bg-paper px-1.5 py-1 text-[11px]";
 
@@ -371,6 +383,31 @@ export function InlineMeasureForm({
           )}
           {dics.map((dic) => (
             <option key={dic.id} value={dic.id}>{dic.code}</option>
+          ))}
+        </select>
+      </Labelled>
+      <Labelled label="Responsible">
+        {/* Optional on purpose: the Department is the accountability, and
+            this names the individual inside it who keys the number. Naming
+            somebody narrows the month-end reminder to them. */}
+        <select
+          value={responsibleUserId}
+          onChange={(e) => setResponsible(e.target.value)}
+          className={`${field} w-40`}
+        >
+          <option value="">— nobody —</option>
+          {/* The current holder is listed even when outside this user's own
+              scope, so an edit can never silently unassign someone they
+              cannot see. */}
+          {initial?.responsibleUserId &&
+            !users.some((person) => person.id === initial.responsibleUserId) && (
+              <option value={initial.responsibleUserId}>current</option>
+            )}
+          {users.map((person) => (
+            <option key={person.id} value={person.id}>
+              {person.name}
+              {person.orgUnitCode ? ` · ${person.orgUnitCode}` : ""}
+            </option>
           ))}
         </select>
       </Labelled>
@@ -431,6 +468,7 @@ export function InlineMeasureForm({
             decimalPlaces,
             dicOrgUnitId,
             businessUnitId,
+            responsibleUserId: responsibleUserId || null,
           })
         }
         className="rounded-sm bg-ink px-2.5 py-1 text-[11px] text-paper disabled:opacity-50"

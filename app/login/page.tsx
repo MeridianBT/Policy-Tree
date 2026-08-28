@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/auth/session";
 import { signIn } from "@/lib/auth/config";
 import { entraConfigured, passwordSignInEnabled } from "@/lib/auth/env";
+import { safeNext } from "@/lib/auth/next-path";
 import { AuthError } from "next-auth";
 
 /**
@@ -37,9 +38,10 @@ export default async function LoginPage({
   searchParams: Promise<{ error?: string; next?: string }>;
 }) {
   const params = await searchParams;
-  if (await getCurrentUser()) redirect(params.next ?? "/sheet");
-
-  const next = params.next ?? "/sheet";
+  // `next` arrives in a query string, so it is written by whoever built the
+  // link rather than by this application. See lib/auth/next-path.ts.
+  const next = safeNext(params.next);
+  if (await getCurrentUser()) redirect(next);
   const message = messageFor(params.error);
 
   async function authenticate(formData: FormData) {
@@ -48,7 +50,7 @@ export default async function LoginPage({
       await signIn("credentials", {
         email: String(formData.get("email") ?? "").toLowerCase().trim(),
         password: String(formData.get("password") ?? ""),
-        redirectTo: String(formData.get("next") ?? "/sheet"),
+        redirectTo: safeNext(String(formData.get("next") ?? "")),
       });
     } catch (error) {
       if (error instanceof AuthError) redirect("/login?error=credentials");
@@ -63,7 +65,7 @@ export default async function LoginPage({
     if (!entraConfigured()) redirect("/login?error=configuration");
     try {
       await signIn("microsoft-entra-id", {
-        redirectTo: String(formData.get("next") ?? "/sheet"),
+        redirectTo: safeNext(String(formData.get("next") ?? "")),
       });
     } catch (error) {
       // The errors thrown out of the provider's profile() arrive here wrapped

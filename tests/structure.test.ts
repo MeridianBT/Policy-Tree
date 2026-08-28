@@ -53,6 +53,7 @@ const {
   renameNode,
   reorderRow,
   updateControlItem,
+  assignableUsers,
 } = await import("@/lib/structure/actions");
 const { createDepartment, deleteDepartment } = await import("@/lib/admin/actions");
 
@@ -940,5 +941,120 @@ describe("editing a Control Item", () => {
     const codeBefore = await codeOf(fx.items.B);
     await updateControlItem({ ...(await current(fx.items.B)), name: "Something else entirely" });
     expect(await codeOf(fx.items.B)).toBe(codeBefore);
+  });
+});
+
+/**
+ * Naming somebody responsible for a measure.
+ *
+ * The rule that matters is the one a hidden dropdown cannot enforce: a
+ * division lead may hand a measure to somebody in their own org unit and to
+ * nobody else. The picker only decides what is offered; this is what decides
+ * what is allowed.
+ */
+describe("who may be made responsible", () => {
+  async function current(id: string) {
+    const item = await prisma.controlItem.findUniqueOrThrow({
+      where: { id },
+      select: {
+        name: true, measuredAs: true, unit: true, direction: true, aggregation: true,
+        decimalPlaces: true, dicOrgUnitId: true, businessUnitId: true, responsibleUserId: true,
+      },
+    });
+    return { id, ...item };
+  }
+
+  beforeEach(() => asUser(fx.users.admin));
+
+  it("offers a SUPER_ADMIN every active account", async () => {
+    const offered = await assignableUsers();
+    const ids = offered.map((person) => person.id);
+    for (const person of Object.values(fx.users)) expect(ids).toContain(person.id);
+  });
+
+  it("offers an OWNER only their own org unit and beneath", async () => {
+    asUser(fx.users.alphaLead);
+    const ids = (await assignableUsers()).map((person) => person.id);
+    expect(ids).toContain(fx.users.alphaLead.id);
+    // The Beta lead sits in a sibling division and must not be offered.
+    expect(ids).not.toContain(fx.users.betaLead.id);
+  });
+
+  it("offers a VIEWER nobody at all", async () => {
+    asUser(fx.users.viewer);
+    expect(await assignableUsers()).toEqual([]);
+  });
+
+  it("never offers a deactivated account", async () => {
+    await prisma.appUser.update({ where: { id: fx.users.betaLead.id }, data: { isActive: false } });
+    try {
+      const ids = (await assignableUsers()).map((person) => person.id);
+      expect(ids).not.toContain(fx.users.betaLead.id);
+    } finally {
+      await prisma.appUser.update({ where: { id: fx.users.betaLead.id }, data: { isActive: true } });
+    }
+  });
+
+  it("lets an admin name anyone, and clear it again", async () => {
+    const before = await current(fx.items.A);
+    expect((await updateControlItem({ ...before, responsibleUserId: fx.users.betaLead.id })).ok).toBe(true);
+    expect((await current(fx.items.A)).responsibleUserId).toBe(fx.users.betaLead.id);
+
+    expect((await updateControlItem({ ...(await current(fx.items.A)), responsibleUserId: null })).ok).toBe(true);
+    expect((await current(fx.items.A)).responsibleUserId).toBeNull();
+  });
+
+  it("refuses an OWNER naming somebody outside their own org unit", async () => {
+    // The measure is theirs to edit; the person is not theirs to assign. The
+    // picker would not offer them, and the server does not rely on that.
+    const branch = await addDepartmentBranch({
+      kiId: fx.kiId, parentObjectiveId: fx.nodes.objective,
+      orgUnitId: fx.orgUnits.alpha, statement: "Alpha branch for responsible tests",
+    });
+    const objective = await addDepartmentObjective({
+      kiId: fx.kiId, parentThemeId: (branch as { id: string }).id,
+      statement: "Alpha objective for responsible tests",
+    });
+    const measure = await addControlItem({
+      nodeId: (objective as { id: string }).id, name: "Alpha responsible test", measuredAs: null,
+      unit: "COUNT", direction: "HIGHER_BETTER", aggregation: "SUM", decimalPlaces: 0,
+      dicOrgUnitId: fx.orgUnits.alpha, businessUnitId: fx.businessUnits.AUTO,
+    });
+    const measureId = (measure as { id: string }).id;
+
+    asUser(fx.users.alphaLead);
+    const refused = await updateControlItem({
+      ...(await current(measureId)),
+      responsibleUserId: fx.users.betaLead.id,
+    });
+    expect(refused.ok).toBe(false);
+    if (!refused.ok) expect(refused.message).toMatch(/own division or department/i);
+    expect((await current(measureId)).responsibleUserId).toBeNull();
+
+    // Their own division's lead is fine.
+    const allowed = await updateControlItem({
+      ...(await current(measureId)),
+      responsibleUserId: fx.users.alphaLead.id,
+    });
+    expect(allowed.ok).toBe(true);
+    expect((await current(measureId)).responsibleUserId).toBe(fx.users.alphaLead.id);
+  });
+
+  it("refuses a name that is not an account at all", async () => {
+    const before = await current(fx.items.B);
+    const result = await updateControlItem({ ...before, responsibleUserId: "not-a-user" });
+    expect(result.ok).toBe(false);
+    expect((await current(fx.items.B)).responsibleUserId).toBe(before.responsibleUserId);
+  });
+
+  it("carries the name through when a measure is created", async () => {
+    const created = await addControlItem({
+      nodeId: fx.nodes.objective, name: "Created with an owner", measuredAs: null,
+      unit: "COUNT", direction: "HIGHER_BETTER", aggregation: "SUM", decimalPlaces: 0,
+      dicOrgUnitId: fx.orgUnits.alpha, businessUnitId: fx.businessUnits.AUTO,
+      responsibleUserId: fx.users.alphaLead.id,
+    });
+    expect(created.ok).toBe(true);
+    expect((await current((created as { id: string }).id)).responsibleUserId).toBe(fx.users.alphaLead.id);
   });
 });

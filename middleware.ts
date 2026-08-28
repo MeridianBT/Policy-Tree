@@ -8,7 +8,10 @@ import { edgeAuth } from "@/lib/auth/edge";
 export default edgeAuth((request) => {
   if (!request.auth) {
     const url = new URL("/login", request.nextUrl.origin);
-    url.searchParams.set("next", request.nextUrl.pathname);
+    // Path *and* query string: a reminder deep-links to
+    // /my-entries?period=2026-08, and dropping the search here would land
+    // someone on the current month with nothing to say a month was lost.
+    url.searchParams.set("next", request.nextUrl.pathname + request.nextUrl.search);
     return Response.redirect(url);
   }
 });
