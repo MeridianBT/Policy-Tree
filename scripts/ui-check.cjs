@@ -9,7 +9,8 @@
  *   - a filter panel that would not close - by pen or touch, by tabbing past
  *     its last option, or when the window was resized under it;
  *   - the Insights heatmap silently cropping February and March, behind a
- *     clean right border and with no scrollbar to suggest anything was there.
+ *     clean right border and with no scrollbar to suggest anything was there;
+ *   - /my-entries unusable on the phone the month-end reminder is read on.
  *
  * Run against a server already up on localhost:3000, seeded with the UAT data:
  *
@@ -19,7 +20,7 @@
  * Exits non-zero on the first failure, so it can gate a release.
  */
 
-const { chromium } = require("playwright");
+const { chromium, devices } = require("playwright");
 
 const BASE = process.env.UI_CHECK_URL || "http://localhost:3000";
 const EMAIL = process.env.UI_CHECK_EMAIL || "md@honda.example";
@@ -155,6 +156,60 @@ async function pagesDoNotOverflow(browser) {
   await page.close();
 }
 
+/**
+ * /my-entries on a phone.
+ *
+ * This is the one screen built for one, because the reminder that drives it
+ * arrives by mail and mail is read on a phone. Four things have to hold or the
+ * journey from that mail to a keyed figure does not work: the page must not
+ * scroll sideways, the cards must replace the table rather than sit beside it,
+ * the nav must still be reachable so somebody arriving cold is not stranded,
+ * and the input must be at least 16px - below that iOS zooms the page on
+ * focus and slides the field out from under the keyboard.
+ */
+async function myEntriesOnAPhone(browser) {
+  console.log("\n/my-entries works on a phone");
+  for (const name of ["iPhone 13", "Pixel 5", "iPhone SE"]) {
+    const context = await browser.newContext({ ...devices[name] });
+    const page = await context.newPage();
+    // The real journey: a deep link, opened cold, through sign-in.
+    await page.goto(`${BASE}/my-entries?period=2026-06`);
+    await page.waitForTimeout(1000);
+    await page.fill('input[name="email"]', EMAIL);
+    await page.fill('input[name="password"]', PASSWORD);
+    await page.locator('form:has(input[name="password"]) button[type="submit"]').click();
+    await page.waitForTimeout(4000);
+
+    const seen = await page.evaluate(() => {
+      const inputs = Array.from(document.querySelectorAll('input[inputmode="decimal"]'))
+        .filter((el) => el.offsetParent !== null);
+      const table = document.querySelector("table");
+      const first = inputs[0];
+      return {
+        path: location.pathname + location.search,
+        overflow: document.documentElement.scrollWidth - window.innerWidth,
+        visibleInputs: inputs.length,
+        tableShown: Boolean(table && table.offsetParent !== null),
+        fontSize: first ? parseFloat(getComputedStyle(first).fontSize) : 0,
+        height: first ? Math.round(first.getBoundingClientRect().height) : 0,
+      };
+    });
+    const menu = await page.getByText("Menu", { exact: false }).count();
+
+    const problems = [];
+    if (seen.path !== "/my-entries?period=2026-06") problems.push(`landed on ${seen.path}`);
+    if (seen.overflow > 1) problems.push(`${seen.overflow}px of horizontal overflow`);
+    if (seen.visibleInputs === 0) problems.push("no keyable field");
+    if (seen.tableShown) problems.push("the desktop table is still showing");
+    if (seen.fontSize < 16) problems.push(`input is ${seen.fontSize}px, so iOS will zoom`);
+    if (seen.height < 40) problems.push(`input is only ${seen.height}px tall`);
+    if (menu === 0) problems.push("no reachable nav");
+
+    check(problems.length === 0, name, problems.join("; "));
+    await context.close();
+  }
+}
+
 (async () => {
   const browser = await chromium.launch({
     executablePath: process.env.PLAYWRIGHT_CHROMIUM || undefined,
@@ -164,6 +219,7 @@ async function pagesDoNotOverflow(browser) {
     await panelsDismiss(browser);
     await heatmapKeepsEveryMonth(browser);
     await pagesDoNotOverflow(browser);
+    await myEntriesOnAPhone(browser);
   } finally {
     await browser.close();
   }

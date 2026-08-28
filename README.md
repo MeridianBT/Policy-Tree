@@ -795,6 +795,37 @@ zero, matching the em-dash rule on screen. `lib/export/workbook.ts` builds the
 workbook from the same `SheetModel` the grid renders — there is no second
 formatting path to drift from the first.
 
+### My entries on a phone
+
+`/my-entries` is the one screen built for a phone, because the thing that
+drives it — the month-end reminder — arrives by mail, and mail is read on a
+phone. A reminder somebody cannot act on where they read it is a nag rather
+than a prompt.
+
+Below the `sm` breakpoint each measure becomes a card: what it is, what was
+asked for, and one large box for the figure, with the gap and the save state
+underneath. From `sm` up it is the same dense table as before. Both layouts
+render the *same* input through one `actualInput` helper, so there is one save
+path, one keyboard contract and one set of states — a second input for the
+small screen would be a second thing to keep correct.
+
+Two numbers in that layout are stated in pixels rather than rem utilities, and
+both are deliberate. The field is at least **44px** tall, because this project
+sets a 13px root and `h-11` therefore lands at 36px — under a comfortable touch
+target. Its text is **16px**, because iOS zooms the whole page when a focused
+input is smaller than that, which on this screen slides the field you are
+typing into out from under the keyboard.
+
+The app shell changes with it. The desktop frame is a fixed-height layout with
+its own scrolling panes — right for a seventeen-column grid, wrong for a phone,
+where the browser chrome moves and the keyboard takes half the viewport — so
+below `sm` the page scrolls the way every other page on a phone does. The nav's
+links collapse behind a single menu from one shared list, so somebody arriving
+cold from a reminder is never stranded on the page they landed on.
+
+**The sheet is deliberately not part of this.** Seventeen columns belong on a
+large screen, and pretending otherwise would produce something unusable on both.
+
 ## The evaluation symbols
 
 □ ◎ 〇 ▲ ■ carry the entire colour budget of the sheet; everything else stays
@@ -842,8 +873,10 @@ off the right edge of the window with no way to reach the options past it; a
 filter panel that would not close by pen, by touch, by tabbing past its last
 option, or when the window was resized under it; and the Insights heatmap
 silently cropping February and March behind a clean right border with no
-scrollbar to suggest anything was missing. It runs at five window widths, from
-a 1024px laptop to 1920px, and exits non-zero on the first failure.
+scrollbar to suggest anything was missing; and `/my-entries` unusable on the
+phone the month-end reminder is read on. It runs at five window widths from a
+1024px laptop to 1920px, and on three phone profiles, and exits non-zero on the
+first failure.
 
 `npm run build` runs the linter and the type checker itself, so a build is the
 single command that proves all three. The lint config
