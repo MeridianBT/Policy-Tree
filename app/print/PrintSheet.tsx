@@ -119,7 +119,8 @@ export function PrintSheet({
             return (
               <tr key={item.id}>
                 <td style={{ paddingLeft: `${1 + indentSteps(item) * 3.5}mm` }}>
-                  <RichText text={item.name} />
+                  {/* Named once per Measure, as on screen. */}
+                  {item.firstOfMeasure ? <RichText text={item.name} /> : ""}
                 </td>
                 <td className="col-measure">{item.measuredAs}</td>
                 <td>{item.dicCode}</td>

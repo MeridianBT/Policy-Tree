@@ -203,11 +203,16 @@ async function main() {
     dicCode?: string,
   ): Promise<void> {
     const dic = dicCode ?? spec.dic;
+    // One Measure per seeded measure, each with one Control Item. A measure
+    // held to several is what the model now allows; the demo plan does not
+    // need one to make its point.
+    const measure = await prisma.measure.create({
+      data: { nodeId, name: spec.name, sortOrder },
+    });
     const controlItem = await prisma.controlItem.create({
       data: {
-        nodeId,
+        measureId: measure.id,
         code: spec.code,
-        name: spec.name,
         measuredAs: spec.measuredAs,
         unit: spec.unit,
         direction: spec.direction,
@@ -217,7 +222,6 @@ async function main() {
         businessUnitId: businessUnitIds.AUTO,
         dicOrgUnitId: orgUnitByCode.get(dic)!.id,
         responsibleUserId: userByOrg.get(dic) ?? userByOrg.get(spec.dic) ?? null,
-        sortOrder,
       },
     });
     controlItemIdByCode.set(spec.code, controlItem.id);

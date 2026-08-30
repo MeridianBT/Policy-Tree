@@ -157,43 +157,50 @@ async function main() {
 
   async function addItems(nodeId: string, items: Item[], level: number) {
     for (const [i, item] of items.entries()) {
-      const created = await prisma.controlItem.create({
-        data: {
-          nodeId,
-          code: item.code,
-          name: item.name,
-          measuredAs: item.measuredAs,
-          unit: item.unit,
-          direction: item.dir,
-          businessUnitId: businessUnitIds[item.bu ?? "AUTO"],
-          achievementMethod: item.method,
-          aggregation: item.agg,
-          decimalPlaces: item.dp,
-          dicOrgUnitId: orgByCode.get(item.dic)!,
-          responsibleUserId: userByOrg.get(item.dic) ?? null,
-          sortOrder: i,
-        },
+      // The Measure carries the name and its place under the Objective; its
+      // Control Items carry how it is measured. Most have exactly one.
+      const measure = await prisma.measure.create({
+        data: { nodeId, name: item.name, sortOrder: i },
       });
-      itemCount += 1;
+      const specs = [item, ...(item.also ?? [])];
+      for (const [order, spec] of specs.entries()) {
+        const created = await prisma.controlItem.create({
+          data: {
+            measureId: measure.id,
+            code: spec.code,
+            measuredAs: spec.measuredAs,
+            unit: spec.unit,
+            direction: spec.dir,
+            businessUnitId: businessUnitIds[spec.bu ?? "AUTO"],
+            achievementMethod: spec.method,
+            aggregation: spec.agg,
+            decimalPlaces: spec.dp,
+            dicOrgUnitId: orgByCode.get(spec.dic)!,
+            responsibleUserId: userByOrg.get(spec.dic) ?? null,
+            sortOrder: order,
+          },
+        });
+        itemCount += 1;
 
-      const targets = spread(item.target);
-      for (let m = 0; m < 12; m++) {
-        const period = month(KI.current.startYear, m);
-        entries.push({ controlItemId: created.id, period, planVersionId: prb.id, rawValue: targets[m] });
-        // The Original Budget sits a little under the press-release number, so
-        // switching Target between versions visibly moves achievement.
-        entries.push({
-          controlItemId: created.id, period, planVersionId: ob.id,
-          rawValue: Number((targets[m] * (item.dir === "LOWER_BETTER" ? 1.04 : 0.96)).toFixed(item.dp)),
-        });
-      }
-      for (let m = 0; m < Math.min(MONTHS_KEYED, item.actual.length); m++) {
-        entries.push({
-          controlItemId: created.id,
-          period: month(KI.current.startYear, m),
-          planVersionId: act.id,
-          rawValue: item.actual[m],
-        });
+        const targets = spread(spec.target);
+        for (let m = 0; m < 12; m++) {
+          const period = month(KI.current.startYear, m);
+          entries.push({ controlItemId: created.id, period, planVersionId: prb.id, rawValue: targets[m] });
+          // The Original Budget sits a little under the press-release number,
+          // so switching Target between versions visibly moves achievement.
+          entries.push({
+            controlItemId: created.id, period, planVersionId: ob.id,
+            rawValue: Number((targets[m] * (spec.dir === "LOWER_BETTER" ? 1.04 : 0.96)).toFixed(spec.dp)),
+          });
+        }
+        for (let m = 0; m < Math.min(MONTHS_KEYED, spec.actual.length); m++) {
+          entries.push({
+            controlItemId: created.id,
+            period: month(KI.current.startYear, m),
+            planVersionId: act.id,
+            rawValue: spec.actual[m],
+          });
+        }
       }
     }
     void level;

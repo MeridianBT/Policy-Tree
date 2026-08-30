@@ -35,6 +35,14 @@ this file — an admin can retune the scale and the sheet follows.
 
 Dark mode is out of scope: the artefact is a printed sheet and a projector.
 
+### Emphasis in text
+
+Statements and measure names take `**bold**` and `_italic_`, and nothing else.
+Colour is not offered there on purpose: the five evaluation symbols hold the
+entire colour budget above, and a coloured word on the same page competes with
+them for the glance that budget exists to buy. Weight and slope survive a
+projector and a photocopier, which colour does not.
+
 ### Type
 
 | Token | Value |

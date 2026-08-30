@@ -34,12 +34,14 @@ export function RowActions({
   childLabel,
   canAddDepartment,
   canAddMeasure,
+  canAddControlItem,
   canRename,
   renameLabel = "Rename",
   canDelete,
   onAddChild,
   onAddDepartment,
   onAddMeasure,
+  onAddControlItem,
   onRename,
   onDelete,
 }: {
@@ -48,6 +50,8 @@ export function RowActions({
   /** Level 2/3 Objective rows only: start a Level 4 branch here. */
   canAddDepartment?: boolean;
   canAddMeasure: boolean;
+  /** Measure rows only: add another Control Item under the same name. */
+  canAddControlItem?: boolean;
   canRename: boolean;
   /** A group row is renamed; a measure opens its whole form. */
   renameLabel?: string;
@@ -55,10 +59,20 @@ export function RowActions({
   onAddChild: () => void;
   onAddDepartment?: () => void;
   onAddMeasure: () => void;
+  onAddControlItem?: () => void;
   onRename: () => void;
   onDelete: () => void;
 }) {
-  if (!canAddChild && !canAddDepartment && !canAddMeasure && !canRename && !canDelete) return null;
+  if (
+    !canAddChild &&
+    !canAddDepartment &&
+    !canAddMeasure &&
+    !canAddControlItem &&
+    !canRename &&
+    !canDelete
+  ) {
+    return null;
+  }
   return (
     <span className="flex shrink-0 items-center gap-0.5">
       {canAddChild && (
@@ -84,6 +98,16 @@ export function RowActions({
           title="Add measure"
         >
           M+
+        </button>
+      )}
+      {canAddControlItem && (
+        <button
+          type="button"
+          className={`${ICON_BUTTON} text-[9px] font-medium`}
+          onClick={onAddControlItem}
+          title="Add another Control Item to this measure"
+        >
+          CI+
         </button>
       )}
       {canRename && (
@@ -359,6 +383,7 @@ export interface MeasureValues {
 export function InlineMeasureForm({
   indent,
   level,
+  fixedMeasureName,
   dics,
   businessUnits,
   users,
@@ -378,6 +403,13 @@ export function InlineMeasureForm({
    * chosen org unit and a company-level one against the role.
    */
   level: number;
+  /**
+   * The Measure's name when it is not this form's to change: adding a second
+   * Control Item to a measure, or editing one that is not the measure's first.
+   * A measure is named once, so the field is shown as text rather than offered
+   * twice - and the two rows cannot drift apart by being edited separately.
+   */
+  fixedMeasureName?: string;
   dics: DicOption[];
   businessUnits: Array<{ id: string; code: string; name: string }>;
   /** People this user may hand the measure to, scoped server-side. */
@@ -390,7 +422,7 @@ export function InlineMeasureForm({
   onCancel: () => void;
   pending: boolean;
 }) {
-  const [name, setName] = useState(initial?.name ?? "");
+  const [name, setName] = useState(fixedMeasureName ?? initial?.name ?? "");
   const [measuredAs, setMeasuredAs] = useState(initial?.measuredAs ?? "");
   const [unit, setUnit] = useState(initial?.unit ?? "COUNT");
   const [direction, setDirection] = useState(initial?.direction ?? "HIGHER_BETTER");
@@ -464,16 +496,26 @@ export function InlineMeasureForm({
       style={{ paddingLeft: indent }}
     >
       <Labelled label="Measure">
-        <input
-          autoFocus
-          value={name}
-          onChange={(event) => setName(event.target.value)}
-          placeholder="Vehicle sales volume"
-          className={`${field} w-52`}
-        />
+        {fixedMeasureName ? (
+          <span
+            className="flex h-[26px] w-52 items-center truncate px-1.5 text-[11px] text-ink-muted"
+            title="Named once, on the measure. Edit it from the measure's own row."
+          >
+            {fixedMeasureName}
+          </span>
+        ) : (
+          <input
+            autoFocus
+            value={name}
+            onChange={(event) => setName(event.target.value)}
+            placeholder="Vehicle sales volume"
+            className={`${field} w-52`}
+          />
+        )}
       </Labelled>
       <Labelled label="Control Item">
         <input
+          autoFocus={Boolean(fixedMeasureName)}
           value={measuredAs}
           onChange={(event) => setMeasuredAs(event.target.value)}
           placeholder="Units sold"

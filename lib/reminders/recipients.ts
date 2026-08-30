@@ -22,6 +22,7 @@ import { prisma } from "@/lib/db";
 import { dateToPeriod, kiStartYearOf, periodToDate, type PeriodKey } from "@/lib/domain/period";
 import { reminderPeriodForKi } from "./period";
 import { assignRecipients, subtreeOf, type CandidateUser, type Recipient, type UnkeyedItem } from "./match";
+import { controlItemLabel } from "@/lib/calc/measure-label";
 
 export { assignRecipients, subtreeOf } from "./match";
 export type { CandidateUser, OutstandingItem, Recipient, UnkeyedItem } from "./match";
@@ -61,17 +62,23 @@ export async function buildReminderScope(options?: {
 
   const [controlItems, actuals, users, orgUnits] = await Promise.all([
     prisma.controlItem.findMany({
-      where: { node: { kiId: ki.id } },
+      where: { measure: { node: { kiId: ki.id } } },
       select: {
         id: true,
         code: true,
-        name: true,
+        measuredAs: true,
         dicOrgUnitId: true,
         responsibleUserId: true,
         dicOrgUnit: { select: { code: true } },
-        node: { select: { statement: true } },
+        measure: {
+          select: {
+            name: true,
+            node: { select: { statement: true } },
+            _count: { select: { controlItems: true } },
+          },
+        },
       },
-      orderBy: [{ dicOrgUnitId: "asc" }, { sortOrder: "asc" }],
+      orderBy: [{ dicOrgUnitId: "asc" }, { measure: { sortOrder: "asc" } }, { sortOrder: "asc" }],
     }),
     prisma.entry.findMany({
       where: { period: periodToDate(period), planVersionId: actVersion.id },
@@ -100,9 +107,11 @@ export async function buildReminderScope(options?: {
     .map((item) => ({
       controlItemId: item.id,
       code: item.code,
-      name: item.name,
+      // A chase naming the same measure three times helps nobody, so a
+      // measure with several Control Items names which one is outstanding.
+      name: controlItemLabel(item.measure.name, item.measuredAs, item.measure._count.controlItems),
       dicCode: item.dicOrgUnit.code,
-      objective: item.node.statement,
+      objective: item.measure.node.statement,
       dicOrgUnitId: item.dicOrgUnitId,
       responsibleUserId: item.responsibleUserId,
     }));

@@ -105,7 +105,8 @@ applies no such skip: that is a decision rather than a sweep.
 | **Goal** | Level 1. A company priority statement, no measurement. |
 | **Theme** | A grouping heading under a Goal, at Levels 2, 3 and 4. |
 | **Objective** | A statement of intent under a Theme, carrying Control Items. |
-| **Control Item** | The measurement method — how a target and actual are measured ("Units sold", "% of sales"). One row on the sheet. |
+| **Measure** | What an Objective is measured by, named once. Carries one Control Item, or several. |
+| **Control Item** | The measurement method — how a target and actual are measured ("Units sold", "% of sales"). One row on the sheet, with its own unit, direction, targets and actuals. |
 | **DIC** | Division In Charge: the org unit accountable for a Control Item. Shown on every screen as **Department**, since the org unit named is usually one. |
 | **Version** | A named plan snapshot: OB, PRB, 1QFC, 2QFC, 3QFC, ACT. |
 
@@ -121,26 +122,73 @@ a measure needs an Objective to sit under, at any level.
 Ki 103KI
 └── Goal (L1)                    statement only — no measures, ever
     └── Theme (L2)               heading
-        └── Objective (L2)       ← Control Items live here
-            ├── Control Item     measure · control item · targets · actuals
+        └── Objective (L2)       ← Measures live here
+            ├── Measure          named once
+            │   └── Control Item   control item · targets · actuals
             └── Theme (L3)       heading, the company breakdown continued
-                └── Objective (L3)  ← Control Items live here
-                    ├── Control Item
+                └── Objective (L3)  ← Measures live here
+                    ├── Measure
                     └── Theme (L4)      a department branch, carrying an org unit
-                        └── Objective (L4)  ← Control Items live here
-                            └── Control Item
+                        └── Objective (L4)  ← Measures live here
+                            └── Measure
 ```
 
 So Levels **2, 3 and 4 all carry measures**, with targets and actuals, and only
 Level 1 is description-only. The demo data is exactly that shape: 5 Goals with
-no measures at all, and 82 Control Items — 60 at Level 2, 7 at Level 3, 15 at
-Level 4 — each with a target on every forecast version and an actual for every
+no measures at all, and 83 Control Items — one measure among them held to three
+of them — each with a target on every forecast version and an actual for every
 closed month.
 
 A Level 4 branch is the one that differs in kind rather than depth: it hangs off
 a Level 2 or 3 Objective, it must carry an org unit, and it is the only part of
 the tree a division or department lead can extend on their own. Level 4 is as
 deep as the model goes.
+
+#### A Measure may be held to several Control Items
+
+A measure is usually judged on one thing, and then a Measure has one Control
+Item and the sheet draws it as it always has: the name in **Measures**, the
+control item in **Control Item**, one row.
+
+Sometimes it is judged on several at once. Servicing is not effortless because
+of any one of an NPS, a first-time fix rate and a waiting time — it is all
+three together, and the demo plan carries exactly that under "Service
+experience". So a Measure holds as many Control Items as it needs, and the
+split between them is deliberately uneven:
+
+- The **Measure** carries the name, its place under the Objective and its
+  order. That is all.
+- Each **Control Item** carries everything else — its own code, unit,
+  direction, roll-up, decimals, department, business unit, responsible person,
+  targets and actuals. It is keyed, rolled up and evaluated separately, and a
+  formula addresses it by its own code.
+
+That unevenness is what keeps the change small: the filters, the permission
+checks, the formula engine, the entries, the audit trail and the month-end
+reminder all still operate on exactly the row they always did.
+
+On the sheet the name is printed **once**, on the measure's first Control Item;
+the rows beneath leave the Measures column to a faint `└` and are told apart by
+their own Control Item text. Repeating one name down three rows says nothing
+the reader did not already know and costs the width those rows need. Away from
+the sheet — `/my-entries`, the month-end review, the reminder mail — there is no
+grouping to lean on, so a line reads `Service experience — Days to next
+available booking`. A measure of one is never dressed up that way
+(`lib/calc/measure-label.ts`).
+
+Editing follows the same rule. **CI+** on a measure's row adds another Control
+Item to it, seeded from the one beside it, with the name shown but not offered.
+The pencil on the first row edits the measure *and* that Control Item; on a
+later row it edits the Control Item only. Renaming from the first row renames
+every row at once, because there is one name. Deleting one of several leaves
+the measure standing; deleting the last takes the measure with it, because a
+Measure with nothing under it would be a name on the sheet with no figures and
+no way to key one.
+
+Dragging follows from what is dragged: a Control Item of a measure that has
+others moves among those, and a measure of one moves the measure among the
+measures under its Objective — which is what reordering the sheet has always
+meant.
 
 To add a measure, turn on **Edit** (the pencil in the toolbar) and use the
 **M+** on an Objective row. Theme and Goal rows do not offer it, because a measure filed against a
@@ -1060,6 +1108,11 @@ reason is written where a reader will meet it.
 - `lib/calc/dic-label.test.ts` — a department chip carrying only what the
   Division control has not already said, and never letting two same-named
   departments read alike
+- `lib/calc/measure-label.test.ts` — a Control Item named for itself only when
+  its Measure carries more than one
+- `lib/calc/emphasis.test.ts` — bold and italic in a statement: an unmatched
+  marker staying literal, `AUTO_ND` never turning italic, and a tooltip never
+  showing an asterisk
 - `lib/calc/sso.test.ts` — who may sign in through Microsoft: invite-only,
   `oid` preferred over email, deactivated accounts refused
 - `lib/calc/auth-config.test.ts` — that a half-configured Entra provider counts

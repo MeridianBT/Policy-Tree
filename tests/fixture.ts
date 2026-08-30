@@ -128,11 +128,13 @@ export async function createFixture(): Promise<Fixture> {
   ];
   const items: Record<string, string> = {};
   for (const [index, spec] of itemSpecs.entries()) {
+    const measure = await prisma.measure.create({
+      data: { nodeId: objective.id, name: `Item ${spec.key}`, sortOrder: index },
+    });
     const item = await prisma.controlItem.create({
       data: {
-        nodeId: objective.id,
+        measureId: measure.id,
         code: `${spec.key}-${suffix}`,
-        name: `Item ${spec.key}`,
         unit: "COUNT",
         direction: "HIGHER_BETTER",
         achievementMethod: "RATIO",
@@ -141,7 +143,7 @@ export async function createFixture(): Promise<Fixture> {
         dicOrgUnitId: spec.dic,
         businessUnitId: autoBusinessUnitId,
         responsibleUserId: spec.responsible,
-        sortOrder: index,
+        sortOrder: 0,
       },
     });
     items[spec.key] = item.id;

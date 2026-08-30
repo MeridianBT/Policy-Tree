@@ -40,9 +40,28 @@ export function ControlItemDetailView({ detail }: { detail: ControlItemDetail })
           {detail.themePath.join(" › ")} {detail.themePath.length ? "›" : ""} {detail.objective}
         </p>
         <h1 className="mt-1 text-[16px] font-semibold">
-          <RichText text={detail.name} />{" "}
+          <RichText text={detail.name} />
+          {/* One of several under one name, so the heading says which one
+              rather than leaving three pages that read identically. */}
+          {detail.siblings.length > 0 && (
+            <span className="font-normal text-ink-muted"> — {detail.measuredAs}</span>
+          )}{" "}
           <span className="text-[12px] font-normal text-ink-faint">{detail.code}</span>
         </h1>
+        {detail.siblings.length > 0 && (
+          <p className="mt-1 text-[11px] text-ink-muted">
+            The same measure is also held to{" "}
+            {detail.siblings.map((sibling, index) => (
+              <span key={sibling.id}>
+                {index > 0 && (index === detail.siblings.length - 1 ? " and " : ", ")}
+                <Link href={`/control-item/${sibling.id}`} className="underline">
+                  {sibling.measuredAs}
+                </Link>
+              </span>
+            ))}
+            .
+          </p>
+        )}
         <dl className="mt-2 flex flex-wrap gap-x-6 gap-y-1 text-[11px]">
           <Meta term="Ki" value={detail.kiCode} />
           <Meta term="Level" value={`L${detail.level}`} />

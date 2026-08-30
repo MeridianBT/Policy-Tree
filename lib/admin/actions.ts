@@ -220,7 +220,7 @@ export async function copyStructure(fromKiId: string, toKiId: string): Promise<A
     const nodes = await prisma.node.findMany({
       where: { kiId: fromKiId },
       orderBy: [{ level: "asc" }, { sortOrder: "asc" }],
-      include: { controlItems: true },
+      include: { measures: { include: { controlItems: true } } },
     });
 
     const idMap = new Map<string, string>();
@@ -244,30 +244,36 @@ export async function copyStructure(fromKiId: string, toKiId: string): Promise<A
         idMap.set(node.id, created.id);
         copiedNodes++;
 
-        for (const item of node.controlItems) {
-          await tx.controlItem.create({
-            data: {
-              nodeId: created.id,
-              // Codes are unique across the database, so they are namespaced
-              // by Ki when a structure is copied forward.
-              code: `${item.code}@${target.code.replace(/\s+/g, "")}`,
-              name: item.name,
-              measuredAs: item.measuredAs,
-              // Copied forward as-is: next year's plan starts from this
-              // year's, and a measure does not change business unit by
-              // crossing a year boundary.
-              businessUnitId: item.businessUnitId,
-              unit: item.unit,
-              direction: item.direction,
-              achievementMethod: item.achievementMethod,
-              aggregation: item.aggregation,
-              decimalPlaces: item.decimalPlaces,
-              dicOrgUnitId: item.dicOrgUnitId,
-              responsibleUserId: item.responsibleUserId,
-              sortOrder: item.sortOrder,
-            },
+        for (const measure of node.measures) {
+          // The Measure comes across whole, with its Control Items under it:
+          // a measure held to three targets is still held to three next year.
+          const copiedMeasure = await tx.measure.create({
+            data: { nodeId: created.id, name: measure.name, sortOrder: measure.sortOrder },
           });
-          copiedItems++;
+          for (const item of measure.controlItems) {
+            await tx.controlItem.create({
+              data: {
+                measureId: copiedMeasure.id,
+                // Codes are unique across the database, so they are namespaced
+                // by Ki when a structure is copied forward.
+                code: `${item.code}@${target.code.replace(/\s+/g, "")}`,
+                measuredAs: item.measuredAs,
+                // Copied forward as-is: next year's plan starts from this
+                // year's, and a measure does not change business unit by
+                // crossing a year boundary.
+                businessUnitId: item.businessUnitId,
+                unit: item.unit,
+                direction: item.direction,
+                achievementMethod: item.achievementMethod,
+                aggregation: item.aggregation,
+                decimalPlaces: item.decimalPlaces,
+                dicOrgUnitId: item.dicOrgUnitId,
+                responsibleUserId: item.responsibleUserId,
+                sortOrder: item.sortOrder,
+              },
+            });
+            copiedItems++;
+          }
         }
       }
     }, { timeout: 60_000 });
@@ -346,8 +352,17 @@ export async function createControlItem(input: unknown): Promise<AdminResult> {
       };
     }
 
-    const siblings = await prisma.controlItem.count({ where: { nodeId: data.nodeId } });
-    await prisma.controlItem.create({ data: { ...data, sortOrder: siblings } });
+    // The admin builder creates a measure of one, the same shape the sheet's
+    // own "add measure" produces. Adding a second Control Item to a measure is
+    // done on the sheet, where the measure it joins is visible.
+    const { nodeId, name, ...item } = data;
+    const siblings = await prisma.measure.count({ where: { nodeId } });
+    const measure = await prisma.measure.create({
+      data: { nodeId, name, sortOrder: siblings },
+    });
+    await prisma.controlItem.create({
+      data: { ...item, measureId: measure.id, sortOrder: 0 },
+    });
 
     revalidatePath("/admin");
     revalidatePath("/sheet");
@@ -529,8 +544,8 @@ export async function kiResetImpact(kiId: string): Promise<KiResetImpact | null>
 
   const [nodes, controlItems, entries] = await Promise.all([
     prisma.node.count({ where: { kiId } }),
-    prisma.controlItem.count({ where: { node: { kiId } } }),
-    prisma.entry.count({ where: { controlItem: { node: { kiId } } } }),
+    prisma.controlItem.count({ where: { measure: { node: { kiId } } } }),
+    prisma.entry.count({ where: { controlItem: { measure: { node: { kiId } } } } }),
   ]);
   return { kiCode: ki.code, nodes, controlItems, entries };
 }

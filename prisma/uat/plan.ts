@@ -121,6 +121,13 @@ export type Item = {
   target: number | number[];
   /** Apr-Jul actuals. The Ki is four months old, so the rest is unkeyed. */
   actual: number[];
+  /**
+   * Further Control Items under the *same* Measure - the case where one
+   * measure is held to several targets at once. They share the measure's name
+   * and nothing else: each carries its own unit, direction, department,
+   * targets and actuals, and is keyed and evaluated separately.
+   */
+  also?: Array<Omit<Item, "name" | "also">>;
 };
 
 export type Objective = {

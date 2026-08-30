@@ -78,15 +78,19 @@ export async function loadSheet(options: LoadSheetOptions): Promise<SheetModel> 
     }),
     prisma.controlItem.findMany({
       where: {
-        node: { kiId: ki.id, level: { in: options.levels } },
+        measure: { node: { kiId: ki.id, level: { in: options.levels } } },
         ...(options.orgUnitIds ? { dicOrgUnitId: { in: options.orgUnitIds } } : {}),
       },
       include: {
+        measure: { select: { id: true, nodeId: true, name: true, sortOrder: true } },
         dicOrgUnit: { select: { code: true, name: true } },
         businessUnit: { select: { code: true, name: true } },
         responsibleUser: { select: { name: true } },
       },
-      orderBy: { sortOrder: "asc" },
+      // The measure's order under its Objective first, then a control item's
+      // order within its own measure - which is the order the sheet prints
+      // them in, and the order the name is printed once against.
+      orderBy: [{ measure: { sortOrder: "asc" } }, { sortOrder: "asc" }],
     }),
   ]);
 
@@ -128,9 +132,15 @@ export async function loadSheet(options: LoadSheetOptions): Promise<SheetModel> 
   const nodeById = new Map(nodes.map((node) => [node.id, node]));
   const itemsByNode = new Map<string, typeof controlItems>();
   for (const item of controlItems) {
-    const list = itemsByNode.get(item.nodeId) ?? [];
+    const list = itemsByNode.get(item.measure.nodeId) ?? [];
     list.push(item);
-    itemsByNode.set(item.nodeId, list);
+    itemsByNode.set(item.measure.nodeId, list);
+  }
+  // How many Control Items each Measure carries, so a row can say whether it
+  // is the first of several and the sheet can print the name once.
+  const itemsPerMeasure = new Map<string, number>();
+  for (const item of controlItems) {
+    itemsPerMeasure.set(item.measureId, (itemsPerMeasure.get(item.measureId) ?? 0) + 1);
   }
 
   /** Ancestor chain, outermost first, excluding the node itself. */
@@ -216,7 +226,10 @@ export async function loadSheet(options: LoadSheetOptions): Promise<SheetModel> 
     if (!items?.length) continue;
     const path = [...ancestors(node.id), node.id];
 
+    let previousMeasureId: string | null = null;
     for (const item of items) {
+      const firstOfMeasure = item.measureId !== previousMeasureId;
+      previousMeasureId = item.measureId;
       const built = buildRow({
         controlItem: {
           id: item.id,
@@ -237,7 +250,14 @@ export async function loadSheet(options: LoadSheetOptions): Promise<SheetModel> 
         id: item.id,
         kind: "CONTROL_ITEM",
         code: item.code,
-        name: item.name,
+        // The row's name is its Measure's name, on every one of a measure's
+        // control items. `firstOfMeasure` is what the sheet uses to print it
+        // once; everywhere else - the reminder, /my-entries, the review - a
+        // row still knows what it is called without a second lookup.
+        name: item.measure.name,
+        measureId: item.measureId,
+        firstOfMeasure,
+        measureItemCount: itemsPerMeasure.get(item.measureId) ?? 1,
         measuredAs: item.measuredAs ?? defaultMeasuredAs(item.unit),
         measuredAsRaw: item.measuredAs,
         unit: item.unit,

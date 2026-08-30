@@ -47,7 +47,7 @@ export async function saveFormula(input: SaveFormulaInput): Promise<SaveFormulaR
   const [controlItem, version] = await Promise.all([
     prisma.controlItem.findUniqueOrThrow({
       where: { id: input.controlItemId },
-      select: { id: true, code: true, node: { select: { kiId: true } } },
+      select: { id: true, code: true, measure: { select: { node: { select: { kiId: true } } } } },
     }),
     prisma.planVersion.findUniqueOrThrow({ where: { id: input.planVersionId } }),
   ]);
@@ -294,7 +294,7 @@ async function buildLookup(kiId: string, referenced: ResolvedRef[]) {
   const [controlItems, versions] = await Promise.all([
     codes.length
       ? prisma.controlItem.findMany({
-          where: { code: { in: codes }, node: { kiId } },
+          where: { code: { in: codes }, measure: { node: { kiId } } },
           select: { id: true, code: true },
         })
       : Promise.resolve([]),
@@ -380,7 +380,10 @@ async function buildLookup(kiId: string, referenced: ResolvedRef[]) {
  */
 async function buildNameMap(kiId: string) {
   const [controlItems, versions] = await Promise.all([
-    prisma.controlItem.findMany({ where: { node: { kiId } }, select: { id: true, code: true } }),
+    prisma.controlItem.findMany({
+      where: { measure: { node: { kiId } } },
+      select: { id: true, code: true },
+    }),
     prisma.planVersion.findMany({ where: { kiId }, select: { id: true, code: true } }),
   ]);
 

@@ -26,6 +26,7 @@
 import type { ControlItemRow, SheetRowModel } from "@/lib/sheet/types";
 import type { SheetCell } from "@/lib/calc/row";
 import { belowTargetIn, monthCell } from "@/components/sheet/below-target";
+import { controlItemLabel } from "@/lib/calc/measure-label";
 
 /**
  * How much achievement has to move before it counts as movement.
@@ -190,7 +191,9 @@ export function buildReview(
     const identity: MissingLine = {
       id: row.id,
       code: row.code,
-      name: row.name,
+      // One line per Control Item and no grouping to lean on, so a measure
+      // with several names which of them this line is about.
+      name: controlItemLabel(row.name, row.measuredAsRaw, row.measureItemCount),
       dicCode: row.dicCode,
       dicName: row.dicName,
       responsibleUserName: row.responsibleUserName,

@@ -32,8 +32,11 @@ export interface AuditRow {
 export interface ControlItemDetail {
   id: string;
   code: string;
+  /** The Measure's name. Several Control Items can share it. */
   name: string;
   measuredAs: string;
+  /** The measure's other Control Items, empty when it has only this one. */
+  siblings: Array<{ id: string; code: string; measuredAs: string }>;
   unit: string;
   direction: string;
   achievementMethod: string;
@@ -69,16 +72,27 @@ export async function loadControlItem(controlItemId: string): Promise<ControlIte
     include: {
       dicOrgUnit: { select: { code: true, name: true } },
       responsibleUser: { select: { name: true } },
-      node: { include: { ki: true } },
+      measure: {
+        include: {
+          node: { include: { ki: true } },
+          // Sibling control items, so this page can say which of a measure's
+          // several this one is - and offer the others.
+          controlItems: {
+            select: { id: true, code: true, measuredAs: true, unit: true },
+            orderBy: { sortOrder: "asc" },
+          },
+        },
+      },
     },
   });
+  const node = item.measure.node;
 
-  const kiStartYear = kiStartYearOf(dateToPeriod(item.node.ki.startDate));
+  const kiStartYear = kiStartYearOf(dateToPeriod(node.ki.startDate));
   const months = kiMonths(kiStartYear);
 
   const [bands, versions, entries, audits, ancestors] = await Promise.all([
     loadBands(),
-    loadVersions(item.node.kiId),
+    loadVersions(node.kiId),
     prisma.entry.findMany({
       where: { controlItemId },
       include: { planVersion: { select: { code: true } } },
@@ -93,7 +107,7 @@ export async function loadControlItem(controlItemId: string): Promise<ControlIte
       orderBy: { changedAt: "desc" },
       take: 200,
     }),
-    ancestorStatements(item.nodeId),
+    ancestorStatements(node.id),
   ]);
 
   const valuesByVersion: ValuesByVersion = {};
@@ -133,8 +147,18 @@ export async function loadControlItem(controlItemId: string): Promise<ControlIte
   return {
     id: item.id,
     code: item.code,
-    name: item.name,
+    name: item.measure.name,
     measuredAs: item.measuredAs ?? item.unit.toLowerCase(),
+    // The other Control Items of the same Measure, so a page opened on one of
+    // three can reach the other two rather than sending the reader back to the
+    // sheet to find them.
+    siblings: item.measure.controlItems
+      .filter((sibling) => sibling.id !== item.id)
+      .map((sibling) => ({
+        id: sibling.id,
+        code: sibling.code,
+        measuredAs: sibling.measuredAs ?? sibling.unit.toLowerCase(),
+      })),
     unit: item.unit,
     direction: item.direction,
     achievementMethod: item.achievementMethod,
@@ -143,10 +167,10 @@ export async function loadControlItem(controlItemId: string): Promise<ControlIte
     dicCode: item.dicOrgUnit.code,
     dicName: item.dicOrgUnit.name,
     responsibleUserName: item.responsibleUser?.name ?? null,
-    objective: item.node.statement,
+    objective: node.statement,
     themePath: ancestors,
-    level: item.node.level,
-    kiCode: item.node.ki.code,
+    level: node.level,
+    kiCode: node.ki.code,
     kiStartYear,
     months,
     versions,

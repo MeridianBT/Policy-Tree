@@ -31,7 +31,18 @@ export interface ControlItemRow {
   id: string;
   kind: "CONTROL_ITEM";
   code: string;
+  /**
+   * The Measure's name, carried on every one of its Control Items so that a
+   * row always knows what it is called. The sheet prints it once per measure -
+   * see `firstOfMeasure` - and the screens that show one line per control item
+   * with no grouping to lean on pair it with `measuredAs`.
+   */
   name: string;
+  measureId: string;
+  /** True on the first Control Item of its Measure, in sheet order. */
+  firstOfMeasure: boolean;
+  /** How many Control Items this row's Measure carries, itself included. */
+  measureItemCount: number;
   /** How the target and actual are measured, e.g. "Units sold", "% of sales". */
   measuredAs: string;
   unit: Unit;

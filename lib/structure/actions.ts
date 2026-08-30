@@ -34,6 +34,7 @@ import {
   type AuthenticatedUser,
 } from "@/lib/auth/session";
 import { ReorderError, reorderWithinLevel } from "./reorder";
+import { controlItemLabel } from "@/lib/calc/measure-label";
 
 export type StructureResult =
   | { ok: true; message: string; id?: string }
@@ -281,7 +282,14 @@ export async function renameNode(input: unknown): Promise<StructureResult> {
 
 const updateControlItemSchema = z.object({
   id: z.string().min(1),
-  name: z.string().trim().min(1, "Give the measure a name.").max(200),
+  /**
+   * The Measure's name, which every Control Item under it shares. Optional
+   * because a measure with several is named once: the form opened from its
+   * first row offers the name, the forms opened from the others do not, and
+   * leaving it out here means "the measure keeps the name it has" rather than
+   * "the measure has no name".
+   */
+  name: z.string().trim().min(1, "Give the measure a name.").max(200).optional(),
   measuredAs: z.string().trim().max(120).nullable(),
   unit: z.enum(["PERCENT", "CURRENCY", "COUNT", "RATIO", "DAYS", "INDEX"]),
   direction: z.enum(["HIGHER_BETTER", "LOWER_BETTER"]),
@@ -330,27 +338,29 @@ export async function updateControlItem(input: unknown): Promise<StructureResult
     const item = await prisma.controlItem.findUnique({
       where: { id: data.id },
       select: {
-        name: true,
+        measureId: true,
         dicOrgUnitId: true,
         direction: true,
         aggregation: true,
-        node: { select: { level: true, kiId: true } },
+        measure: { select: { name: true, node: { select: { level: true, kiId: true } } } },
       },
     });
     if (!item) return { ok: false, message: "That Control Item no longer exists." };
+    const node = item.measure.node;
+    const label = data.name ?? item.measure.name;
 
-    if (!(await canControlItemScope(user, item.node.level, item.dicOrgUnitId))) {
+    if (!(await canControlItemScope(user, node.level, item.dicOrgUnitId))) {
       throw new NotPermitted();
     }
     if (
       data.dicOrgUnitId !== item.dicOrgUnitId &&
-      !(await canControlItemScope(user, item.node.level, data.dicOrgUnitId))
+      !(await canControlItemScope(user, node.level, data.dicOrgUnitId))
     ) {
       throw new NotPermitted(
         "You can only move a measure to a division or department you are responsible for.",
       );
     }
-    if (!(await canEditInKi(user, item.node.kiId))) {
+    if (!(await canEditInKi(user, node.kiId))) {
       throw new NotPermitted("That year is closed. Only a super admin can change it.");
     }
     if (!(await canAssignTo(user, data.responsibleUserId))) {
@@ -367,7 +377,7 @@ export async function updateControlItem(input: unknown): Promise<StructureResult
         return {
           ok: false,
           message:
-            `"${item.name}" holds figures in ${locked.length === 1 ? "a locked version" : "locked versions"} ` +
+            `"${label}" holds figures in ${locked.length === 1 ? "a locked version" : "locked versions"} ` +
             `(${locked.join(", ")}). Changing how it rolls up, or which direction is better, would change ` +
             "what those closed figures say - so it is refused for everyone, including an administrator. " +
             "Everything else about the measure can still be edited. Unlock the version first if this " +
@@ -382,10 +392,15 @@ export async function updateControlItem(input: unknown): Promise<StructureResult
     // separate decision.
     const achievementMethod = data.direction === "LOWER_BETTER" ? "INVERSE" : "RATIO";
 
+    // The name belongs to the Measure, so renaming here renames every
+    // Control Item's row at once - which is the point of naming it once.
+    if (data.name && data.name !== item.measure.name) {
+      await prisma.measure.update({ where: { id: item.measureId }, data: { name: data.name } });
+    }
+
     await prisma.controlItem.update({
       where: { id: data.id },
       data: {
-        name: data.name,
         measuredAs: data.measuredAs,
         unit: data.unit,
         direction: data.direction,
@@ -399,7 +414,7 @@ export async function updateControlItem(input: unknown): Promise<StructureResult
     });
 
     revalidate();
-    return { ok: true, message: `${data.name} updated.` };
+    return { ok: true, message: `${label} updated.` };
   } catch (error) {
     return permissionAware(error);
   }
@@ -426,7 +441,7 @@ async function measureNodeDeletion(
 ): Promise<DeletionImpact & { controlItemIds: string[] }> {
   const nodeIds = await descendantNodeIds(nodeId);
   const controlItems = await prisma.controlItem.findMany({
-    where: { nodeId: { in: nodeIds } },
+    where: { measure: { nodeId: { in: nodeIds } } },
     select: { id: true },
   });
   const controlItemIds = controlItems.map((c) => c.id);
@@ -556,25 +571,36 @@ export async function deleteControlItem(input: unknown): Promise<StructureResult
     const item = await prisma.controlItem.findUnique({
       where: { id },
       select: {
-        name: true,
+        measureId: true,
+        measuredAs: true,
         dicOrgUnitId: true,
-        node: { select: { level: true, kiId: true } },
+        measure: {
+          select: {
+            name: true,
+            node: { select: { level: true, kiId: true } },
+            _count: { select: { controlItems: true } },
+          },
+        },
       },
     });
     if (!item) return { ok: false, message: "That Control Item no longer exists." };
-    if (!(await canControlItemScope(user, item.node.level, item.dicOrgUnitId))) {
+    const node = item.measure.node;
+    const siblingCount = item.measure._count.controlItems;
+    const label = controlItemLabel(item.measure.name, item.measuredAs, siblingCount);
+    if (!(await canControlItemScope(user, node.level, item.dicOrgUnitId))) {
       throw new NotPermitted();
     }
-    if (!(await canEditInKi(user, item.node.kiId))) {
+    if (!(await canEditInKi(user, node.kiId))) {
       throw new NotPermitted(
         "That year is closed. Only a super admin can change a Ki that is no longer current.",
       );
     }
 
     const locked = await lockedVersionsHolding([id]);
-    if (locked.length) return lockedRefusal(`"${item.name}"`, locked);
+    if (locked.length) return lockedRefusal(`"${label}"`, locked);
 
     const entries = await prisma.entry.count({ where: { controlItemId: id } });
+    const lastOfMeasure = siblingCount <= 1;
 
     if (!confirm && entries > 0) {
       const impact = { nodes: 0, controlItems: 1, entries };
@@ -583,15 +609,23 @@ export async function deleteControlItem(input: unknown): Promise<StructureResult
         needsConfirmation: true,
         impact,
         message:
-          `Deleting "${item.name}" removes ${entries} stored ` +
+          `Deleting "${label}" removes ${entries} stored ` +
           `${entries === 1 ? "figure" : "figures"}, including every actual keyed against it. ` +
-          "That cannot be undone.",
+          (lastOfMeasure
+            ? "That cannot be undone."
+            : `The measure keeps its other ${siblingCount - 1 === 1 ? "Control Item" : "Control Items"}. ` +
+              "That cannot be undone."),
       };
     }
 
     await prisma.controlItem.delete({ where: { id } });
+    // A Measure exists to name its Control Items. The last one leaving takes
+    // the measure with it rather than stranding an empty name on the sheet.
+    if (lastOfMeasure) {
+      await prisma.measure.delete({ where: { id: item.measureId } }).catch(() => undefined);
+    }
     revalidate();
-    return { ok: true, message: `Deleted "${item.name}".` };
+    return { ok: true, message: `Deleted "${label}".` };
   } catch (error) {
     return permissionAware(error);
   }
@@ -688,39 +722,83 @@ async function reorderControlItem(
   const item = await prisma.controlItem.findUnique({
     where: { id },
     select: {
-      nodeId: true,
+      measureId: true,
       dicOrgUnitId: true,
-      node: { select: { level: true, kiId: true } },
+      measure: {
+        select: {
+          nodeId: true,
+          node: { select: { level: true, kiId: true } },
+          _count: { select: { controlItems: true } },
+        },
+      },
     },
   });
   if (!item) return { ok: false, message: "That Control Item no longer exists." };
-  if (!(await canControlItemScope(user, item.node.level, item.dicOrgUnitId))) {
+  const node = item.measure.node;
+  if (!(await canControlItemScope(user, node.level, item.dicOrgUnitId))) {
     throw new NotPermitted();
   }
-  if (!(await canEditInKi(user, item.node.kiId))) {
+  if (!(await canEditInKi(user, node.kiId))) {
     throw new NotPermitted("That year is closed. Only a super admin can change it.");
   }
 
-  // Every Control Item under one Objective sits at that Objective's level, so
-  // they are all at the same level by construction and the slot machinery in
-  // reorderWithinLevel simply reorders the whole list.
-  const siblings = await prisma.controlItem.findMany({
-    where: { nodeId: item.nodeId },
+  /*
+   * Two different moves wear the same drag handle, and which one it is
+   * follows from what is being dragged rather than from a second control.
+   *
+   * A Control Item of a measure that has others moves among those - the
+   * measure keeps its place in the plan and its own rows reorder inside it.
+   * A measure of one has no such siblings, so dragging it moves the *measure*
+   * among the measures under its Objective, which is what the drag has always
+   * done and what somebody reordering the sheet means by it.
+   */
+  const withinMeasure = item.measure._count.controlItems > 1;
+
+  if (withinMeasure) {
+    const siblings = await prisma.controlItem.findMany({
+      where: { measureId: item.measureId },
+      orderBy: [{ sortOrder: "asc" }, { id: "asc" }],
+      select: { id: true },
+    });
+    const updates = reorderWithinLevel(
+      siblings.map((sibling) => ({ id: sibling.id, level: node.level })),
+      id,
+      beforeId,
+    );
+    await prisma.$transaction(
+      updates.map((update) =>
+        prisma.controlItem.update({
+          where: { id: update.id },
+          data: { sortOrder: update.sortOrder },
+        }),
+      ),
+    );
+    revalidate();
+    return { ok: true, message: "Moved." };
+  }
+
+  // Reordering measures: the row dragged and the row dropped in front of are
+  // both Control Items, so both are resolved to the measures they belong to.
+  const beforeMeasureId = beforeId
+    ? (await prisma.controlItem.findUnique({ where: { id: beforeId }, select: { measureId: true } }))
+        ?.measureId ?? null
+    : null;
+  const measures = await prisma.measure.findMany({
+    where: { nodeId: item.measure.nodeId },
     orderBy: [{ sortOrder: "asc" }, { id: "asc" }],
     select: { id: true },
   });
-
+  // Every measure under one Objective sits at that Objective's level, so they
+  // are all at the same level by construction and the slot machinery in
+  // reorderWithinLevel simply reorders the whole list.
   const updates = reorderWithinLevel(
-    siblings.map((sibling) => ({ id: sibling.id, level: item.node.level })),
-    id,
-    beforeId,
+    measures.map((measure) => ({ id: measure.id, level: node.level })),
+    item.measureId,
+    beforeMeasureId,
   );
   await prisma.$transaction(
     updates.map((update) =>
-      prisma.controlItem.update({
-        where: { id: update.id },
-        data: { sortOrder: update.sortOrder },
-      }),
+      prisma.measure.update({ where: { id: update.id }, data: { sortOrder: update.sortOrder } }),
     ),
   );
 
@@ -785,12 +863,17 @@ export async function addControlItem(input: unknown): Promise<StructureResult> {
     // reading for a higher-is-better item, so it is chosen here rather than asked.
     const achievementMethod = data.direction === "LOWER_BETTER" ? "INVERSE" : "RATIO";
 
-    const siblings = await prisma.controlItem.count({ where: { nodeId: data.nodeId } });
+    // A new measure and its first Control Item, created together: a Measure
+    // with nothing under it would be a name on the sheet with no figures, and
+    // nothing in the product can key one into existence afterwards.
+    const siblings = await prisma.measure.count({ where: { nodeId: data.nodeId } });
+    const measure = await prisma.measure.create({
+      data: { nodeId: data.nodeId, name: data.name, sortOrder: siblings },
+    });
     const created = await prisma.controlItem.create({
       data: {
-        nodeId: data.nodeId,
+        measureId: measure.id,
         code: await uniqueCode(data.name),
-        name: data.name,
         measuredAs: data.measuredAs,
         unit: data.unit,
         direction: data.direction,
@@ -800,12 +883,92 @@ export async function addControlItem(input: unknown): Promise<StructureResult> {
         dicOrgUnitId: data.dicOrgUnitId,
         businessUnitId: data.businessUnitId,
         responsibleUserId: data.responsibleUserId,
-        sortOrder: siblings,
+        sortOrder: 0,
       },
     });
 
     revalidate();
     return { ok: true, message: `${data.name} added.`, id: created.id };
+  } catch (error) {
+    return permissionAware(error);
+  }
+}
+
+const addToMeasureSchema = addControlItemSchema
+  .omit({ nodeId: true, name: true })
+  .extend({ measureId: z.string().min(1) });
+
+/**
+ * Another Control Item under a Measure that already exists.
+ *
+ * This is the whole point of Measures: one measure held to several targets at
+ * once - a service experience judged on an NPS, a first-time fix rate and a
+ * waiting time together. The new Control Item shares only the name. Its unit,
+ * direction, roll-up, department, business unit and responsible person are its
+ * own, and it is keyed, rolled up and evaluated entirely separately.
+ *
+ * Permission follows the measure's own Objective, exactly as adding the first
+ * one does, and the department is checked at the level that Objective sits at:
+ * adding to a measure is filing work on a division, whichever row on the sheet
+ * the form was opened from.
+ */
+export async function addControlItemToMeasure(input: unknown): Promise<StructureResult> {
+  try {
+    const user = await requireSession();
+    const data = addToMeasureSchema.parse(input);
+
+    const measure = await prisma.measure.findUnique({
+      where: { id: data.measureId },
+      select: {
+        name: true,
+        node: { select: { kiId: true, level: true } },
+        _count: { select: { controlItems: true } },
+      },
+    });
+    if (!measure) return { ok: false, message: "That measure no longer exists." };
+
+    if (measure.node.level === 4) {
+      if (!(await canEditStructureAt(user, 4, data.dicOrgUnitId))) throw new NotPermitted();
+    } else if (!(await canEditStructureAt(user, measure.node.level, null))) {
+      throw new NotPermitted(
+        "Only a super admin or an executive can add a Control Item to the company structure.",
+      );
+    }
+    if (!(await canEditInKi(user, measure.node.kiId))) {
+      throw new NotPermitted("That year is closed. Only a super admin can add to it.");
+    }
+    if (!(await canAssignTo(user, data.responsibleUserId))) {
+      throw new NotPermitted(
+        "You can only make someone in your own division or department responsible for a measure.",
+      );
+    }
+
+    const achievementMethod = data.direction === "LOWER_BETTER" ? "INVERSE" : "RATIO";
+    const created = await prisma.controlItem.create({
+      data: {
+        measureId: data.measureId,
+        // The code is derived from the measure and what this one measures, so
+        // three Control Items of one measure do not collide on the name alone.
+        code: await uniqueCode(`${measure.name} ${data.measuredAs ?? ""}`),
+        measuredAs: data.measuredAs,
+        unit: data.unit,
+        direction: data.direction,
+        achievementMethod,
+        aggregation: data.aggregation,
+        decimalPlaces: data.decimalPlaces,
+        dicOrgUnitId: data.dicOrgUnitId,
+        businessUnitId: data.businessUnitId,
+        responsibleUserId: data.responsibleUserId,
+        sortOrder: measure._count.controlItems,
+      },
+    });
+
+    revalidate();
+    return {
+      ok: true,
+      message: `Added a Control Item to "${measure.name}".`,
+      id: created.id,
+    };
   } catch (error) {
     return permissionAware(error);
   }

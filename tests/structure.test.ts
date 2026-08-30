@@ -44,6 +44,7 @@ vi.mock("@/lib/auth/session", async () => {
 
 const {
   addControlItem,
+  addControlItemToMeasure,
   addDepartmentBranch,
   addDepartmentObjective,
   addNode,
@@ -635,7 +636,7 @@ describe("an EXECUTIVE reaches Level 4 as well", () => {
 describe("reordering rows", () => {
   /** Measure ids under the fixture Objective, in the order the sheet shows them. */
   async function measureOrder(): Promise<string[]> {
-    const rows = await prisma.controlItem.findMany({
+    const rows = await prisma.measure.findMany({
       where: { nodeId: fx.nodes.objective },
       orderBy: [{ sortOrder: "asc" }, { id: "asc" }],
       select: { name: true },
@@ -659,7 +660,7 @@ describe("reordering rows", () => {
     // The id of a row under a different parent. Nothing about the request looks
     // malformed - it is only the sibling check that catches it.
     const stranger = await prisma.controlItem.findFirstOrThrow({
-      where: { nodeId: { not: fx.nodes.objective } },
+      where: { measure: { nodeId: { not: fx.nodes.objective } } },
       select: { id: true },
     });
     const result = await reorderRow({ kind: "MEASURE", id: fx.items.A, beforeId: stranger.id });
@@ -757,11 +758,13 @@ describe("editing a Control Item", () => {
     const item = await prisma.controlItem.findUniqueOrThrow({
       where: { id },
       select: {
-        name: true, measuredAs: true, unit: true, direction: true,
+        measuredAs: true, unit: true, direction: true,
         aggregation: true, decimalPlaces: true, dicOrgUnitId: true, businessUnitId: true,
+        measure: { select: { name: true } },
       },
     });
-    return { id, ...item };
+    const { measure, ...rest } = item;
+    return { id, name: measure.name, ...rest };
   }
 
   /*
@@ -957,11 +960,13 @@ describe("who may be made responsible", () => {
     const item = await prisma.controlItem.findUniqueOrThrow({
       where: { id },
       select: {
-        name: true, measuredAs: true, unit: true, direction: true, aggregation: true,
+        measuredAs: true, unit: true, direction: true, aggregation: true,
         decimalPlaces: true, dicOrgUnitId: true, businessUnitId: true, responsibleUserId: true,
+        measure: { select: { name: true } },
       },
     });
-    return { id, ...item };
+    const { measure, ...rest } = item;
+    return { id, name: measure.name, ...rest };
   }
 
   beforeEach(() => asUser(fx.users.admin));
@@ -1056,5 +1061,202 @@ describe("who may be made responsible", () => {
     });
     expect(created.ok).toBe(true);
     expect((await current((created as { id: string }).id)).responsibleUserId).toBe(fx.users.alphaLead.id);
+  });
+});
+
+describe("a Measure with several Control Items", () => {
+  /*
+   * The case the Measure model exists for: one measure held to several targets
+   * at once. They share a name and nothing else - each has its own unit,
+   * direction, department, targets and evaluation - so what is worth pinning
+   * is that the name is shared and that everything else stays separate.
+   */
+  let measureId: string;
+  let firstItemId: string;
+
+  async function itemsOfMeasure() {
+    return prisma.controlItem.findMany({
+      where: { measureId },
+      orderBy: [{ sortOrder: "asc" }, { id: "asc" }],
+      select: { id: true, code: true, measuredAs: true, unit: true, dicOrgUnitId: true },
+    });
+  }
+
+  beforeEach(async () => {
+    asUser(fx.users.admin);
+    const created = await addControlItem({
+      nodeId: fx.nodes.objective,
+      name: "Service experience",
+      measuredAs: "NPS",
+      unit: "INDEX",
+      direction: "HIGHER_BETTER",
+      aggregation: "AVERAGE",
+      decimalPlaces: 0,
+      dicOrgUnitId: fx.orgUnits.alpha,
+      businessUnitId: fx.businessUnits.AUTO,
+    });
+    firstItemId = (created as { id: string }).id;
+    measureId = (
+      await prisma.controlItem.findUniqueOrThrow({
+        where: { id: firstItemId },
+        select: { measureId: true },
+      })
+    ).measureId;
+  });
+
+  afterEach(async () => {
+    await prisma.measure.deleteMany({ where: { id: measureId } });
+  });
+
+  it("adds a second Control Item under the same name", async () => {
+    const result = await addControlItemToMeasure({
+      measureId,
+      measuredAs: "% fixed first time",
+      unit: "PERCENT",
+      direction: "HIGHER_BETTER",
+      aggregation: "AVERAGE",
+      decimalPlaces: 1,
+      dicOrgUnitId: fx.orgUnits.beta,
+      businessUnitId: fx.businessUnits.MC,
+    });
+    expect(result.ok).toBe(true);
+
+    const items = await itemsOfMeasure();
+    expect(items).toHaveLength(2);
+    // Everything except the name is the new Control Item's own.
+    expect(items[1].unit).toBe("PERCENT");
+    expect(items[1].dicOrgUnitId).toBe(fx.orgUnits.beta);
+    expect(items[0].unit).toBe("INDEX");
+    expect(items[0].dicOrgUnitId).toBe(fx.orgUnits.alpha);
+    // And its code is its own, so a formula can address either.
+    expect(items[1].code).not.toBe(items[0].code);
+  });
+
+  it("renames every Control Item at once, because the name is the measure's", async () => {
+    await addControlItemToMeasure({
+      measureId,
+      measuredAs: "% fixed first time",
+      unit: "PERCENT",
+      direction: "HIGHER_BETTER",
+      aggregation: "AVERAGE",
+      decimalPlaces: 1,
+      dicOrgUnitId: fx.orgUnits.alpha,
+      businessUnitId: fx.businessUnits.AUTO,
+    });
+
+    const result = await updateControlItem({
+      id: firstItemId,
+      name: "Ownership experience",
+      measuredAs: "NPS",
+      unit: "INDEX",
+      direction: "HIGHER_BETTER",
+      aggregation: "AVERAGE",
+      decimalPlaces: 0,
+      dicOrgUnitId: fx.orgUnits.alpha,
+      businessUnitId: fx.businessUnits.AUTO,
+    });
+    expect(result.ok).toBe(true);
+
+    const measure = await prisma.measure.findUniqueOrThrow({ where: { id: measureId } });
+    expect(measure.name).toBe("Ownership experience");
+    expect(await itemsOfMeasure()).toHaveLength(2);
+  });
+
+  it("leaves the name alone when the form did not offer it", async () => {
+    // The form opened from a Control Item that is not the measure's first has
+    // no Measure field, so it sends none - and that must not blank the name.
+    const second = await addControlItemToMeasure({
+      measureId,
+      measuredAs: "% fixed first time",
+      unit: "PERCENT",
+      direction: "HIGHER_BETTER",
+      aggregation: "AVERAGE",
+      decimalPlaces: 1,
+      dicOrgUnitId: fx.orgUnits.alpha,
+      businessUnitId: fx.businessUnits.AUTO,
+    });
+
+    const result = await updateControlItem({
+      id: (second as { id: string }).id,
+      measuredAs: "% fixed at first visit",
+      unit: "PERCENT",
+      direction: "HIGHER_BETTER",
+      aggregation: "AVERAGE",
+      decimalPlaces: 1,
+      dicOrgUnitId: fx.orgUnits.alpha,
+      businessUnitId: fx.businessUnits.AUTO,
+    });
+    expect(result.ok).toBe(true);
+
+    const measure = await prisma.measure.findUniqueOrThrow({ where: { id: measureId } });
+    expect(measure.name).toBe("Service experience");
+    const items = await itemsOfMeasure();
+    expect(items[1].measuredAs).toBe("% fixed at first visit");
+  });
+
+  it("keeps the measure when one of several Control Items is deleted", async () => {
+    await addControlItemToMeasure({
+      measureId,
+      measuredAs: "% fixed first time",
+      unit: "PERCENT",
+      direction: "HIGHER_BETTER",
+      aggregation: "AVERAGE",
+      decimalPlaces: 1,
+      dicOrgUnitId: fx.orgUnits.alpha,
+      businessUnitId: fx.businessUnits.AUTO,
+    });
+
+    expect((await deleteControlItem({ id: firstItemId })).ok).toBe(true);
+    expect(await prisma.measure.count({ where: { id: measureId } })).toBe(1);
+    expect(await itemsOfMeasure()).toHaveLength(1);
+  });
+
+  it("takes the measure with the last Control Item to leave", async () => {
+    // A Measure exists to name its Control Items. An empty one would be a name
+    // on the sheet with no figures under it and no way to key one.
+    expect((await deleteControlItem({ id: firstItemId })).ok).toBe(true);
+    expect(await prisma.measure.count({ where: { id: measureId } })).toBe(0);
+  });
+
+  it("refuses an OWNER adding to a company-level measure", async () => {
+    // The fixture Objective is Level 2, which is company-wide whichever
+    // division somebody leads - the same rule as adding the first one.
+    asUser(fx.users.ownerAlpha);
+    const result = await addControlItemToMeasure({
+      measureId,
+      measuredAs: "% fixed first time",
+      unit: "PERCENT",
+      direction: "HIGHER_BETTER",
+      aggregation: "AVERAGE",
+      decimalPlaces: 1,
+      dicOrgUnitId: fx.orgUnits.alpha,
+      businessUnitId: fx.businessUnits.AUTO,
+    });
+    expect(result.ok).toBe(false);
+    expect(await itemsOfMeasure()).toHaveLength(1);
+  });
+
+  it("reorders a measure's own Control Items without moving the measure", async () => {
+    const second = await addControlItemToMeasure({
+      measureId,
+      measuredAs: "% fixed first time",
+      unit: "PERCENT",
+      direction: "HIGHER_BETTER",
+      aggregation: "AVERAGE",
+      decimalPlaces: 1,
+      dicOrgUnitId: fx.orgUnits.alpha,
+      businessUnitId: fx.businessUnits.AUTO,
+    });
+    const secondId = (second as { id: string }).id;
+
+    const before = await prisma.measure.findUniqueOrThrow({ where: { id: measureId } });
+    expect((await reorderRow({ kind: "MEASURE", id: secondId, beforeId: firstItemId })).ok).toBe(
+      true,
+    );
+
+    expect((await itemsOfMeasure()).map((item) => item.id)).toEqual([secondId, firstItemId]);
+    // The measure itself has not moved among its siblings.
+    const after = await prisma.measure.findUniqueOrThrow({ where: { id: measureId } });
+    expect(after.sortOrder).toBe(before.sortOrder);
   });
 });

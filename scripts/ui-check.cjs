@@ -337,6 +337,67 @@ async function theFormFollowsThePencil(browser) {
 }
 
 /**
+ * A Measure carrying several Control Items.
+ *
+ * The demo plan holds "Service experience" to three targets at once - an NPS,
+ * a first-time fix rate and a waiting time - which is the case the Measure
+ * model exists for. Two things have to hold and neither is visible to a unit
+ * test: the sheet names the measure once rather than three times, and every
+ * screen that shows one line per Control Item still tells the three apart.
+ */
+async function severalControlItemsUnderOneMeasure(browser) {
+  console.log("\nA measure can carry several Control Items");
+  const page = await browser.newPage({ viewport: { width: 1500, height: 900 } });
+  await signIn(page);
+
+  // The measure sits in one division, and narrowing to it keeps the walk short.
+  const division = page.locator("label", { hasText: "Division" }).locator("select");
+  await division.selectOption("OX");
+  await page.waitForTimeout(3000);
+
+  const scroller = page.locator("div.overflow-auto").last();
+  let found = false;
+  for (let i = 0; i < 30 && !found; i++) {
+    found = await page.evaluate(() => {
+      const el = [...document.querySelectorAll("a")].find(
+        (a) => a.textContent.trim() === "Service experience",
+      );
+      if (el) el.scrollIntoView({ block: "center" });
+      return Boolean(el);
+    });
+    if (!found) await scroller.evaluate((el) => el.scrollBy(0, 300));
+    await page.waitForTimeout(200);
+  }
+  check(found, "the measure is on the sheet");
+
+  const named = await page.evaluate(
+    () =>
+      [...document.querySelectorAll("a")].filter((a) => a.textContent.trim() === "Service experience")
+        .length,
+  );
+  check(named === 1, "its name is printed once, not once per Control Item", `${named} found`);
+
+  // Away from the sheet there is no grouping to lean on, so the three lines
+  // have to name themselves.
+  await page.goto(`${BASE}/my-entries?period=2026-08`);
+  await page.waitForTimeout(3000);
+  const labels = await page.evaluate(() => [
+    ...new Set(
+      [...document.querySelectorAll("a")]
+        .map((a) => a.textContent.trim())
+        .filter((text) => text.startsWith("Service experience")),
+    ),
+  ]);
+  check(
+    labels.length === 3 && labels.every((label) => label.includes(" — ")),
+    "/my-entries tells the three apart",
+    labels.join(" | "),
+  );
+
+  await page.close();
+}
+
+/**
  * The toolbar's own two view controls.
  *
  * Both hide columns and neither may change a figure: the sheet's whole
@@ -440,6 +501,7 @@ async function theUatWording(browser) {
     await panelsStayOnScreen(browser);
     await panelsDismiss(browser);
     await theMonthEndReview(browser);
+    await severalControlItemsUnderOneMeasure(browser);
     await pagesDoNotOverflow(browser);
     await myEntriesOnAPhone(browser);
     await theUatWording(browser);

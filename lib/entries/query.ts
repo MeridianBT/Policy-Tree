@@ -10,6 +10,7 @@ import { prisma } from "@/lib/db";
 import { dateToPeriod, kiStartYearOf, kiMonths, periodToDate, type PeriodKey } from "@/lib/domain/period";
 import { orgUnitSubtree } from "@/lib/auth/permissions";
 import type { Unit } from "@/lib/calc/types";
+import { controlItemLabel } from "@/lib/calc/measure-label";
 
 export interface OutstandingEntry {
   controlItemId: string;
@@ -90,7 +91,7 @@ export async function outstandingForUser(
 
   const controlItems = await prisma.controlItem.findMany({
     where: {
-      node: { kiId: ki.id },
+      measure: { node: { kiId: ki.id } },
       ...((user.role === "SUPER_ADMIN" || user.role === "EXECUTIVE") && !personal
         ? {}
         : {
@@ -102,9 +103,17 @@ export async function outstandingForUser(
     },
     include: {
       dicOrgUnit: { select: { code: true } },
-      node: { select: { statement: true } },
+      measure: {
+        select: {
+          name: true,
+          node: { select: { statement: true } },
+          // Enough to tell whether this measure has more than one Control
+          // Item, which is what decides how a line is named.
+          _count: { select: { controlItems: true } },
+        },
+      },
     },
-    orderBy: [{ dicOrgUnitId: "asc" }, { sortOrder: "asc" }],
+    orderBy: [{ dicOrgUnitId: "asc" }, { measure: { sortOrder: "asc" } }, { sortOrder: "asc" }],
   });
   if (controlItems.length === 0) return [];
 
@@ -150,12 +159,14 @@ export async function outstandingForUser(
     return {
       controlItemId: item.id,
       code: item.code,
-      name: item.name,
+      // Named so that three lines of one measure are told apart. See
+      // lib/calc/measure-label.ts.
+      name: controlItemLabel(item.measure.name, item.measuredAs, item.measure._count.controlItems),
       unit: item.unit,
       decimalPlaces: item.decimalPlaces,
       direction: item.direction,
       dicCode: item.dicOrgUnit.code,
-      objective: item.node.statement,
+      objective: item.measure.node.statement,
       period,
       planVersionId: actVersion.id,
       value: stored === null || stored === undefined ? null : Number(stored),

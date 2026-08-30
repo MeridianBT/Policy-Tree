@@ -155,6 +155,8 @@ export interface EditingHandlers {
   onAddChild: (parentId: string, kind: "THEME" | "OBJECTIVE") => void;
   onAddDepartment: (parentObjectiveId: string) => void;
   onAddMeasure: (nodeId: string) => void;
+  /** Another Control Item under a Measure that already exists. */
+  onAddControlItem: (row: ControlItemRow) => void;
   onDeleteNode: (id: string) => void;
   onDeleteControlItem: (id: string) => void;
   onReorder: (request: ReorderRequest) => void;
@@ -712,17 +714,35 @@ function ControlItemRowView({
         {/* Stands in for the group rows' disclosure caret, so a Control Item
             lands on the same vertical as a group at the same step. */}
         <span className="size-4 shrink-0" aria-hidden />
-        {(
+        {/*
+          A Measure is named once. Its first Control Item carries the name; the
+          rest of its rows leave the column empty, because repeating "Service
+          experience" down three rows says nothing the reader did not already
+          know and costs the width their own Control Items need.
+        */}
+        {row.firstOfMeasure ? (
           <Link
             href={`/control-item/${row.id}`}
             // A link is a drag source by default, so dragging a measure by its
             // name would start dragging its URL instead of reordering the row.
             draggable={false}
             className="min-w-0 flex-1 truncate text-[12px] hover:underline"
-            title={`${plainText(row.name)} (${row.code})`}
+            title={
+              row.measureItemCount > 1
+                ? `${plainText(row.name)} — ${row.measureItemCount} Control Items`
+                : `${plainText(row.name)} (${row.code})`
+            }
           >
             <RichText text={row.name} />
           </Link>
+        ) : (
+          <span
+            className="min-w-0 flex-1 truncate text-[12px] text-ink-faint"
+            aria-hidden
+            title={plainText(row.name)}
+          >
+            └
+          </span>
         )}
         {editing &&
         (row.level < 4
@@ -740,11 +760,15 @@ function ControlItemRowView({
               canAddChild={false}
               childLabel=""
               canAddMeasure={false}
+              // Offered on the row that carries the measure's name, because
+              // that is the row that reads as the measure.
+              canAddControlItem={row.firstOfMeasure}
               canRename
-              renameLabel="Edit measure"
+              renameLabel={row.measureItemCount > 1 ? "Edit Control Item" : "Edit measure"}
               canDelete
               onAddChild={() => {}}
               onAddMeasure={() => {}}
+              onAddControlItem={() => editing.onAddControlItem(row)}
               onRename={() => editing.onEditControlItem(row)}
               onDelete={() => editing.onDeleteControlItem(row.id)}
             />
@@ -763,7 +787,20 @@ function ControlItemRowView({
         style={{ left: "var(--label-width)", width: "var(--measure-width)" }}
         title={`${row.measuredAs} · rolled up by ${row.aggregation.toLowerCase()}`}
       >
-        <span className="truncate">{row.measuredAs}</span>
+        {row.measureItemCount > 1 ? (
+          // One of several under one name, so this column is what tells them
+          // apart - and on rows that no longer carry the name, it is also the
+          // way to reach the measure's own page.
+          <Link
+            href={`/control-item/${row.id}`}
+            draggable={false}
+            className="truncate hover:underline"
+          >
+            {row.measuredAs}
+          </Link>
+        ) : (
+          <span className="truncate">{row.measuredAs}</span>
+        )}
       </div>
 
       {columns.map((column) => {

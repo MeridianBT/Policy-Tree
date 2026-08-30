@@ -195,7 +195,7 @@ model Node {
   children Node[]   @relation("NodeTree")
   orgUnit  OrgUnit? @relation(fields: [orgUnitId], references: [id])
 
-  controlItems ControlItem[]
+  measures Measure[]
 
   @@index([kiId, level])
   @@index([parentId])
@@ -226,11 +226,37 @@ model BusinessUnit {
   @@map("business_unit")
 }
 
+/// What an Objective is measured by, named once.
+///
+/// A Measure carries the name and its place in the plan; its Control Items
+/// carry everything about how it is measured. Most measures have exactly one -
+/// that is what the sheet has always drawn - but a measure held to several
+/// targets at once ("dealer network health" against a survey score, a response
+/// rate and a complaint count) is one measure with three Control Items, each
+/// with its own unit, direction, targets, actuals and evaluation symbol.
+///
+/// Deliberately thin. Everything that could differ between two Control Items
+/// of the same measure - the department in charge, the business unit, the
+/// person who keys it - stays on the Control Item, so filters, permissions,
+/// formulas, the audit trail and the reminders keep operating on exactly the
+/// row they always did.
+model Measure {
+  id        String @id @default(cuid())
+  nodeId    String @map("node_id")
+  name      String
+  sortOrder Int    @default(0) @map("sort_order")
+
+  node         Node          @relation(fields: [nodeId], references: [id], onDelete: Cascade)
+  controlItems ControlItem[]
+
+  @@index([nodeId])
+  @@map("measure")
+}
+
 model ControlItem {
   id                String            @id @default(cuid())
-  nodeId            String            @map("node_id")
+  measureId         String            @map("measure_id")
   code              String            @unique
-  name              String
   /// How the target and actual are measured, in the reviewer's own words:
   /// "Units sold", "% of sales", "Engagement %". `unit` says how to format a
   /// figure; this says what the figure counts. Optional - the sheet falls back
@@ -240,6 +266,9 @@ model ControlItem {
   /// for the measurement method. The stored name stays `measuredAs` because
   /// this table is already the ControlItem model, and a `controlItem` column on
   /// the control_item table would be unreadable in every query that touches it.
+  ///
+  /// This is also what distinguishes one Control Item from another under the
+  /// same Measure, so it does the naming work when a measure has more than one.
   measuredAs        String?           @map("measured_as")
   unit              Unit
   direction         Direction
@@ -254,17 +283,20 @@ model ControlItem {
   /// - carry SHARED.
   businessUnitId    String            @map("business_unit_id")
   responsibleUserId String?           @map("responsible_user_id")
+  /// Order within the Measure. Which measure comes first under an Objective
+  /// is `measure.sort_order`; this is only the order of a measure's own
+  /// Control Items among themselves.
   sortOrder         Int               @default(0) @map("sort_order")
 
-  node            Node         @relation(fields: [nodeId], references: [id], onDelete: Cascade)
+  measure         Measure      @relation(fields: [measureId], references: [id], onDelete: Cascade)
   dicOrgUnit      OrgUnit      @relation("ControlItemDic", fields: [dicOrgUnitId], references: [id])
   businessUnit    BusinessUnit @relation(fields: [businessUnitId], references: [id])
-  responsibleUser AppUser? @relation("ControlItemResponsible", fields: [responsibleUserId], references: [id])
+  responsibleUser AppUser?     @relation("ControlItemResponsible", fields: [responsibleUserId], references: [id])
 
   entries      Entry[]
   dependencies EntryDependency[] @relation("DependencyTarget")
 
-  @@index([nodeId])
+  @@index([measureId])
   @@index([dicOrgUnitId])
   @@index([businessUnitId])
   @@index([responsibleUserId])

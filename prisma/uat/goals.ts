@@ -617,17 +617,29 @@ export const GOALS: Goal[] = [
           {
             statement: "Make servicing effortless",
             items: [
+              // One measure held to three targets at once, which is the case
+              // the Measure model exists for: servicing is not effortless
+              // because of any one of these, and each is keyed and evaluated
+              // separately on its own unit and direction.
               {
-                code: "AU-VNPS", name: "Service net promoter score", measuredAs: "NPS, -100 to +100",
+                code: "AU-VNPS", name: "Service experience", measuredAs: "NPS, -100 to +100",
                 unit: "INDEX", dp: 0, dir: "HIGHER_BETTER", method: "RATIO", agg: "AVERAGE", dic: "OX",
                 target: 55,
                 actual: [51, 53, 54, 56],
-              },
-              {
-                code: "AU-FTF", name: "First-time fix rate", measuredAs: "% fixed without a return visit",
-                unit: "PERCENT", dp: 1, dir: "HIGHER_BETTER", method: "RATIO", agg: "AVERAGE", dic: "OX",
-                target: 93.0,
-                actual: [90.2, 91.4, 92.1, 92.8],
+                also: [
+                  {
+                    code: "AU-FTF", measuredAs: "% fixed without a return visit",
+                    unit: "PERCENT", dp: 1, dir: "HIGHER_BETTER", method: "RATIO", agg: "AVERAGE", dic: "OX",
+                    target: 93.0,
+                    actual: [90.2, 91.4, 92.1, 92.8],
+                  },
+                  {
+                    code: "AU-SVCWAIT", measuredAs: "Days to next available booking",
+                    unit: "DAYS", dp: 1, dir: "LOWER_BETTER", method: "INVERSE", agg: "AVERAGE", dic: "OX-SVC",
+                    target: 4.0,
+                    actual: [6.2, 5.8, 5.1, 5.6],
+                  },
+                ],
               },
             ],
             branches: [

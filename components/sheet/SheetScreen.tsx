@@ -38,6 +38,7 @@ import {
 } from "./StructureControls";
 import {
   addControlItem,
+  addControlItemToMeasure,
   addDepartmentBranch,
   addDepartmentObjective,
   addNode,
@@ -53,6 +54,7 @@ import {
 import { DISPLAY_MODES, type DisplayMode } from "./SheetCellView";
 import { ALL_QUARTERS } from "./columns";
 import { dicOptionLabel } from "./dic-label";
+import { plainText } from "@/lib/text/emphasis";
 import type { QuarterCode } from "@/lib/domain/period";
 
 export const LATEST_FORECAST = "LATEST";
@@ -392,6 +394,7 @@ export function SheetScreen({
     | { kind: "DEPARTMENT_BRANCH"; parentObjectiveId: string; under: string }
     | { kind: "DEPARTMENT_OBJECTIVE"; parentThemeId: string; under: string }
     | { kind: "MEASURE"; parentId: string; under: string }
+    | { kind: "CONTROL_ITEM"; measureId: string; row: ControlItemRow }
     | { kind: "EDIT_MEASURE"; row: ControlItemRow; initial: MeasureValues }
     | null
   >(null);
@@ -492,6 +495,8 @@ export function SheetScreen({
               under: labelFor(parentId),
             });
           },
+          onAddControlItem: (row) =>
+            setAdding({ kind: "CONTROL_ITEM", measureId: row.measureId, row }),
           onAddDepartment: (parentObjectiveId) =>
             setAdding({
               kind: "DEPARTMENT_BRANCH",
@@ -906,6 +911,7 @@ export function SheetScreen({
             key={adding.row.id}
             indent={12}
             level={adding.row.level}
+            fixedMeasureName={adding.row.firstOfMeasure ? undefined : adding.row.name}
             dics={formDics}
             businessUnits={model.businessUnits}
             users={users ?? []}
@@ -918,7 +924,9 @@ export function SheetScreen({
                 () =>
                   updateControlItem({
                     id: adding.row.id,
-                    name: values.name,
+                    // Omitted from a row that does not carry the name, which
+                    // the server reads as "the measure keeps the name it has".
+                    name: adding.row.firstOfMeasure ? values.name : undefined,
                     measuredAs: values.measuredAs || null,
                     unit: values.unit,
                     direction: values.direction,
@@ -933,6 +941,65 @@ export function SheetScreen({
             }
             onCancel={() => setAdding(null)}
           />
+          )}
+        </div>
+      )}
+
+      {adding?.kind === "CONTROL_ITEM" && (
+        <div className="border border-rule bg-paper">
+          <p className="border-b border-rule px-3 py-1 text-[11px] text-ink-muted">
+            Adding a Control Item to <strong>{plainText(adding.row.name)}</strong> — it shares the
+            measure&apos;s name and nothing else: its own unit, direction, roll-up, department and
+            targets, keyed and evaluated separately.
+          </p>
+          {formDics === null ? (
+            <p className="px-3 py-2 text-[11px] text-ink-faint">Loading divisions…</p>
+          ) : (
+            <InlineMeasureForm
+              key={adding.measureId}
+              indent={12}
+              level={adding.row.level}
+              fixedMeasureName={adding.row.name}
+              dics={formDics}
+              businessUnits={model.businessUnits}
+              users={users ?? []}
+              submitLabel="Add Control Item"
+              pendingLabel="Adding…"
+              pending={saving}
+              /* Seeded from the Control Item beside it, because a second one
+                 usually differs in what it measures rather than in where it is
+                 filed - and the department and business unit are the two
+                 fields somebody would otherwise have to look up. */
+              initial={{
+                name: adding.row.name,
+                measuredAs: "",
+                unit: adding.row.unit,
+                direction: adding.row.direction,
+                aggregation: adding.row.aggregation,
+                decimalPlaces: adding.row.decimalPlaces,
+                dicOrgUnitId: adding.row.dicOrgUnitId,
+                businessUnitId: adding.row.businessUnitId,
+                responsibleUserId: adding.row.responsibleUserId,
+              }}
+              onCommit={(values) =>
+                run(
+                  () =>
+                    addControlItemToMeasure({
+                      measureId: adding.measureId,
+                      measuredAs: values.measuredAs || null,
+                      unit: values.unit,
+                      direction: values.direction,
+                      aggregation: values.aggregation,
+                      decimalPlaces: values.decimalPlaces,
+                      dicOrgUnitId: values.dicOrgUnitId,
+                      businessUnitId: values.businessUnitId,
+                      responsibleUserId: values.responsibleUserId,
+                    }),
+                  afterChange,
+                )
+              }
+              onCancel={() => setAdding(null)}
+            />
           )}
         </div>
       )}
