@@ -11,6 +11,7 @@ import { Lock, LockOpen } from "lucide-react";
 import type { EvaluationBandSpec } from "@/lib/calc/types";
 import { Button } from "@/components/ui/primitives";
 import { EvaluationSymbol } from "@/components/sheet/EvaluationSymbol";
+import { ImportPanel } from "./ImportPanel";
 import {
   copyStructure,
   createControlItem,
@@ -202,6 +203,13 @@ export function AdminScreen({
             Control Item codes are namespaced with the target Ki, because codes are unique across
             the database and are what formulas address.
           </p>
+        </Panel>
+
+        <Panel
+          title="Upload a workbook"
+          hint="Adds and updates. It never deletes, never renames a statement and never moves a measure between Objectives or departments - those stay on the sheet, where the guards that protect closed figures live."
+        >
+          <ImportPanel kis={kis} />
         </Panel>
 
         <Panel title="Evaluation scale" hint="Bands must be contiguous and cover the whole number line. A boundary belongs to the upper band.">

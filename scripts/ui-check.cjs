@@ -337,6 +337,53 @@ async function theFormFollowsThePencil(browser) {
 }
 
 /**
+ * The workbook upload's preview.
+ *
+ * The feature's whole safety story is that nothing is written until a second
+ * click, so the check that matters is that Preview says what it would do and
+ * leaves the plan alone. Uploading the sheet's own export unchanged is the
+ * sharpest version of it: every figure already matches, so a correct preview
+ * reports no writes at all.
+ */
+async function theUploadPreviewWritesNothing(browser) {
+  console.log("\nUploading a workbook previews before it writes");
+  const page = await browser.newPage({ viewport: { width: 1500, height: 950 } });
+  await signIn(page);
+
+  const [download] = await Promise.all([
+    page.waitForEvent("download"),
+    page.click('a:has-text("Export to Excel")'),
+  ]);
+  const file = "/tmp/ui-check-round-trip.xlsx";
+  await download.saveAs(file);
+
+  await page.goto(`${BASE}/admin`);
+  await page.waitForTimeout(2500);
+  const panel = page.locator("section", { hasText: "Upload a workbook" });
+  check((await panel.count()) === 1, "the panel is on /admin");
+
+  await panel.locator('input[type="file"]').setInputFiles(file);
+  await panel.getByRole("button", { name: "Preview" }).click();
+  await page.waitForTimeout(5000);
+
+  const summary = (await panel.locator("div.border p").first().innerText()).replace(/\s+/g, " ");
+  check(summary.includes("Nothing has been written"), "the preview says so plainly", summary);
+  check(/already matching/.test(summary), "and counts the figures that already match", summary);
+
+  // The version defaults to the first offered, which is not the basis the
+  // export was taken on - and that mismatch is the one mistake this feature
+  // makes easy, so it has to be said rather than left in a large number.
+  const panelText = (await panel.locator("div.border").first().innerText()).replace(/\s+/g, " ");
+  check(
+    panelText.includes("was exported on"),
+    "and warns when the file's basis is not the version being written",
+    panelText.slice(0, 140),
+  );
+
+  await page.close();
+}
+
+/**
  * A Measure carrying several Control Items.
  *
  * The demo plan holds "Service experience" to three targets at once - an NPS,
@@ -502,6 +549,7 @@ async function theUatWording(browser) {
     await panelsDismiss(browser);
     await theMonthEndReview(browser);
     await severalControlItemsUnderOneMeasure(browser);
+    await theUploadPreviewWritesNothing(browser);
     await pagesDoNotOverflow(browser);
     await myEntriesOnAPhone(browser);
     await theUatWording(browser);

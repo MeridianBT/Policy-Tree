@@ -811,6 +811,13 @@ async function reorderControlItem(
 const addControlItemSchema = z.object({
   nodeId: z.string().min(1),
   name: z.string().trim().min(1, "Give the measure a name.").max(200),
+  /**
+   * The code a formula will address this by. Normally derived from the name,
+   * because it is machinery rather than a decision - but an upload carries
+   * codes somebody already planned against, and generating a different one
+   * would break the very references the file was written to use.
+   */
+  code: z.string().trim().min(1).max(30).optional(),
   measuredAs: z.string().trim().max(120).nullable(),
   unit: z.enum(["PERCENT", "CURRENCY", "COUNT", "RATIO", "DAYS", "INDEX"]),
   direction: z.enum(["HIGHER_BETTER", "LOWER_BETTER"]),
@@ -873,7 +880,7 @@ export async function addControlItem(input: unknown): Promise<StructureResult> {
     const created = await prisma.controlItem.create({
       data: {
         measureId: measure.id,
-        code: await uniqueCode(data.name),
+        code: data.code ? await freeCode(data.code) : await uniqueCode(data.name),
         measuredAs: data.measuredAs,
         unit: data.unit,
         direction: data.direction,
@@ -972,6 +979,20 @@ export async function addControlItemToMeasure(input: unknown): Promise<Structure
   } catch (error) {
     return permissionAware(error);
   }
+}
+
+/**
+ * A caller's own code, refused when something already answers to it.
+ *
+ * Suffixing a duplicate the way `uniqueCode` does would be wrong here: the
+ * caller asked for *this* code because a formula or a spreadsheet already
+ * refers to it, and quietly filing it as CODE-2 would leave both broken.
+ */
+async function freeCode(code: string): Promise<string> {
+  const wanted = code.trim().toUpperCase();
+  const taken = await prisma.controlItem.findUnique({ where: { code: wanted }, select: { id: true } });
+  if (taken) throw new Error(`The code ${wanted} is already in use.`);
+  return wanted;
 }
 
 /**

@@ -200,6 +200,7 @@ function buildDataTab(workbook: ExcelJS.Workbook, { model, basisLabel }: ExportO
     { header: "DIC", key: "dic", width: 7 },
     { header: "Business unit", key: "businessUnit", width: 14 },
     { header: "Unit", key: "unit", width: 10 },
+    { header: "Decimals", key: "decimals", width: 9 },
     { header: "Aggregation", key: "aggregation", width: 12 },
     { header: "Direction", key: "direction", width: 15 },
     { header: "Period", key: "period", width: 10 },
@@ -247,6 +248,9 @@ function buildDataTab(workbook: ExcelJS.Workbook, { model, basisLabel }: ExportO
         dic: item.dicCode,
         businessUnit: item.businessUnitCode,
         unit: item.unit,
+        // Carried so the round trip is complete: a measure created from an
+        // uploaded file keeps the precision it was planned at.
+        decimals: item.decimalPlaces,
         aggregation: item.aggregation,
         direction: item.direction === "HIGHER_BETTER" ? "Higher is better" : "Lower is better",
         period: cell.period ?? cell.label,

@@ -486,7 +486,7 @@ shared mailbox does not fill with hundreds of copies nobody reads.
 | `/control-item/[id]` | Trend chart with every version overlaid, stored cells including formulas as typed, and the full audit trail |
 | `/print/company` | A3 landscape, print-only |
 | `/print/division/[code]` | The same, pre-scoped to one division |
-| `/admin` | Ki setup and naming, version locking, emptying a year, structure builder, copy-from-previous-Ki, evaluation scale, users, departments |
+| `/admin` | Ki setup and naming, version locking, emptying a year, structure builder, copy-from-previous-Ki, **workbook upload**, evaluation scale, users, departments |
 | `/symbols` | Symbol rendering check for a platform you are deploying to |
 | `/api/export` | Excel download of the current sheet (`?division=CODE` for a Level 4 sheet, `?version=ID` to pin the target basis) |
 | `/api/reminders` | Month-end reminder trigger, called by a scheduler with a shared secret — see below |
@@ -975,6 +975,74 @@ zero, matching the em-dash rule on screen. `lib/export/workbook.ts` builds the
 workbook from the same `SheetModel` the grid renders — there is no second
 formatting path to drift from the first.
 
+### Uploading a workbook
+
+There was a way out of the plan and no way in: `copyStructure` carries next
+year's shape but no values, and the paste handler takes 500 clipboard cells at
+a time. **Admin → Upload a workbook** takes a whole spreadsheet, and because a
+file can change hundreds of rows at once the design is mostly about the powers
+it refuses to take.
+
+> **The upload adds and updates. It never deletes, never renames, never moves.**
+
+- A row whose **Code** matches an existing Control Item writes that item's
+  figures, and changes nothing else about it.
+- A row whose Code is unknown can **create** a Measure and Control Item, and
+  any Goal, Theme or Objective above it that is not there yet — matched by
+  statement, so a statement that matches nothing is created rather than treated
+  as a rename of whatever looked closest.
+- Anything the file does not mention is **left exactly as it is**. There is no
+  sync and no deletion; an empty cell means "nothing to say about this month",
+  never "clear it". A trimmed sheet cannot erase a year.
+- An existing Code whose row points at a different Objective or Department is
+  **refused and named**, not moved. Moving work between divisions is the
+  both-ends-authority act `updateControlItem` guards, and a stale column must
+  not perform it eighty times in one click.
+- Unit, roll-up, direction and decimals on an existing Code are **left alone**
+  and reported when they differ. Those reach back through closed figures, and a
+  bulk path is the last place to change what a stored number means.
+
+Creation is **opt-in per upload** — an unchecked "let this file add new rows to
+the plan" — so the ordinary use cannot grow the plan on a typo in a code. New
+**Level 4** rows are refused whatever the checkbox says: a department branch
+carries an org unit and ladders into an Objective above it, and the file states
+neither, so it is started on the sheet where both are chosen.
+
+Every figure goes through `saveEntry` and every new row through the same
+`addNode` / `addControlItem` the sheet uses. The upload is a faster way to do
+what the screens do and never a second way in: the permission check, the flat
+refusal on a locked version, the audit row and the formula recompute all still
+happen per cell, and a cell beginning `=` is still a formula.
+
+**The Data tab of an export is the template** — export, edit, upload back, with
+no new file format to document. A hand-made sheet with just `Code`, `Period`
+and `Target` works too, because columns are found by *name*: order does not
+matter and extra columns are ignored. Three details that bite in practice are
+handled rather than documented away:
+
+- Only `Period type` = **Month** rows are read. Quarters and the Ki total are
+  rolled up at read time and there is nothing behind them to write into.
+- `Period` is accepted as `2026-04` **or** as a real date, because Excel turns
+  the first into the second the moment somebody retypes the cell.
+- The version the **Target** column writes to is chosen on the form, not in the
+  file — and when the file's own basis stamp disagrees with it, the preview
+  says so. An export taken on "latest forecast" carries a *resolution* across
+  versions, and writing that into OB would copy it over the original budget.
+
+Nothing is written until a second click. **Preview** reports what would happen —
+"3 targets · 1,085 already matching · 1 refused" — with creations listed by name
+and refusals grouped by reason; **Apply** re-plans the same file from scratch
+and executes it. Re-planning rather than carrying a plan between the clicks
+means there is no server-side state to go stale: what is applied is decided
+against the database as it is at that moment. A figure identical to the stored
+one is counted as *already matching* rather than rewritten, so re-uploading last
+month's file does not fill the audit trail with writes that changed nothing.
+
+`lib/import/read.ts` turns bytes into rows, `lib/import/plan.ts` decides what
+they would do — pure, no exceljs and no Prisma, so the whole contract is tested
+directly in `lib/calc/import-plan.test.ts` — and `lib/import/actions.ts` is the
+only part that touches the database.
+
 ### My entries on a phone
 
 `/my-entries` is the one screen built for a phone, because the thing that
@@ -1110,6 +1178,11 @@ reason is written where a reader will meet it.
   departments read alike
 - `lib/calc/measure-label.test.ts` — a Control Item named for itself only when
   its Measure carries more than one
+- `lib/calc/import-plan.test.ts` — what an uploaded workbook may do: an empty
+  cell never a deletion, a stale Objective column refused rather than obeyed, an
+  unknown code refused unless creation was asked for, a figure that already
+  matches counted rather than rewritten, and a Level 4 row sent back to the
+  sheet
 - `lib/calc/emphasis.test.ts` — bold and italic in a statement: an unmatched
   marker staying literal, `AUTO_ND` never turning italic, and a tooltip never
   showing an asterisk
