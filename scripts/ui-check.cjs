@@ -147,7 +147,7 @@ async function pagesDoNotOverflow(browser) {
   console.log("\nNo page scrolls sideways at the window's own width");
   const page = await browser.newPage({ viewport: { width: 1366, height: 768 } });
   await signIn(page);
-  for (const path of ["/sheet", "/cascade", "/insights", "/my-entries", "/divisions", "/admin", "/symbols"]) {
+  for (const path of ["/sheet", "/cascade", "/insights", "/my-entries", "/division/AUTO", "/admin", "/symbols"]) {
     await page.goto(BASE + path);
     await page.waitForTimeout(2000);
     const over = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
@@ -210,6 +210,51 @@ async function myEntriesOnAPhone(browser) {
   }
 }
 
+/**
+ * What the UAT pass asked for by name.
+ *
+ * Three small things, each of which reads as a nothing change and each of
+ * which is invisible to a unit test: a menu that should no longer be there, a
+ * button that has to say what it does, and a form whose fields have to be
+ * asked for in the order the cascade is read.
+ */
+async function theUatWording(browser) {
+  console.log("\nThe UAT wording holds");
+  const page = await browser.newPage({ viewport: { width: 1500, height: 900 } });
+  await signIn(page);
+
+  // The nav no longer duplicates the sheet's own Division filter.
+  const nav = page.locator("nav");
+  check(
+    (await nav.getByText("Divisions", { exact: true }).count()) === 0,
+    "no Divisions menu in the nav",
+  );
+  // The narrower view itself is still reachable, just not advertised.
+  await page.goto(BASE + "/division/AUTO");
+  await page.waitForTimeout(1500);
+  check(!/\/login/.test(page.url()), "/division/AUTO still loads when typed");
+
+  // The button names what it keys.
+  await page.goto(BASE + "/sheet");
+  await page.waitForTimeout(2000);
+  const target = page.locator('select').filter({ hasText: "Latest forecast" }).first();
+  const version = await target.locator("option").nth(1).getAttribute("value");
+  await target.selectOption(version);
+  await page.waitForTimeout(2500);
+  const edit = page.getByRole("button", { name: "Edit targets" });
+  check((await edit.count()) === 1, 'the button reads "Edit targets"');
+  if (await edit.count()) {
+    await edit.click();
+    await page.waitForTimeout(800);
+    check(
+      (await page.getByRole("button", { name: "Done editing targets" }).count()) === 1,
+      'and "Done editing targets" once it is on',
+    );
+  }
+
+  await page.close();
+}
+
 (async () => {
   const browser = await chromium.launch({
     executablePath: process.env.PLAYWRIGHT_CHROMIUM || undefined,
@@ -220,6 +265,7 @@ async function myEntriesOnAPhone(browser) {
     await heatmapKeepsEveryMonth(browser);
     await pagesDoNotOverflow(browser);
     await myEntriesOnAPhone(browser);
+    await theUatWording(browser);
   } finally {
     await browser.close();
   }

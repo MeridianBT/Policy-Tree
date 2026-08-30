@@ -2,18 +2,14 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/auth/session";
 import { signOut } from "@/lib/auth/config";
-import { prisma } from "@/lib/db";
 import { KiSwitcher } from "./KiSwitcher";
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const user = await getCurrentUser();
   if (!user) redirect("/login");
 
-  const [divisions, outstanding] = await Promise.all([
-    prisma.orgUnit.findMany({ where: { type: "DIVISION" }, orderBy: { sortOrder: "asc" } }),
-    // A VIEWER has nothing to key in, so the outstanding badge is not theirs.
-    user.role === "VIEWER" ? Promise.resolve(0) : countOutstanding(user.id),
-  ]);
+  // A VIEWER has nothing to key in, so the outstanding badge is not theirs.
+  const outstanding = user.role === "VIEWER" ? 0 : await countOutstanding(user.id);
 
   // One list, rendered as a row on a desktop and inside the menu on a phone,
   // so the two can never drift apart.
@@ -39,10 +35,9 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         </Link>
 
         {/*
-          On a phone the seven links plus the account block will not fit on one
-          line, and nothing else on this screen is optimised for narrow. Rather
-          than let them wrap into a wall, they collapse behind one menu - the
-          same details/summary the Divisions list already uses. Somebody
+          On a phone the links plus the account block will not fit on one line,
+          and nothing else on this screen is optimised for narrow. Rather than
+          let them wrap into a wall, they collapse behind one menu. Somebody
           arriving cold from a reminder must never be stranded on whatever page
           they landed on.
         */}
@@ -62,17 +57,6 @@ export default async function AppLayout({ children }: { children: React.ReactNod
                 )}
               </Link>
             ))}
-            <div className="mt-1 border-t border-rule pt-1">
-              {divisions.map((division) => (
-                <Link
-                  key={division.id}
-                  href={`/division/${division.code}`}
-                  className="block px-3 py-2 text-ink-muted hover:bg-paper-sunken"
-                >
-                  {division.code} — {division.name}
-                </Link>
-              ))}
-            </div>
           </div>
         </details>
 
@@ -85,22 +69,6 @@ export default async function AppLayout({ children }: { children: React.ReactNod
               )}
             </NavLink>
           ))}
-          <details className="relative">
-            <summary className="cursor-pointer list-none rounded-sm px-2 py-1 text-ink-muted hover:bg-paper-sunken">
-              Divisions
-            </summary>
-            <div className="absolute left-0 top-full z-50 mt-1 w-44 border border-rule-strong bg-paper py-1 shadow-lg">
-              {divisions.map((division) => (
-                <Link
-                  key={division.id}
-                  href={`/division/${division.code}`}
-                  className="block px-2 py-1 hover:bg-paper-sunken"
-                >
-                  {division.code} — {division.name}
-                </Link>
-              ))}
-            </div>
-          </details>
         </div>
 
         <div className="ml-auto flex items-center gap-2 text-[11px] text-ink-muted">

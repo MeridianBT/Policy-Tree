@@ -666,7 +666,7 @@ export function SheetScreen({
               onClick={() => setEntryModeWanted((previous) => !previous)}
               title={`Key ${pinnedVersion?.code} targets directly into the month columns`}
             >
-              {entryMode ? "Done entering" : "Enter figures"}
+              {entryMode ? "Done editing targets" : "Edit targets"}
             </Button>
           </>
         )}
@@ -865,6 +865,7 @@ export function SheetScreen({
           ) : (
           <InlineMeasureForm
             indent={12}
+            level={adding.row.level}
             dics={formDics}
             businessUnits={model.businessUnits}
             users={users ?? []}
@@ -911,6 +912,10 @@ export function SheetScreen({
           ) : (
           <InlineMeasureForm
             indent={12}
+            /* A Control Item takes the level of the Objective it hangs
+               under, which is the same number the server checks when it
+               decides whose authority the filing needs. */
+            level={model.rows.find((row) => row.id === adding.parentId)?.level ?? 4}
             dics={formDics}
             businessUnits={model.businessUnits}
             users={users ?? []}

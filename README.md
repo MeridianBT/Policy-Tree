@@ -396,7 +396,7 @@ shared mailbox does not fill with hundreds of copies nobody reads.
 | Route | What it is |
 |---|---|
 | `/sheet` | The company sheet — Levels 1–3 by default, with a View toggle folding every Level 4 branch in under its Objective. Virtualised, with version selector, compare mode, four display densities, condensable quarter columns, three filters — Business unit, then Division, then Department — read outside-in, and a one-click **Below target** preset. Rows can be dragged into a new order among their own siblings, and month cells become keyable when a specific unlocked version is pinned ADMIN and OWNER (division/department leads) can edit the structure directly here |
-| `/division/[code]` | The same Level 4 sheet, pre-scoped to one division and its departments — a narrower, single-division view of what "+ Departments" on the company sheet shows for everyone |
+| `/division/[code]` | The same Level 4 sheet, pre-scoped to one division and its departments — a narrower, single-division view of what "+ Departments" on the company sheet shows for everyone. Reached by URL; not linked from the nav, where it duplicated the sheet's own filters |
 | `/cascade` | A read-only, one-page alignment map from every Company Goal down to the Department work laddering into it — see below |
 | `/insights` | A read-only symbol-distribution heatmap, one Division per row, one month per column — see below |
 | `/my-entries` | Keyboard-driven monthly entry for everything the signed-in user owns, with an outstanding count |
@@ -464,8 +464,10 @@ Two guards, because there is no undo and no soft delete behind it:
 ### Keying targets on the sheet
 
 Pin a specific forecast version in **Target** and, if it is not locked,
-**Enter figures** appears beside it. Every month cell the signed-in person may
-key becomes a box.
+**Edit targets** appears beside it. Every month cell the signed-in person may
+key becomes a box. The button says *targets* because that is all it keys —
+actuals belong to `/my-entries`, and a button called "Enter figures" left
+people asking which figures it meant.
 
 The condition is not decoration. Left on "Latest forecast", the target column
 is a *resolution* — for each month, the value from the highest-sequence version
@@ -596,10 +598,26 @@ picker's scope, so an edit cannot silently unassign someone.
 
 The pencil on a measure row opens its whole form, not an inline rename: a
 Control Item has eight settings and only one of them is its name. Name, the
-Control Item text, unit, roll-up, direction, decimal places, Department and
-business unit are all editable in place. The **code** is not — a formula
+Control Item text, unit, roll-up, direction, decimal places, where it is filed
+and its business unit are all editable in place. The **code** is not — a formula
 addresses the measure by it, so changing it would break every formula pointing
 at it silently.
+
+**Where it is filed is asked for as the cascade reads it: Business unit, then
+Division, then Department.** Picking a division re-lists the departments to
+that division's own, so the second choice can only narrow the first. Level 4 is
+the only level with a Department field at all — Levels 1-3 are company
+measures, filed to a division and to nothing narrower, which is how the data
+has always been (`prisma/uat/goals.ts`: company measures carry `AUTO`, `FRC`,
+`OX`; Level 4 measures carry `AUTO-PRD`, `OX-PTS`). Before this the two were
+one flat list holding divisions and departments together, which asked the
+reader to know which of the eighty-odd codes was which.
+
+Only one field still leaves the form, because one field is what is stored:
+`dic_org_unit_id` is the department when one is chosen and the division when
+there is not. A measure filed somewhere the editor cannot reach keeps its org
+unit, shown as `current` rather than quietly re-filed to whatever happens to be
+first in their own list.
 
 Two guards beyond the usual role and year checks.
 
@@ -690,7 +708,9 @@ selector narrows the **Department** filter to one division and everything beneat
 one click ("Departments in a Division"), and picking a specific department
 chip narrows it to just that ("just the Department"). The per-division
 `/division/[code]` page still exists for a narrower, single-division view with
-the same editing rights.
+the same editing rights, reachable by URL. It is deliberately **not** in the
+top nav: a Divisions menu there did what the sheet's own Business unit,
+Division and Department filters already do, one screen closer to the numbers.
 
 #### Managing the pick list
 

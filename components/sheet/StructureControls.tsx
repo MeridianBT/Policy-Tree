@@ -13,7 +13,7 @@
  * screen — the admin structure builder could already do this, tediously.
  */
 
-import { useState, useTransition } from "react";
+import { useMemo, useState, useTransition } from "react";
 import { Check, GripVertical, Pencil, Plus, Trash2, X } from "lucide-react";
 import type { DeletionImpact, StructureResult } from "@/lib/structure/actions";
 
@@ -279,6 +279,50 @@ export function InlineAddDepartment({
   );
 }
 
+/** The value standing for "leave this measure filed where it already is". */
+const CURRENT = "__current__";
+
+interface DivisionOption {
+  code: string;
+  name: string;
+  /** Null when the division itself is out of this user's reach. */
+  id: string | null;
+}
+
+/**
+ * The divisions to offer, from the flat org-unit list the sheet already
+ * carries.
+ *
+ * The second loop is the case worth naming: an OWNER scoped to a single
+ * department gets that department in `dics` but not its division, and a
+ * Division select that showed nothing above their own department would read as
+ * though the department belonged to no division at all. The parent is listed
+ * from its code, with no id - it is there to be read, not to be filed to.
+ */
+function divisionsFrom(dics: DicOption[]): DivisionOption[] {
+  const byCode = new Map<string, DivisionOption>();
+  for (const dic of dics) {
+    if (dic.type === "DIVISION") byCode.set(dic.code, { code: dic.code, name: dic.name, id: dic.id });
+  }
+  for (const dic of dics) {
+    if (dic.type !== "DEPARTMENT" || !dic.parentCode) continue;
+    if (!byCode.has(dic.parentCode)) {
+      byCode.set(dic.parentCode, { code: dic.parentCode, name: dic.parentCode, id: null });
+    }
+  }
+  return [...byCode.values()];
+}
+
+function divisionCodeOf(dic: DicOption | null, divisions: DivisionOption[]): string {
+  if (!dic) return divisions[0]?.code ?? "";
+  return dic.type === "DIVISION" ? dic.code : dic.parentCode ?? "";
+}
+
+function firstDepartmentIn(dics: DicOption[], divisionCode: string): string {
+  const first = dics.find((dic) => dic.type === "DEPARTMENT" && dic.parentCode === divisionCode);
+  return first?.id ?? "";
+}
+
 /**
  * The compact form for a new Control Item. Only the fields that cannot be
  * derived are asked for; `achievement_method` follows from the direction and
@@ -313,6 +357,7 @@ export interface MeasureValues {
  */
 export function InlineMeasureForm({
   indent,
+  level,
   dics,
   businessUnits,
   users,
@@ -324,6 +369,14 @@ export function InlineMeasureForm({
   pending,
 }: {
   indent: number;
+  /**
+   * The measure's own level, which decides whether a Department is asked for
+   * at all. Levels 1-3 are company measures and are filed to a Division;
+   * only Level 4 lives inside a Department. The server draws the same line at
+   * lib/structure/actions.ts, where a Level 4 add is scope-checked against the
+   * chosen org unit and a company-level one against the role.
+   */
+  level: number;
   dics: DicOption[];
   businessUnits: Array<{ id: string; code: string; name: string }>;
   /** People this user may hand the measure to, scoped server-side. */
@@ -342,11 +395,65 @@ export function InlineMeasureForm({
   const [direction, setDirection] = useState(initial?.direction ?? "HIGHER_BETTER");
   const [aggregation, setAggregation] = useState(initial?.aggregation ?? "SUM");
   const [decimalPlaces, setDecimalPlaces] = useState(initial?.decimalPlaces ?? 0);
-  const [dicOrgUnitId, setDic] = useState(initial?.dicOrgUnitId ?? dics[0]?.id ?? "");
   const [businessUnitId, setBusinessUnit] = useState(
     initial?.businessUnitId ?? businessUnits[0]?.id ?? "",
   );
   const [responsibleUserId, setResponsible] = useState(initial?.responsibleUserId ?? "");
+
+  /*
+    Where the measure is filed, asked for the way the cascade reads:
+    business unit, then division, then - at Level 4 only - the department
+    inside it. One field still leaves this form, `dicOrgUnitId`, because one
+    field is what the server stores: the department when there is one, the
+    division when there is not.
+  */
+  const divisions = useMemo(() => divisionsFrom(dics), [dics]);
+  const initialDic = initial ? dics.find((dic) => dic.id === initial.dicOrgUnitId) ?? null : null;
+  /**
+   * A measure already filed somewhere this user cannot reach. Its org unit is
+   * kept and shown as `current` rather than quietly re-filed to whatever
+   * happens to be first in their own list - the server would allow that move
+   * only if they had authority at both ends, but the form must not propose it.
+   */
+  const keptDic = Boolean(initial) && initialDic === null;
+
+  const [divisionCode, setDivisionCode] = useState(() => {
+    if (keptDic) return CURRENT;
+    if (initialDic) return initialDic.type === "DIVISION" ? initialDic.code : initialDic.parentCode ?? "";
+    return divisions[0]?.code ?? "";
+  });
+  const [departmentId, setDepartment] = useState(() =>
+    initialDic?.type === "DEPARTMENT"
+      ? initialDic.id
+      : firstDepartmentIn(dics, divisionCodeOf(initialDic, divisions)),
+  );
+
+  const departments = useMemo(
+    () => dics.filter((dic) => dic.type === "DEPARTMENT" && dic.parentCode === divisionCode),
+    [dics, divisionCode],
+  );
+  const showDepartment = level === 4 && !keptDic;
+  /**
+   * Whether "division level" is a filing this user could actually make. A
+   * division that is in the list only as a department's parent has no id to
+   * store, so offering it would put a choice in front of somebody that could
+   * only ever leave Save greyed out.
+   */
+  const divisionIsFilable = Boolean(divisions.find((division) => division.code === divisionCode)?.id);
+
+  function chooseDivision(code: string) {
+    setDivisionCode(code);
+    // The department that was selected belongs to the division being left, so
+    // it cannot survive the change. Land on the first one inside the new
+    // division rather than on nothing, which is what the single flat list did.
+    setDepartment(firstDepartmentIn(dics, code));
+  }
+
+  const dicOrgUnitId = keptDic
+    ? initial?.dicOrgUnitId ?? ""
+    : showDepartment && departmentId
+      ? departmentId
+      : divisions.find((division) => division.code === divisionCode)?.id ?? "";
 
   const field = "border border-rule bg-paper px-1.5 py-1 text-[11px]";
 
@@ -372,20 +479,45 @@ export function InlineMeasureForm({
           className={`${field} w-44`}
         />
       </Labelled>
-      <Labelled label="Department">
-        <select value={dicOrgUnitId} onChange={(e) => setDic(e.target.value)} className={field}>
-          {/* A measure being edited may sit under a department this user
-              cannot otherwise file to. Listing it keeps the current value
-              selected and truthful; the server still refuses a *move* to
-              anywhere they have no authority over. */}
-          {initial && !dics.some((dic) => dic.id === initial.dicOrgUnitId) && (
-            <option value={initial.dicOrgUnitId}>current</option>
-          )}
-          {dics.map((dic) => (
-            <option key={dic.id} value={dic.id}>{dic.code}</option>
+      {/* Business unit, then Division, then Department: the cascade in the
+          order it is read on the sheet. */}
+      <Labelled label="Business unit">
+        <select
+          value={businessUnitId}
+          onChange={(e) => setBusinessUnit(e.target.value)}
+          className={field}
+        >
+          {businessUnits.map((businessUnit) => (
+            <option key={businessUnit.id} value={businessUnit.id}>
+              {businessUnit.code}
+            </option>
           ))}
         </select>
       </Labelled>
+      <Labelled label="Division">
+        <select value={divisionCode} onChange={(e) => chooseDivision(e.target.value)} className={field}>
+          {keptDic && <option value={CURRENT}>current</option>}
+          {divisions.map((division) => (
+            <option key={division.code} value={division.code}>{division.code}</option>
+          ))}
+        </select>
+      </Labelled>
+      {/* Levels 1-3 are company measures, filed to a Division and to nothing
+          narrower, so the field is not asked for there at all. */}
+      {showDepartment && (
+        <Labelled label="Department">
+          <select
+            value={departmentId}
+            onChange={(e) => setDepartment(e.target.value)}
+            className={field}
+          >
+            {divisionIsFilable && <option value="">— division level —</option>}
+            {departments.map((department) => (
+              <option key={department.id} value={department.id}>{department.code}</option>
+            ))}
+          </select>
+        </Labelled>
+      )}
       <Labelled label="Responsible">
         {/* Optional on purpose: the Department is the accountability, and
             this names the individual inside it who keys the number. Naming
@@ -407,19 +539,6 @@ export function InlineMeasureForm({
             <option key={person.id} value={person.id}>
               {person.name}
               {person.orgUnitCode ? ` · ${person.orgUnitCode}` : ""}
-            </option>
-          ))}
-        </select>
-      </Labelled>
-      <Labelled label="Business unit">
-        <select
-          value={businessUnitId}
-          onChange={(e) => setBusinessUnit(e.target.value)}
-          className={field}
-        >
-          {businessUnits.map((businessUnit) => (
-            <option key={businessUnit.id} value={businessUnit.id}>
-              {businessUnit.code}
             </option>
           ))}
         </select>
