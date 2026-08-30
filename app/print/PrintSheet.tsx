@@ -9,7 +9,8 @@
 
 import type { SheetModel, ControlItemRow, GroupRow } from "@/lib/sheet/types";
 import { ALL_QUARTERS, sheetColumns } from "@/components/sheet/columns";
-import { groupHeading, indentSteps } from "@/components/sheet/outline";
+import { groupOrdinalPrefix, indentSteps } from "@/components/sheet/outline";
+import { RichText } from "@/components/ui/RichText";
 import { formatAchievement, formatValue } from "@/lib/calc/format";
 import { EvaluationSymbol } from "@/components/sheet/EvaluationSymbol";
 import "./print.css";
@@ -105,7 +106,8 @@ export function PrintSheet({
                     colSpan={columns.length + 3}
                     style={{ paddingLeft: `${1 + indentSteps(group) * 3.5}mm` }}
                   >
-                    {groupHeading(group.statement, group.ordinal)}
+                    {groupOrdinalPrefix(group.ordinal)}
+                    <RichText text={group.statement} />
                     {group.laddersTo ? `  ↳ ${group.laddersTo}` : ""}
                   </td>
                 </tr>
@@ -116,7 +118,9 @@ export function PrintSheet({
             const cellByKey = new Map(item.cells.map((cell) => [cell.key, cell]));
             return (
               <tr key={item.id}>
-                <td style={{ paddingLeft: `${1 + indentSteps(item) * 3.5}mm` }}>{item.name}</td>
+                <td style={{ paddingLeft: `${1 + indentSteps(item) * 3.5}mm` }}>
+                  <RichText text={item.name} />
+                </td>
                 <td className="col-measure">{item.measuredAs}</td>
                 <td>{item.dicCode}</td>
                 {columns.map((column) => {

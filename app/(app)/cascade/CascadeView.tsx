@@ -16,7 +16,8 @@
  * same right edge and the quarter columns line up down the page.
  */
 import { EvaluationSymbol } from "@/components/sheet/EvaluationSymbol";
-import { buildCascadeTree, groupHeading, hasDepartmentWork, indentPx, type CascadeNode } from "@/components/sheet/outline";
+import { buildCascadeTree, groupOrdinalPrefix, hasDepartmentWork, indentPx, type CascadeNode } from "@/components/sheet/outline";
+import { RichText } from "@/components/ui/RichText";
 import { quarterFigures, type QuarterFigure } from "@/components/sheet/quarter-figures";
 import type { ControlItemRow, SheetModel, SheetRowModel } from "@/lib/sheet/types";
 import { formatAchievement, formatValue } from "@/lib/calc/format";
@@ -152,7 +153,10 @@ function Row({
 
   return (
     <div className={`flex items-baseline gap-2 py-1 ${tone}`}>
-      <span>{isGoal ? groupHeading(row.statement, row.ordinal) : row.statement}</span>
+      <span>
+        {isGoal && groupOrdinalPrefix(row.ordinal)}
+        <RichText text={row.statement} />
+      </span>
       {dic && (
         <span
           className="shrink-0 rounded-sm border border-rule px-1 text-[10px] font-normal text-ink-muted"
@@ -183,7 +187,9 @@ function ControlItemLine({
   return (
     <div className="flex items-baseline gap-2 py-0.5 text-[12px] text-ink-muted">
       <EvaluationSymbol symbol={kiCell?.symbol ?? null} label={kiCell?.symbolLabel} color={kiCell?.symbolColor} size={12} />
-      <span className="min-w-0 flex-1 truncate text-ink">{row.name}</span>
+      <span className="min-w-0 flex-1 truncate text-ink">
+        <RichText text={row.name} />
+      </span>
       <span className="min-w-0 shrink truncate text-[11px] text-ink-faint">({row.measuredAs})</span>
       {dic && (
         <span

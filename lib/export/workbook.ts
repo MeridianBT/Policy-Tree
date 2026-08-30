@@ -19,6 +19,7 @@ import ExcelJS from "exceljs";
 import type { SheetModel, ControlItemRow, GroupRow } from "@/lib/sheet/types";
 import { sheetColumns } from "@/components/sheet/columns";
 import { indentSteps, groupHeading } from "@/components/sheet/outline";
+import { parseEmphasis, plainText } from "@/lib/text/emphasis";
 
 const INK = "FF141413";
 const RULE = "FFDFDEDA";
@@ -100,7 +101,10 @@ function buildSheetTab(workbook: ExcelJS.Workbook, { model, title, basisLabel }:
     if (row.kind !== "CONTROL_ITEM") {
       const group = row as GroupRow;
       const excelRow = sheet.getRow(rowNumber++);
-      excelRow.getCell(1).value = groupHeading(group.statement, group.ordinal);
+      // A group row is already bold or italic as a whole, so its own
+      // emphasis has nothing left to say - it is written plain rather than
+      // fighting the row style.
+      excelRow.getCell(1).value = plainText(groupHeading(group.statement, group.ordinal));
       excelRow.getCell(1).alignment = { indent: indentSteps(group) * 2 };
       excelRow.font = {
         bold: group.kind !== "OBJECTIVE",
@@ -126,7 +130,7 @@ function buildSheetTab(workbook: ExcelJS.Workbook, { model, title, basisLabel }:
     const actualRow = sheet.getRow(rowNumber++);
     const achRow = sheet.getRow(rowNumber++);
 
-    targetRow.getCell(1).value = item.name;
+    targetRow.getCell(1).value = richTextValue(item.name);
     targetRow.getCell(1).alignment = { indent: indentSteps(item) * 2 };
     targetRow.getCell(2).value = item.measuredAs;
     targetRow.getCell(3).value = item.dicCode;
@@ -230,11 +234,14 @@ function buildDataTab(workbook: ExcelJS.Workbook, { model, basisLabel }: ExportO
       const added = sheet.addRow({
         ki: model.kiCode,
         basis: basisLabel,
-        goal: goal ? groupHeading(goal.statement, goal.ordinal) : "",
-        theme: theme?.statement ?? "",
-        objective: objective?.statement ?? "",
+        goal: goal ? plainText(groupHeading(goal.statement, goal.ordinal)) : "",
+        theme: plainText(theme?.statement ?? ""),
+        objective: plainText(objective?.statement ?? ""),
         level: item.level,
-        measure: item.name,
+        // The Data tab is for pivoting, so its text is plain: a marker in
+        // a pivot label is noise, and the emphasis is already carried on
+        // the Sheet tab where somebody reads it.
+        measure: plainText(item.name),
         controlItem: item.measuredAs,
         code: item.code,
         dic: item.dicCode,
@@ -307,6 +314,24 @@ function buildLegendRow(sheet: ExcelJS.Worksheet, model: SheetModel, at: number)
 }
 
 /** `decimalPlaces` is respected here as strictly as it is on screen. */
+/**
+ * A cell value that keeps bold and italic.
+ *
+ * exceljs takes runs of text with their own fonts; text carrying no emphasis
+ * is written as a plain string so the common cell stays a plain cell. The
+ * markers themselves never reach the workbook either way.
+ */
+function richTextValue(text: string): string | { richText: Array<{ text: string; font?: { bold?: boolean; italic?: boolean } }> } {
+  const runs = parseEmphasis(text);
+  if (!runs.some((run) => run.bold || run.italic)) return plainText(text);
+  return {
+    richText: runs.map((run) => ({
+      text: run.text,
+      font: { bold: run.bold, italic: run.italic },
+    })),
+  };
+}
+
 function formatFor(decimalPlaces: number): string {
   return decimalPlaces > 0 ? `#,##0.${"0".repeat(decimalPlaces)}` : "#,##0";
 }

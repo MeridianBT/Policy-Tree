@@ -56,7 +56,16 @@ export function indentPx(
  * on two?" — and nothing below them is.
  */
 export function groupHeading(statement: string, ordinal?: number | null): string {
-  return ordinal ? `${ordinal}.  ${statement}` : statement;
+  return groupOrdinalPrefix(ordinal) + statement;
+}
+
+/**
+ * The number alone, for the screens that render the statement as emphasis runs
+ * rather than as a string and so cannot concatenate it. One definition of the
+ * spacing, whichever way a caller assembles the line.
+ */
+export function groupOrdinalPrefix(ordinal?: number | null): string {
+  return ordinal ? `${ordinal}.  ` : "";
 }
 
 // ------------------------------------------------------------- Cascade tree

@@ -26,7 +26,9 @@ export { EMPTY_FILTERS, type SheetFilters };
 import { columnClass, columnWidth, sheetColumns } from "./columns";
 import type { QuarterCode } from "@/lib/domain/period";
 import type { SheetCell } from "@/lib/calc/row";
-import { groupHeading, indentPx } from "./outline";
+import { groupOrdinalPrefix, indentPx } from "./outline";
+import { RichText } from "@/components/ui/RichText";
+import { plainText } from "@/lib/text/emphasis";
 import { DragHandle, InlineRename, RowActions, type DicOption } from "./StructureControls";
 import { canAddDepartmentBranch, canEditStructureAt, type EditingUser } from "./permissions";
 import { SheetCellView, rowHeightFor, type DisplayMode } from "./SheetCellView";
@@ -476,7 +478,10 @@ function contextFor(rows: SheetRowModel[], topIndex: number): string[] {
   return chain
     .map((id) => byId.get(id))
     .filter((node): node is SheetRowModel => Boolean(node))
-    .map((node) => (node as GroupRow).statement);
+    // The breadcrumb is one compressed line of context, so emphasis inside it
+    // would be noise rather than signal - the markers come off and the words
+    // stay.
+    .map((node) => plainText((node as GroupRow).statement));
 }
 
 function ColumnHeader({
@@ -590,7 +595,7 @@ function GroupRowView({
           type="button"
           onClick={onToggle}
           aria-expanded={!collapsed}
-          aria-label={`${collapsed ? "Expand" : "Collapse"} ${row.statement}`}
+          aria-label={`${collapsed ? "Expand" : "Collapse"} ${plainText(row.statement)}`}
           className="flex size-4 shrink-0 items-center justify-center rounded-sm hover:bg-rule"
         >
           {collapsed ? <ChevronRight size={12} /> : <ChevronDown size={12} />}
@@ -602,8 +607,9 @@ function GroupRowView({
             onCancel={editing.onCancelRename}
           />
         ) : (
-          <span className="min-w-0 flex-1 truncate" title={row.statement}>
-            {groupHeading(row.statement, row.ordinal)}
+          <span className="min-w-0 flex-1 truncate" title={plainText(row.statement)}>
+            {groupOrdinalPrefix(row.ordinal)}
+            <RichText text={row.statement} />
           </span>
         )}
         {editing && editing.renamingId !== row.id && (() => {
@@ -627,7 +633,7 @@ function GroupRowView({
             <>
             {drag && canReorder && (
               <DragHandle
-                label={`Reorder "${row.statement}" among its siblings`}
+                label={`Reorder "${plainText(row.statement)}" among its siblings`}
                 onDragStart={(event) => drag.onStart(row as SheetRowModel, event)}
                 onDragEnd={drag.onEnd}
               />
@@ -713,9 +719,9 @@ function ControlItemRowView({
             // name would start dragging its URL instead of reordering the row.
             draggable={false}
             className="min-w-0 flex-1 truncate text-[12px] hover:underline"
-            title={`${row.name} (${row.code})`}
+            title={`${plainText(row.name)} (${row.code})`}
           >
-            {row.name}
+            <RichText text={row.name} />
           </Link>
         )}
         {editing &&
@@ -725,7 +731,7 @@ function ControlItemRowView({
           <>
             {drag && (
               <DragHandle
-                label={`Reorder "${row.name}" among the measures beside it`}
+                label={`Reorder "${plainText(row.name)}" among the measures beside it`}
                 onDragStart={(event) => drag.onStart(row as SheetRowModel, event)}
                 onDragEnd={drag.onEnd}
               />
@@ -856,7 +862,7 @@ function MonthEntryCell({
         <SheetCellInput
           value={displayFor(cell, row.decimalPlaces, edited)}
           edited={edited}
-          ariaLabel={`${row.name} ${entry.versionCode} target for ${cell.label}`}
+          ariaLabel={`${plainText(row.name)} ${entry.versionCode} target for ${cell.label}`}
           onCommit={commit}
           onEnter={(raw) => {
             commit(raw);
@@ -870,7 +876,7 @@ function MonthEntryCell({
           value={seedInput(cell, row.decimalPlaces)}
           title={
             cell.targetEditable
-              ? `${row.name} is keyed by ${row.responsibleUserName ?? row.dicName}`
+              ? `${plainText(row.name)} is keyed by ${row.responsibleUserName ?? row.dicName}`
               : `${entry.versionCode} is locked, so its figures are read-only`
           }
         />

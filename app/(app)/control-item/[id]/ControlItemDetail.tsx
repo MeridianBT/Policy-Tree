@@ -22,6 +22,7 @@ import type { ControlItemDetail } from "@/lib/control-item/query";
 import { EM_DASH, formatAchievement, formatValue } from "@/lib/calc/format";
 import { monthLabel } from "@/lib/domain/period";
 import { EvaluationSymbol } from "@/components/sheet/EvaluationSymbol";
+import { RichText } from "@/components/ui/RichText";
 import { columnClass, columnWidth, sheetColumns } from "@/components/sheet/columns";
 
 export function ControlItemDetailView({ detail }: { detail: ControlItemDetail }) {
@@ -39,7 +40,8 @@ export function ControlItemDetailView({ detail }: { detail: ControlItemDetail })
           {detail.themePath.join(" › ")} {detail.themePath.length ? "›" : ""} {detail.objective}
         </p>
         <h1 className="mt-1 text-[16px] font-semibold">
-          {detail.name} <span className="text-[12px] font-normal text-ink-faint">{detail.code}</span>
+          <RichText text={detail.name} />{" "}
+          <span className="text-[12px] font-normal text-ink-faint">{detail.code}</span>
         </h1>
         <dl className="mt-2 flex flex-wrap gap-x-6 gap-y-1 text-[11px]">
           <Meta term="Ki" value={detail.kiCode} />

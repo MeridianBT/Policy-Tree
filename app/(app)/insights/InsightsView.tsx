@@ -19,6 +19,7 @@ import { monthLabel } from "@/lib/domain/period";
 import type { OwnerGroup, Review, ReviewLine } from "@/lib/calc/review";
 import type { SheetModel } from "@/lib/sheet/types";
 import { EvaluationSymbol } from "@/components/sheet/EvaluationSymbol";
+import { RichText } from "@/components/ui/RichText";
 
 export function InsightsView({
   model,
@@ -254,7 +255,7 @@ function ChaseList({ groups }: { groups: OwnerGroup[] }) {
               <span key={line.id}>
                 {index > 0 && ", "}
                 <Link href={`/control-item/${line.id}`} className="hover:underline">
-                  {line.name}
+                  <RichText text={line.name} />
                 </Link>
               </span>
             ))}
@@ -283,7 +284,7 @@ function AttentionRow({
         size={14}
       />
       <Link href={`/control-item/${line.id}`} className="text-[12px] hover:underline">
-        {line.name}
+        <RichText text={line.name} />
       </Link>
       <span className="num rounded-sm border border-rule px-1 text-[10px] text-ink-muted">
         {line.dicCode}
@@ -371,7 +372,7 @@ function MoverList({ title, lines }: { title: string; lines: ReviewLine[] }) {
           {lines.map((line) => (
             <li key={line.id} className="flex items-baseline gap-2 text-[11px]">
               <Link href={`/control-item/${line.id}`} className="truncate hover:underline">
-                {line.name}
+                <RichText text={line.name} />
               </Link>
               <span className="num ml-auto shrink-0 text-ink-muted">
                 {formatAchievement(line.previousAchievement)} →{" "}

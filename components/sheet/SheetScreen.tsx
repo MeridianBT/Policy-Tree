@@ -551,7 +551,24 @@ export function SheetScreen({
             {subtitle ? ` · ${subtitle}` : ""}
           </p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+        {/* Which version the sheet reads against belongs with the title rather
+            than in the filter row: it names what is on screen, and the filters
+            below narrow what is on screen. Keeping it here also gives the
+            filters back a whole row at a laptop width. */}
+        <Select
+          label="Target"
+          value={targetVersionId}
+          options={versionOptions}
+          onChange={onTargetVersionChange}
+        />
+        <Select
+          label="Compare with"
+          value={compareVersionId}
+          options={compareOptions}
+          onChange={onCompareVersionChange}
+        />
+        <span className="mx-1 h-4 w-px bg-rule" aria-hidden />
         {exportHref && (
           <a
             href={
@@ -577,21 +594,6 @@ export function SheetScreen({
       </header>
 
       <div className="flex flex-wrap items-center gap-2 border border-rule bg-paper px-2 py-1.5">
-        <Select
-          label="Target"
-          value={targetVersionId}
-          options={versionOptions}
-          onChange={onTargetVersionChange}
-        />
-        <Select
-          label="Compare with"
-          value={compareVersionId}
-          options={compareOptions}
-          onChange={onCompareVersionChange}
-        />
-
-        <span className="mx-1 h-4 w-px bg-rule" aria-hidden />
-
         {viewToggle}
         {viewToggle && <span className="mx-1 h-4 w-px bg-rule" aria-hidden />}
 

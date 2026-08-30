@@ -23,6 +23,8 @@ import { useCallback, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { monthLabel } from "@/lib/domain/period";
+import { RichText } from "@/components/ui/RichText";
+import { plainText } from "@/lib/text/emphasis";
 import { formatValue, EM_DASH } from "@/lib/calc/format";
 import { achievement, gap, gapSense } from "@/lib/calc/achievement";
 import type { OutstandingEntry } from "@/lib/entries/query";
@@ -105,7 +107,7 @@ export function MyEntries({
         value={values[row.controlItemId] ?? ""}
         disabled={!canEdit || row.locked}
         inputMode="decimal"
-        aria-label={`${row.name} actual for ${monthLabel(row.period)}`}
+        aria-label={`${plainText(row.name)} actual for ${monthLabel(row.period)}`}
         onChange={(event) =>
           setValues((previous) => ({ ...previous, [row.controlItemId]: event.target.value }))
         }
@@ -198,12 +200,15 @@ export function MyEntries({
                   <tr key={row.controlItemId} className="hover:bg-paper-sunken">
                     <td className="border-b border-rule px-2 py-1">
                       <Link href={`/control-item/${row.controlItemId}`} className="hover:underline">
-                        {row.name}
+                        <RichText text={row.name} />
                       </Link>
                       <span className="ml-1 text-[10px] text-ink-faint">{row.code}</span>
                     </td>
-                    <td className="max-w-72 truncate border-b border-rule px-2 py-1 text-ink-muted" title={row.objective}>
-                      {row.objective}
+                    <td
+                      className="max-w-72 truncate border-b border-rule px-2 py-1 text-ink-muted"
+                      title={plainText(row.objective)}
+                    >
+                      <RichText text={row.objective} />
                     </td>
                     <td className="border-b border-rule px-2 py-1 text-[11px] text-ink-muted">{row.dicCode}</td>
                     <td className="num border-b border-rule px-2 py-1 text-ink-muted">
@@ -259,12 +264,14 @@ export function MyEntries({
                   href={`/control-item/${row.controlItemId}`}
                   className="block text-[14px] font-medium hover:underline"
                 >
-                  {row.name}
+                  <RichText text={row.name} />
                 </Link>
                 <p className="mt-0.5 text-[11px] text-ink-faint">
                   {row.code} · {row.dicCode}
                 </p>
-                <p className="mt-1 text-[12px] text-ink-muted">{row.objective}</p>
+                <p className="mt-1 text-[12px] text-ink-muted">
+                  <RichText text={row.objective} />
+                </p>
 
                 <div className="mt-3 flex items-end justify-between gap-3">
                   <div className="text-[11px] text-ink-muted">
