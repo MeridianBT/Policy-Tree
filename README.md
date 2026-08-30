@@ -433,7 +433,7 @@ shared mailbox does not fill with hundreds of copies nobody reads.
 | `/sheet` | The company sheet — Levels 1–3 by default, with a View toggle folding every Level 4 branch in under its Objective. Virtualised, with version selector, compare mode, three display densities, condensable quarter columns, a single-quarter view, three filters — Business unit, then Division, then Department — read outside-in, and a one-click **Below target** preset. Rows can be dragged into a new order among their own siblings, and month cells become keyable when a specific unlocked version is pinned ADMIN and OWNER (division/department leads) can edit the structure directly here |
 | `/division/[code]` | The same Level 4 sheet, pre-scoped to one division and its departments — a narrower, single-division view of what "+ Departments" on the company sheet shows for everyone. Reached by URL; not linked from the nav, where it duplicated the sheet's own filters |
 | `/cascade` | A read-only, one-page alignment map from every Company Goal down to the Department work laddering into it — see below |
-| `/insights` | A read-only symbol-distribution heatmap, one Division per row, one month per column — see below |
+| `/insights` | The month-end review, anchored on one month: how much of it has reported and who owes the rest, what is below target ranked by direction of travel, and the biggest movers either way — see below |
 | `/my-entries` | Keyboard-driven monthly entry for everything the signed-in user owns, with an outstanding count |
 | `/control-item/[id]` | Trend chart with every version overlaid, stored cells including formulas as typed, and the full audit trail |
 | `/print/company` | A3 landscape, print-only |
@@ -836,29 +836,76 @@ exactly where it structurally attaches — under the Level 2 or 3 Objective it
 ladders into — with no possibility of drifting from what the sheet itself
 would show.
 
-### The Insights heatmap
+### The month-end review
 
-`/insights` answers "where is trouble concentrating" without inventing a
-number to answer it with. It is a grid — one row per Division, one column
-per month of the Ki — where each cell is a small stacked bar: one segment
-per evaluation band actually present that month, width proportional to how
-many Control Items landed there. A Department's Control Items count toward
-their parent Division's cell, so a Division's row reflects its own work and
-everything laddering up into it from below.
+`/insights` is the page a monthly review is held on. It replaced a
+symbol-distribution heatmap — one Division per row, one month per column,
+each cell a stacked bar — which was removed rather than improved, and the
+reasons are worth keeping because they are the trap this page has to stay out
+of:
 
-The one rule this page will not break: no cell collapses to a single
-"worst" or "average" symbol. The five evaluation bands are not one
-good-to-bad scale — □ (far above target) and ■ (far below target) are
-symmetric extremes, not opposite ends of a line — so picking one
-representative symbol per cell would assert a verdict the data does not
-actually support. A month with nothing keyed yet is a plain dashed box,
-never hidden and never silently folded into a neighbouring month.
+- **The bar hid the size of the problem.** PSP carries 24 measures and FRC 5;
+  both drew one bar of the same width. A five-band split of 24 measures gives
+  segments under 3px.
+- **It was a dead end.** No cell linked anywhere, so seeing red told you a
+  division and a month and left you to start again on the sheet.
+- **It hid the level that acts.** Departments counted into their Division's
+  bar, so a department with everything failing was invisible inside a division
+  that was mostly fine.
 
-`lib/calc/heatmap.ts` (`buildSymbolHeatmap`) does the one piece of new
-aggregation this page needs — grouping the same `loadSheet({ levels: [1, 2,
-3, 4] })` rows the sheet and Cascade already use by Division and month,
-counting symbols per cell — and nothing else on the page is computed twice:
-the counts are exactly what the sheet's own month cells already carry.
+A monthly Hoshin review asks four questions in order, and the sheet already
+answers two of them well — *what is off track* is the **Below target** preset,
+and *who owns it* is the responsible person on the row, with
+`/control-item/[id]` carrying the trend, every version overlaid, and the audit
+trail. This page exists for the other two, which nothing answered before it:
+**is the data even in**, and **what is getting worse rather than recovering**.
+
+So it is three blocks under one anchor month:
+
+**Reporting** — "68 of 82 actuals in", and when it is not complete, who to ask:
+one line per person, most outstanding first, with their measures named and
+linked on the line. One line per *person* rather than per measure is the whole
+point — eighty-two measure names is a wall, and "the Automotive Director owes
+twelve" is a sentence somebody can act on. A measure naming nobody groups under
+its own org unit and says so, which makes the gap in responsible users visible
+rather than silent. Measures with no target for the month are counted
+separately and quietly: nobody planned it is a different failure from nobody
+reported it, and the sheet hides both behind the same em dash.
+
+**Needs attention** — every measure below target that month, ranked by
+movement rather than by depth: worsening first, then holding, then recovering,
+worst achievement first inside each. That ordering is the point. A measure at
+92% falling from 110% is the meeting's business; one at 92% climbing from 80%
+is somebody's plan working, and a list sorted by level alone would put the
+second above the first. Each line carries the measure's own twelve-month strip
+of symbols, so "it has been ■ for four months" is visible where the question is
+asked rather than in a grid where it is averaged in with everything else — that
+strip is what made the heatmap unnecessary.
+
+The list is capped at fifteen, and the cap says what it cut ("48 more below
+target, 10 of them still falling") with a link to the sheet. A page that lists
+every below-target measure has quietly become the sheet again, and the sheet
+does that better.
+
+**Movement** — the three largest gains and falls since the previous month,
+deliberately on both sides of target. A measure recovering from 60% to 85% is
+still failing and is still the good news in the room; one falling from 130% to
+105% is fine and still worth noticing.
+
+Two rules the page will not break. The month it opens on is **the latest month
+carrying any actual**, not the open month that `/my-entries` and the reminder
+chase — those chase the month still being *keyed*, and a review looks at the
+last month there is something to review; the month selector moves between them,
+and picking the open month is how the chase list is read. And **movement needs
+a width**: a change under one point of achievement is flat, or every row lands
+in "worsening" on rounding noise.
+
+`lib/calc/review.ts` holds all of it — pure, no React and no Prisma, tested
+directly in `lib/calc/review.test.ts`, and reusing the below-target predicate
+from `components/sheet/below-target.ts` rather than restating the comparison so
+that direction-aware achievement keeps one definition. The page costs one
+query: everything on it is derived from the same `loadSheet({ levels: [1, 2, 3,
+4] })` model the sheet and Cascade already use.
 
 ### Exporting to Excel
 
@@ -956,10 +1003,10 @@ npm run check:ui      # browser checks, against a running dev server
 bug that was actually found rather than a hypothetical: a filter panel opening
 off the right edge of the window with no way to reach the options past it; a
 filter panel that would not close by pen, by touch, by tabbing past its last
-option, or when the window was resized under it; and the Insights heatmap
-silently cropping February and March behind a clean right border with no
-scrollbar to suggest anything was missing; and `/my-entries` unusable on the
-phone the month-end reminder is read on. It runs at five window widths from a
+option, or when the window was resized under it; `/my-entries` unusable on the
+phone the month-end reminder is read on; and an edit form still holding the
+previous measure's values after the pencil on a second one was clicked, under a
+heading naming the second. It runs at five window widths from a
 1024px laptop to 1920px, and on three phone profiles, and exits non-zero on the
 first failure.
 
@@ -1004,9 +1051,15 @@ reason is written where a reader will meet it.
 - `lib/calc/reorder.test.ts` — dragging a row among its siblings, including
   that a Level 4 department branch keeps its position when a Level 3 Theme
   beside it moves
-- `lib/calc/heatmap.test.ts` — symbol distribution per division per month,
-  including that a department's figures count toward its parent division and
-  that a cell never collapses to one representative symbol
+- `lib/calc/review.test.ts` — the month-end review's rule: worsening ranked
+  above holding above recovering, a lower-is-better measure staying in the same
+  list as the rest, an unreported measure never counted as failing, the first
+  month of the Ki reading as "new" rather than as improved, a sub-point drift
+  counting as flat, and the attention cap saying how much of what it cut is
+  still falling
+- `lib/calc/dic-label.test.ts` — a department chip carrying only what the
+  Division control has not already said, and never letting two same-named
+  departments read alike
 - `lib/calc/sso.test.ts` — who may sign in through Microsoft: invite-only,
   `oid` preferred over email, deactivated accounts refused
 - `lib/calc/auth-config.test.ts` — that a half-configured Entra provider counts

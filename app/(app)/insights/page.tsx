@@ -1,32 +1,32 @@
 import { activeKiId } from "@/lib/ki/active";
 import { loadSheet } from "@/lib/sheet/query";
 import { requireSession } from "@/lib/auth/session";
+import { buildReview, latestReviewableMonth } from "@/lib/calc/review";
 import { InsightsView } from "./InsightsView";
 
 export const dynamic = "force-dynamic";
 
 /**
- * Read-only, company-wide. Levels 1-4 together so a Department's own Control
- * Items count toward their Division's cell - same reasoning as the sheet's
- * "+ Departments" view.
+ * The month-end review. Read-only, company-wide, Levels 1-4 together so a
+ * Department's own Control Items are reviewed beside the company's.
  *
- * The business unit is a filter rather than a second axis of the grid. A cell
- * counts how many measures landed in each band, which is a count of measures
- * and not a sum of incommensurable quantities, so mixing units in one cell
- * breaks no rule - but it does hide which unit the trouble is in, and that is
- * the question the page exists to answer. Filtering is the honest way to ask
- * it: one unit at a time, or all of them together.
+ * One query. Everything on the page - who has not reported, what is below
+ * target, what moved - is derived from that one sheet model by lib/calc/review,
+ * which is pure and tested directly.
  *
- * It lives in the URL rather than component state so a filtered view can be
- * linked to and printed, the same way the sheet carries its column state.
+ * Both the month and the business unit live in the URL rather than in component
+ * state, so a review can be linked to, printed, and returned to exactly as it
+ * was read - the same reasoning as the sheet's column state. The business unit
+ * is a filter rather than a second axis: mixing units in one count breaks no
+ * rule, but it does hide which unit the trouble is in.
  */
 export default async function InsightsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ bu?: string }>;
+  searchParams: Promise<{ bu?: string; month?: string }>;
 }) {
   await requireSession();
-  const { bu } = await searchParams;
+  const { bu, month } = await searchParams;
   const model = await loadSheet({ levels: [1, 2, 3, 4], kiId: await activeKiId() });
 
   // An unknown code filters to nothing, which reads as a broken page. Fall
@@ -38,5 +38,23 @@ export default async function InsightsPage({
       )
     : model.rows;
 
-  return <InsightsView model={{ ...model, rows }} businessUnit={selected} />;
+  // The month asked for, when this Ki has it; otherwise the last month there
+  // is anything to review, and failing that the first month of the year, which
+  // reports honestly that nothing has been keyed yet.
+  const period =
+    (month && model.months.includes(month) ? month : null) ??
+    latestReviewableMonth(rows, model.months) ??
+    model.months[0];
+  const index = model.months.indexOf(period);
+  const previousPeriod = index > 0 ? model.months[index - 1] : null;
+
+  return (
+    <InsightsView
+      model={{ ...model, rows }}
+      businessUnit={selected}
+      period={period}
+      previousPeriod={previousPeriod}
+      review={buildReview(rows, period, previousPeriod, model.months)}
+    />
+  );
 }

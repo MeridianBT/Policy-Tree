@@ -36,16 +36,28 @@ export function latestReportedMonth(cells: readonly SheetCell[]): SheetCell | nu
   return latest;
 }
 
+/** One named month's cell, or null when the sheet does not carry it. */
+export function monthCell(cells: readonly SheetCell[], period: string): SheetCell | null {
+  return cells.find((cell) => cell.kind === "MONTH" && cell.period === period) ?? null;
+}
+
 /**
- * Behind as of its own last reported month.
+ * Behind, in one cell.
  *
  * Achievement is already direction-aware - `lib/calc/achievement.ts` inverts
  * for a lower-is-better measure - so one comparison against 1 is correct for
- * cost items and volume items alike, with no special casing here.
+ * cost items and volume items alike, with no special casing here or anywhere
+ * that calls this. It is exported so that the month-end review, which asks the
+ * same question of a month it chooses rather than of the latest reported one,
+ * shares the definition instead of restating the comparison.
  */
-export function isBelowTarget(row: Pick<ControlItemRow, "cells">): boolean {
-  const cell = latestReportedMonth(row.cells);
+export function belowTargetIn(cell: SheetCell | null): boolean {
   if (!cell) return false;
   if (cell.achievement === null || cell.achievement === undefined) return false;
   return cell.achievement < 1;
+}
+
+/** Behind as of its own last reported month. */
+export function isBelowTarget(row: Pick<ControlItemRow, "cells">): boolean {
+  return belowTargetIn(latestReportedMonth(row.cells));
 }

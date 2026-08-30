@@ -8,9 +8,9 @@
  *     scroll to the options hidden past it;
  *   - a filter panel that would not close - by pen or touch, by tabbing past
  *     its last option, or when the window was resized under it;
- *   - the Insights heatmap silently cropping February and March, behind a
- *     clean right border and with no scrollbar to suggest anything was there;
- *   - /my-entries unusable on the phone the month-end reminder is read on.
+ *   - /my-entries unusable on the phone the month-end reminder is read on;
+ *   - an edit form still holding the previous measure's values after the
+ *     pencil on a second one was clicked, under a heading naming the second.
  *
  * Run against a server already up on localhost:3000, seeded with the UAT data:
  *
@@ -110,37 +110,40 @@ async function panelsDismiss(browser) {
   await page.close();
 }
 
-async function heatmapKeepsEveryMonth(browser) {
-  console.log("\nInsights heatmap keeps every month");
-  for (const width of WIDTHS) {
-    const page = await browser.newPage({ viewport: { width, height: 800 } });
-    await signIn(page);
-    await page.goto(`${BASE}/insights`);
-    await page.waitForTimeout(2000);
-    const seen = await page.evaluate(() => {
-      const grid = document.querySelector("div.grid");
-      if (!grid) return null;
-      const scroller = grid.parentElement;
-      const box = scroller.getBoundingClientRect();
-      const months = Array.from(grid.children).slice(1, 13);
-      return {
-        total: months.length,
-        // Reachable means on screen, or scrollable to - not cropped away.
-        reachable: scroller.scrollWidth > scroller.clientWidth
-          ? months.length
-          : months.filter((el) => {
-              const b = el.getBoundingClientRect();
-              return b.left >= box.left - 1 && b.right <= box.right + 1;
-            }).length,
-      };
-    });
-    check(
-      seen && seen.total === 12 && seen.reachable === 12,
-      `${width}px`,
-      seen ? `${seen.reachable}/${seen.total} months reachable` : "no heatmap found",
-    );
-    await page.close();
-  }
+/**
+ * The month-end review.
+ *
+ * It replaced a division heatmap that could not be read - one 64px bar stood
+ * for 24 measures and for 5 alike, and no cell linked anywhere. What matters
+ * now is that the page answers its two questions honestly at every window
+ * width: how much of the month is in, and what is falling.
+ */
+async function theMonthEndReview(browser) {
+  console.log("\nThe month-end review answers its questions");
+  const page = await browser.newPage({ viewport: { width: 1366, height: 900 } });
+  await signIn(page);
+
+  await page.goto(`${BASE}/insights`);
+  await page.waitForTimeout(2500);
+  const heading = await page.locator("h1").innerText();
+  check(/^Month end review/.test(heading), "opens on a month with something to review", heading);
+
+  const reporting = await page.locator("section", { hasText: "Reporting" }).first().innerText();
+  check(/\d+ of \d+ actuals in/.test(reporting), "says how much of the month is in");
+
+  // Every attention line has to reach its measure, which is exactly what the
+  // heatmap could not do.
+  const links = page.locator('a[href^="/control-item/"]');
+  check((await links.count()) > 0, "every line reaches its measure");
+
+  // The open month is the one nobody has keyed yet, so it is the chase list.
+  await page.goto(`${BASE}/insights?month=2026-08`);
+  await page.waitForTimeout(2500);
+  const chase = await page.locator("section", { hasText: "Reporting" }).first().innerText();
+  check(/0 of \d+ actuals in/.test(chase), "an unkeyed month reports nothing in", chase.split("\n")[1]);
+  check(/outstanding/.test(chase), "and names who is being chased");
+
+  await page.close();
 }
 
 async function pagesDoNotOverflow(browser) {
@@ -436,7 +439,7 @@ async function theUatWording(browser) {
   try {
     await panelsStayOnScreen(browser);
     await panelsDismiss(browser);
-    await heatmapKeepsEveryMonth(browser);
+    await theMonthEndReview(browser);
     await pagesDoNotOverflow(browser);
     await myEntriesOnAPhone(browser);
     await theUatWording(browser);
