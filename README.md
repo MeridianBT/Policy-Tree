@@ -111,6 +111,41 @@ applies no such skip: that is a decision rather than a sweep.
 
 Levels 1–3 form the single company page; Level 4 is the division drill-down.
 
+### What each level holds
+
+The tree alternates: a **Theme** is a heading and carries nothing measurable, an
+**Objective** is what Control Items hang from. That is the rule people trip on —
+a measure needs an Objective to sit under, at any level.
+
+```
+Ki 103KI
+└── Goal (L1)                    statement only — no measures, ever
+    └── Theme (L2)               heading
+        └── Objective (L2)       ← Control Items live here
+            ├── Control Item     measure · control item · targets · actuals
+            └── Theme (L3)       heading, the company breakdown continued
+                └── Objective (L3)  ← Control Items live here
+                    ├── Control Item
+                    └── Theme (L4)      a department branch, carrying an org unit
+                        └── Objective (L4)  ← Control Items live here
+                            └── Control Item
+```
+
+So Levels **2, 3 and 4 all carry measures**, with targets and actuals, and only
+Level 1 is description-only. The demo data is exactly that shape: 5 Goals with
+no measures at all, and 82 Control Items — 60 at Level 2, 7 at Level 3, 15 at
+Level 4 — each with a target on every forecast version and an actual for every
+closed month.
+
+A Level 4 branch is the one that differs in kind rather than depth: it hangs off
+a Level 2 or 3 Objective, it must carry an org unit, and it is the only part of
+the tree a division or department lead can extend on their own. Level 4 is as
+deep as the model goes.
+
+To add a measure, turn on **Edit structure** and use the **M+** on an Objective
+row. Theme and Goal rows do not offer it, because a measure filed against a
+heading would have no statement of intent to answer to.
+
 ## How it is put together
 
 ```
@@ -395,7 +430,7 @@ shared mailbox does not fill with hundreds of copies nobody reads.
 
 | Route | What it is |
 |---|---|
-| `/sheet` | The company sheet — Levels 1–3 by default, with a View toggle folding every Level 4 branch in under its Objective. Virtualised, with version selector, compare mode, four display densities, condensable quarter columns, three filters — Business unit, then Division, then Department — read outside-in, and a one-click **Below target** preset. Rows can be dragged into a new order among their own siblings, and month cells become keyable when a specific unlocked version is pinned ADMIN and OWNER (division/department leads) can edit the structure directly here |
+| `/sheet` | The company sheet — Levels 1–3 by default, with a View toggle folding every Level 4 branch in under its Objective. Virtualised, with version selector, compare mode, three display densities, condensable quarter columns, a single-quarter view, three filters — Business unit, then Division, then Department — read outside-in, and a one-click **Below target** preset. Rows can be dragged into a new order among their own siblings, and month cells become keyable when a specific unlocked version is pinned ADMIN and OWNER (division/department leads) can edit the structure directly here |
 | `/division/[code]` | The same Level 4 sheet, pre-scoped to one division and its departments — a narrower, single-division view of what "+ Departments" on the company sheet shows for everyone. Reached by URL; not linked from the nav, where it duplicated the sheet's own filters |
 | `/cascade` | A read-only, one-page alignment map from every Company Goal down to the Department work laddering into it — see below |
 | `/insights` | A read-only symbol-distribution heatmap, one Division per row, one month per column — see below |
@@ -503,6 +538,24 @@ purpose — being *named responsible* for a measure is enough on its own,
 whichever division it is filed under. A row somebody else keys shows its
 figure greyed with the reason in its tooltip rather than showing nothing,
 because "not yours" and "no target set" must not look the same.
+
+#### Looking at one quarter
+
+**Quarter** in the toolbar narrows the sheet to a single quarter: pick Q3 and
+the columns become Oct, Nov, Dec, Q3 and the Ki total. The other three
+quarters' columns are simply not drawn.
+
+The Ki total stays deliberately. A quarter read without the year it belongs to
+is the number people misjudge — 32.8% of an annual target in Q3 reads as a
+disaster until the year column reminds you three quarters of it are still
+outstanding.
+
+Nothing is recomputed and nothing is filtered: a hidden month still counts
+towards its quarter, its Ki total and its evaluation symbol, exactly as
+condensing a quarter never changed what the quarter figure meant. It composes
+with **Columns** too — Quarters plus a single quarter leaves that one quarter
+figure and the year. Export and the print view are unaffected; both always
+carry the whole year.
 
 #### Pasting a block of figures
 

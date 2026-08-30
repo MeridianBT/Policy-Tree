@@ -22,13 +22,26 @@ export interface SheetColumn {
 export interface ColumnOptions {
   /** Quarters whose month columns are hidden. */
   condensedQuarters?: Iterable<QuarterCode>;
+  /**
+   * Narrow the sheet to one quarter. The other three drop out entirely -
+   * months and quarter column alike - leaving that quarter beside the Ki
+   * total, which stays because a quarter read without the year it belongs to
+   * is the number people misjudge.
+   *
+   * Like condensing, this is a view concern only: the figures are derived
+   * from the monthly grain either way, so hiding a column changes what is
+   * shown and never what is computed. Nothing is filtered out of a roll-up.
+   */
+  onlyQuarter?: QuarterCode | null;
 }
 
 export function sheetColumns(kiStartYear: number, options?: ColumnOptions): SheetColumn[] {
   const condensed = new Set(options?.condensedQuarters ?? []);
+  const only = options?.onlyQuarter ?? null;
   const columns: SheetColumn[] = [];
 
   for (const quarter of QUARTERS) {
+    if (only && quarter !== only) continue;
     if (!condensed.has(quarter)) {
       for (const period of quarterMonths(kiStartYear, quarter)) {
         columns.push({ key: period, label: monthLabel(period), kind: "MONTH", quarter });

@@ -171,6 +171,7 @@ export function SheetGrid({
   compareVersionId,
   compareModel,
   condensedQuarters,
+  onlyQuarter,
   onToggleQuarter,
   editing,
   entry,
@@ -182,6 +183,8 @@ export function SheetGrid({
   compareModel?: SheetModel | null;
   /** Quarters whose month columns are folded away. */
   condensedQuarters: QuarterCode[];
+  /** One quarter to show on its own, or null for the whole year. */
+  onlyQuarter: QuarterCode | null;
   onToggleQuarter: (quarter: QuarterCode) => void;
   /** Structure-editing hooks, absent when not in edit mode. */
   editing?: EditingHandlers;
@@ -195,8 +198,8 @@ export function SheetGrid({
   const [dropTarget, setDropTarget] = useState<DropTarget | null>(null);
 
   const columns = useMemo(
-    () => sheetColumns(model.kiStartYear, { condensedQuarters }),
-    [model.kiStartYear, condensedQuarters],
+    () => sheetColumns(model.kiStartYear, { condensedQuarters, onlyQuarter }),
+    [model.kiStartYear, condensedQuarters, onlyQuarter],
   );
   const gridWidth = useMemo(
     () => columns.reduce((total, column) => total + columnWidth(column.kind), 0),

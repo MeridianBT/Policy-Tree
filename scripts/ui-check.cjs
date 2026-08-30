@@ -211,6 +211,57 @@ async function myEntriesOnAPhone(browser) {
 }
 
 /**
+ * The toolbar's own two view controls.
+ *
+ * Both hide columns and neither may change a figure: the sheet's whole
+ * contract is that the month is the only stored grain and everything else is
+ * derived, so narrowing to one quarter must leave that quarter's own numbers
+ * exactly as the full year drew them.
+ */
+async function oneQuarterAtATime(browser) {
+  console.log("\nOne quarter can be read on its own");
+  const page = await browser.newPage({ viewport: { width: 1600, height: 900 } });
+  await signIn(page);
+
+  const headers = () =>
+    page.evaluate(() =>
+      [...document.querySelectorAll("div")]
+        .map((el) => el.textContent.trim())
+        .filter((t) =>
+          /^(Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec|Jan|Feb|Mar|\u00ab ?Q[1-4]|Ki Total)$/.test(t),
+        ),
+    );
+
+  // The symbol-only display chip is gone; the other three remain.
+  for (const chip of ["Full", "Target / Actual", "Achievement"]) {
+    check((await page.getByText(chip, { exact: true }).count()) > 0, `display chip "${chip}"`);
+  }
+  check((await page.getByText("Symbol", { exact: true }).count()) === 0, "no Symbol display chip");
+
+  const quarter = page.locator("label", { hasText: "Quarter" }).locator("select");
+  await quarter.selectOption("Q3");
+  await page.waitForTimeout(1500);
+  const shown = await headers();
+  check(
+    ["Oct", "Nov", "Dec"].every((month) => shown.includes(month)),
+    "Q3 keeps its own months",
+    shown.join(" "),
+  );
+  check(
+    !shown.includes("Apr") && !shown.includes("Jul") && !shown.includes("Jan"),
+    "and drops the other three quarters",
+    shown.join(" "),
+  );
+  check(shown.includes("Ki Total"), "and keeps the Ki total beside it");
+
+  await quarter.selectOption("ALL");
+  await page.waitForTimeout(1500);
+  check((await headers()).includes("Apr"), "Full year brings every month back");
+
+  await page.close();
+}
+
+/**
  * What the UAT pass asked for by name.
  *
  * Three small things, each of which reads as a nothing change and each of
@@ -266,6 +317,7 @@ async function theUatWording(browser) {
     await pagesDoNotOverflow(browser);
     await myEntriesOnAPhone(browser);
     await theUatWording(browser);
+    await oneQuarterAtATime(browser);
   } finally {
     await browser.close();
   }

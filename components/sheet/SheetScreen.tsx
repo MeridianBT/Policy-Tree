@@ -142,6 +142,13 @@ export function SheetScreen({
   // Quarters whose month columns are folded away. Purely a view state: the
   // quarter figure is derived from the months either way.
   const [condensedQuarters, setCondensedQuarters] = useState<QuarterCode[]>([]);
+  /**
+   * One quarter on its own, or the whole year. Narrowing hides the other three
+   * quarters' columns and nothing else: no figure is recomputed, and the Ki
+   * total stays beside the quarter, because a quarter read without the year it
+   * belongs to is the number people misjudge.
+   */
+  const [onlyQuarter, setOnlyQuarter] = useState<QuarterCode | null>(null);
 
   const allCondensed = condensedQuarters.length === ALL_QUARTERS.length;
 
@@ -606,6 +613,16 @@ export function SheetScreen({
           ]}
         />
 
+        <Select
+          label="Quarter"
+          value={onlyQuarter ?? "ALL"}
+          onChange={(value) => setOnlyQuarter(value === "ALL" ? null : (value as QuarterCode))}
+          options={[
+            { value: "ALL", label: "Full year" },
+            ...ALL_QUARTERS.map((quarter) => ({ value: quarter, label: quarter })),
+          ]}
+        />
+
         <span className="mx-1 h-4 w-px bg-rule" aria-hidden />
 
         {model.businessUnits.length > 1 && (
@@ -951,6 +968,7 @@ export function SheetScreen({
         compareModel={compareModel}
         compareVersionId={compareVersionId || null}
         condensedQuarters={condensedQuarters}
+        onlyQuarter={onlyQuarter}
         onToggleQuarter={toggleQuarter}
         editing={editing}
         entry={entry}

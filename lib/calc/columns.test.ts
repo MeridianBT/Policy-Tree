@@ -72,6 +72,34 @@ describe("sheet columns", () => {
     }
   });
 
+  it("narrows to one quarter, keeping its months and the Ki total", () => {
+    const columns = sheetColumns(2026, { onlyQuarter: "Q3" });
+    expect(columns.map((c) => c.label)).toEqual(["Oct", "Nov", "Dec", "Q3", "Ki Total"]);
+    // The Ki total stays on purpose: a quarter read without the year it
+    // belongs to is the number people misjudge.
+    expect(columns.at(-1)!.kind).toBe("KI");
+  });
+
+  it("keeps month keys pointing at the same periods when narrowed", () => {
+    // The whole risk of hiding columns is a figure landing in the wrong one.
+    const narrowed = sheetColumns(2026, { onlyQuarter: "Q4" });
+    const full = sheetColumns(2026);
+    for (const column of narrowed) {
+      expect(column.key).toBe(full.find((c) => c.label === column.label)!.key);
+    }
+    expect(narrowed.find((c) => c.label === "Jan")!.key).toBe("2027-01");
+  });
+
+  it("narrowing and condensing compose to one quarter figure", () => {
+    const columns = sheetColumns(2026, { onlyQuarter: "Q2", condensedQuarters: ALL_QUARTERS });
+    expect(columns.map((c) => c.label)).toEqual(["Q2", "Ki Total"]);
+    expect(columns[0].condensed).toBe(true);
+  });
+
+  it("shows the whole year when no quarter is named", () => {
+    expect(sheetColumns(2026, { onlyQuarter: null })).toEqual(sheetColumns(2026));
+  });
+
   it("tints a condensed quarter a step darker than an expanded one", () => {
     expect(columnClass("QUARTER", false)).toContain("bg-paper-band");
     expect(columnClass("QUARTER", true)).toContain("bg-paper-band-strong");

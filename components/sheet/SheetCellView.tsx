@@ -6,16 +6,21 @@
  */
 
 import type { SheetCell } from "@/lib/calc/row";
-import { EM_DASH, formatAchievement, formatValue } from "@/lib/calc/format";
+import { formatAchievement, formatValue } from "@/lib/calc/format";
 import { EvaluationSymbol } from "./EvaluationSymbol";
 
-export type DisplayMode = "FULL" | "TARGET_ACTUAL" | "ACHIEVEMENT" | "SYMBOL";
+/*
+  Three ways to read a cell, not four. A symbol-only mode was offered until a
+  UAT pass asked for the width back: the symbol is already drawn beside the
+  figure in Full and beside the percentage in Achievement, so its own chip
+  bought a fourth way to see something two of the other three already show.
+*/
+export type DisplayMode = "FULL" | "TARGET_ACTUAL" | "ACHIEVEMENT";
 
 export const DISPLAY_MODES: Array<{ value: DisplayMode; label: string; hint: string }> = [
   { value: "FULL", label: "Full", hint: "Target, actual, achievement and symbol" },
   { value: "TARGET_ACTUAL", label: "Target / Actual", hint: "The two numbers only" },
   { value: "ACHIEVEMENT", label: "Achievement", hint: "Percentage against target, with symbol" },
-  { value: "SYMBOL", label: "Symbol", hint: "Evaluation symbol only" },
 ];
 
 /**
@@ -51,13 +56,6 @@ export function SheetCellView({
   const actual = formatValue(cell.actual, decimalPlaces);
 
   switch (mode) {
-    case "SYMBOL":
-      return cell.symbol ? (
-        <EvaluationSymbol symbol={cell.symbol} label={cell.symbolLabel} color={cell.symbolColor} size={15} />
-      ) : (
-        <span className="num text-ink-faint">{EM_DASH}</span>
-      );
-
     case "ACHIEVEMENT":
       return (
         <span className="flex items-baseline justify-end gap-1">
