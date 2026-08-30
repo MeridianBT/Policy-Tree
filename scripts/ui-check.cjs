@@ -211,6 +211,61 @@ async function myEntriesOnAPhone(browser) {
 }
 
 /**
+ * A department chip says only what the Division has not.
+ *
+ * The two controls sit side by side, so "AUTO / AUTO-PRD — Product" under a
+ * selector already reading AUTO named the division twice. Worth a browser
+ * check rather than only a unit test, because what makes it right is the two
+ * controls being read together.
+ */
+async function departmentChipsDoNotRepeatTheDivision(browser) {
+  console.log("\nDepartment chips do not repeat the division");
+  const page = await browser.newPage({ viewport: { width: 1600, height: 950 } });
+  await signIn(page);
+  await page.getByText("+ Departments", { exact: true }).first().click();
+  await page.waitForTimeout(4000);
+
+  const chips = async () => {
+    const triggers = page.locator('button[aria-haspopup="listbox"]');
+    const texts = await triggers.allInnerTexts();
+    await triggers.nth(texts.findIndex((t) => t.includes("Department"))).click();
+    await page.waitForTimeout(700);
+    const found = (await page.locator('[role="option"]').allInnerTexts()).map((o) =>
+      o.replace(/\s+/g, " ").trim(),
+    );
+    await page.keyboard.press("Escape");
+    await page.waitForTimeout(400);
+    return found;
+  };
+
+  const all = await chips();
+  check(all.length > 0, "the Department filter has options", `${all.length} found`);
+  check(
+    all.every((chip) => !chip.includes(" / ")),
+    "no chip prints its division as a prefix",
+    all.filter((chip) => chip.includes(" / ")).join(", "),
+  );
+  check(
+    all.includes("AUTO-PRD — Product"),
+    "a department keeps its whole code across divisions",
+    all.slice(0, 3).join(" | "),
+  );
+
+  const division = page.locator("label", { hasText: "Division" }).locator("select");
+  await division.selectOption("AUTO");
+  await page.waitForTimeout(3000);
+  const scoped = await chips();
+  check(scoped.includes("PRD — Product"), "and drops it once AUTO is chosen", scoped.join(" | "));
+  check(
+    scoped.every((chip) => chip === "AUTO — Automotive" || !chip.startsWith("AUTO-")),
+    "with nothing left carrying the prefix",
+    scoped.join(" | "),
+  );
+
+  await page.close();
+}
+
+/**
  * The edit form follows the pencil.
  *
  * Found in UAT: with one measure's form open, clicking the pencil on another
@@ -387,6 +442,7 @@ async function theUatWording(browser) {
     await theUatWording(browser);
     await oneQuarterAtATime(browser);
     await theFormFollowsThePencil(browser);
+    await departmentChipsDoNotRepeatTheDivision(browser);
   } finally {
     await browser.close();
   }

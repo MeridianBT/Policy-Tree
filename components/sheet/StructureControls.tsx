@@ -16,6 +16,7 @@
 import { useMemo, useState, useTransition } from "react";
 import { Check, GripVertical, Pencil, Plus, Trash2, X } from "lucide-react";
 import type { DeletionImpact, StructureResult } from "@/lib/structure/actions";
+import { shortDicCode } from "./dic-label";
 
 export interface DicOption {
   id: string;
@@ -244,7 +245,7 @@ export function InlineAddDepartment({
         >
           {dics.map((dic) => (
             <option key={dic.id} value={dic.id}>
-              {dic.type === "DEPARTMENT" ? `${dic.parentCode} — ${dic.code}` : dic.code} · {dic.name}
+              {dic.code} · {dic.name}
             </option>
           ))}
         </select>
@@ -513,7 +514,9 @@ export function InlineMeasureForm({
           >
             {divisionIsFilable && <option value="">— division level —</option>}
             {departments.map((department) => (
-              <option key={department.id} value={department.id}>{department.code}</option>
+              <option key={department.id} value={department.id}>
+                {shortDicCode(department.code, department.parentCode)}
+              </option>
             ))}
           </select>
         </Labelled>

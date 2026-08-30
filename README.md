@@ -759,7 +759,19 @@ directly beneath the Level 1-3 Objective it ladders into — no separate page,
 no second fetch to reconcile. Once departments are on the sheet, a **Division**
 selector narrows the **Department** filter to one division and everything beneath it in
 one click ("Departments in a Division"), and picking a specific department
-chip narrows it to just that ("just the Department"). The per-division
+chip narrows it to just that ("just the Department").
+
+Because the two controls sit side by side, the department chips carry only what
+the Division has not already said. With no division chosen they read
+`AUTO-PRD — Product`; choose AUTO and the same chip reads `PRD — Product`. The
+code is never dropped, only shortened, and only inside its own division:
+department names repeat across divisions — Network Development is both AUTO-ND
+and PSP-ND — so a list spanning divisions needs the codes to tell them apart.
+Shortening is also checked rather than assumed, since Admin → Departments takes
+any code an admin types: a code that does not begin with its division's is left
+whole (`components/sheet/dic-label.ts`).
+
+The per-division
 `/division/[code]` page still exists for a narrower, single-division view with
 the same editing rights, reachable by URL. It is deliberately **not** in the
 top nav: a Divisions menu there did what the sheet's own Business unit,

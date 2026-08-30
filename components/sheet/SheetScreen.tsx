@@ -52,6 +52,7 @@ import {
 } from "@/lib/structure/actions";
 import { DISPLAY_MODES, type DisplayMode } from "./SheetCellView";
 import { ALL_QUARTERS } from "./columns";
+import { dicOptionLabel } from "./dic-label";
 import type { QuarterCode } from "@/lib/domain/period";
 
 export const LATEST_FORECAST = "LATEST";
@@ -642,7 +643,7 @@ export function SheetScreen({
             value={divisionScope}
             options={[
               { value: "", label: "All divisions" },
-              ...divisionOptions.map((dic) => ({ value: dic.code, label: `${dic.code} — ${dic.name}` })),
+              ...divisionOptions.map((dic) => ({ value: dic.code, label: dicOptionLabel(dic, null) })),
             ]}
             onChange={(value) => {
               setDivisionScope(value);
@@ -657,7 +658,10 @@ export function SheetScreen({
           selected={filters.dics}
           options={scopedDicOptions.map((dic) => ({
             value: dic.code,
-            label: dic.type === "DEPARTMENT" ? `${dic.parentCode} / ${dic.code} — ${dic.name}` : `${dic.code} — ${dic.name}`,
+            // Once a Division is chosen beside it, a department drops the
+            // division from its code: the selector next door is already
+            // saying it. See components/sheet/dic-label.ts.
+            label: dicOptionLabel(dic, divisionScope || null),
           }))}
           onChange={(dics) => setFilters((previous) => ({ ...previous, dics }))}
         />
