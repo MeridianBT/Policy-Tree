@@ -1,11 +1,21 @@
 import { requireRole } from "@/lib/auth/session";
 import { prisma } from "@/lib/db";
 import { AdminScreen } from "./AdminScreen";
+import { isAdminSection } from "./sections";
 
 export const dynamic = "force-dynamic";
 
-export default async function AdminPage() {
+export default async function AdminPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ section?: string }>;
+}) {
   await requireRole("SUPER_ADMIN");
+  // The section lives in the URL so it can be linked to and survives a
+  // refresh. An unknown one falls back to the first rather than erroring: a
+  // stale bookmark should land somewhere useful, not on a page about itself.
+  const { section } = await searchParams;
+  const active = isAdminSection(section) ? section : "year";
 
   const [kis, orgUnits, users, bands, businessUnitRows] = await Promise.all([
     prisma.ki.findMany({
@@ -35,6 +45,7 @@ export default async function AdminPage() {
 
   return (
     <AdminScreen
+      section={active}
       kis={kis.map((ki) => ({
         id: ki.id,
         code: ki.code,

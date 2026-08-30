@@ -337,6 +337,51 @@ async function theFormFollowsThePencil(browser) {
 }
 
 /**
+ * Admin in sections.
+ *
+ * Eight panels on one page had become two screens of masonry with no grouping,
+ * so they are grouped by the thing being administered and shown one group at a
+ * time. What has to hold is that the grouping is real - each section shows its
+ * own panels and nobody else's - and that the section is in the URL, so it can
+ * be linked to and survives the refresh that follows every action.
+ */
+async function adminIsInSections(browser) {
+  console.log("\nAdmin is grouped into sections");
+  const page = await browser.newPage({ viewport: { width: 1400, height: 900 } });
+  await signIn(page);
+
+  const expected = {
+    year: ["Ki and plan versions", "Copy structure from a previous Ki"],
+    structure: ["Structure builder", "Upload a workbook"],
+    organisation: ["Divisions and departments", "Business units"],
+    people: ["Users"],
+    evaluation: ["Evaluation scale"],
+  };
+
+  for (const [section, panels] of Object.entries(expected)) {
+    // Straight to the URL, which is the property being checked.
+    await page.goto(`${BASE}/admin?section=${section}`);
+    await page.waitForTimeout(2000);
+    const shown = await page.locator("section h3").allInnerTexts();
+    check(
+      shown.length === panels.length && panels.every((title) => shown.includes(title)),
+      `${section} shows its own panels and nobody else's`,
+      shown.join(" | "),
+    );
+  }
+
+  // An unknown section lands somewhere useful rather than erroring.
+  await page.goto(`${BASE}/admin?section=nonsense`);
+  await page.waitForTimeout(2000);
+  check(
+    (await page.locator("section h3").allInnerTexts()).includes("Ki and plan versions"),
+    "an unknown section falls back to the first",
+  );
+
+  await page.close();
+}
+
+/**
  * The workbook upload's preview.
  *
  * The feature's whole safety story is that nothing is written until a second
@@ -357,10 +402,12 @@ async function theUploadPreviewWritesNothing(browser) {
   const file = "/tmp/ui-check-round-trip.xlsx";
   await download.saveAs(file);
 
-  await page.goto(`${BASE}/admin`);
+  // Admin is grouped into sections now, and the upload lives with the other
+  // way of putting rows into the plan.
+  await page.goto(`${BASE}/admin?section=structure`);
   await page.waitForTimeout(2500);
   const panel = page.locator("section", { hasText: "Upload a workbook" });
-  check((await panel.count()) === 1, "the panel is on /admin");
+  check((await panel.count()) === 1, "the panel is in Admin's Structure section");
 
   await panel.locator('input[type="file"]').setInputFiles(file);
   await panel.getByRole("button", { name: "Preview" }).click();
@@ -549,6 +596,7 @@ async function theUatWording(browser) {
     await panelsDismiss(browser);
     await theMonthEndReview(browser);
     await severalControlItemsUnderOneMeasure(browser);
+    await adminIsInSections(browser);
     await theUploadPreviewWritesNothing(browser);
     await pagesDoNotOverflow(browser);
     await myEntriesOnAPhone(browser);

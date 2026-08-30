@@ -486,7 +486,7 @@ shared mailbox does not fill with hundreds of copies nobody reads.
 | `/control-item/[id]` | Trend chart with every version overlaid, stored cells including formulas as typed, and the full audit trail |
 | `/print/company` | A3 landscape, print-only |
 | `/print/division/[code]` | The same, pre-scoped to one division |
-| `/admin` | Ki setup and naming, version locking, emptying a year, structure builder, copy-from-previous-Ki, **workbook upload**, evaluation scale, users, departments |
+| `/admin` | Five sections, one at a time and addressable (`?section=people`): **Year** (Ki setup, version locking, emptying a year, copy-from-previous-Ki), **Structure** (structure builder, workbook upload), **Organisation** (divisions, departments, business units), **People**, **Evaluation** (the band scale) |
 | `/symbols` | Symbol rendering check for a platform you are deploying to |
 | `/api/export` | Excel download of the current sheet (`?division=CODE` for a Level 4 sheet, `?version=ID` to pin the target basis) |
 | `/api/reminders` | Month-end reminder trigger, called by a scheduler with a shared secret — see below |
@@ -974,6 +974,32 @@ as pre-formatted strings; an empty cell stays empty rather than becoming a
 zero, matching the em-dash rule on screen. `lib/export/workbook.ts` builds the
 workbook from the same `SheetModel` the grid renders — there is no second
 formatting path to drift from the first.
+
+### Admin in five sections
+
+Eight panels on one page had become two screens of masonry, and the two-column
+layout made the reading order zig-zag between groups with nothing to do with
+each other: the evaluation scale, touched twice a year, sat beside the user
+list, touched weekly, at exactly the same weight.
+
+So `/admin` is grouped by **the thing being administered** — Year, Structure,
+Organisation, People, Evaluation — and shows one group at a time. Each name is
+a noun somebody already uses, and the group's own line says what is in it, so
+the rail answers "where would I find…" before anything is clicked.
+
+Which section is in the URL rather than in component state, the same way the
+sheet carries its columns and the review its month: `/admin?section=people` can
+be sent to somebody, a refresh lands where they were, and the `router.refresh()`
+that follows every action keeps the section it was performed in. An unknown
+section falls back to the first rather than erroring — a stale bookmark should
+land somewhere useful, not on a page about the bookmark.
+
+Three smaller things follow from the same reading. The content column is capped
+rather than full width, because a form row stretched across 1,200px puts a
+label and its control at opposite ends of the screen. **Empty year** is set
+apart from **Make current** by a rule instead of sitting flush against it —
+adjacency is how the wrong button gets clicked. And the result banner is sticky,
+because the button that produced it can be a screen and a half down a section.
 
 ### Uploading a workbook
 
