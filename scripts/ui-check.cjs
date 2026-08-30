@@ -211,6 +211,74 @@ async function myEntriesOnAPhone(browser) {
 }
 
 /**
+ * The edit form follows the pencil.
+ *
+ * Found in UAT: with one measure's form open, clicking the pencil on another
+ * left every field holding the first measure's values while the heading above
+ * them named the second. The form seeds its fields from props in useState
+ * initialisers, which run once per mount, so the fix is a key - and the check
+ * is worth keeping because nothing about the screen looks wrong when it
+ * breaks. A save in that state would write one measure's values onto another.
+ */
+async function theFormFollowsThePencil(browser) {
+  console.log("\nThe edit form follows the pencil");
+  const page = await browser.newPage({ viewport: { width: 1600, height: 950 } });
+  await signIn(page);
+  await page.locator('button[title="Add, rename and remove rows directly on the sheet"]').click();
+  await page.waitForTimeout(1500);
+
+  // What the open form says it is editing, and what its fields actually hold.
+  const openForm = () =>
+    page.evaluate(() => {
+      const box = [...document.querySelectorAll("div")]
+        .filter((d) => d.className.includes("bg-paper-sunken") && d.className.includes("flex-wrap"))
+        .pop();
+      if (!box) return null;
+      const heading = box.parentElement?.querySelector("strong")?.textContent?.trim() ?? null;
+      const field = (name) => {
+        const label = [...box.querySelectorAll("label")].find(
+          (l) => l.childNodes[0].textContent.trim() === name,
+        );
+        if (!label) return null;
+        const input = label.querySelector("input");
+        if (input) return input.value;
+        const select = label.querySelector("select");
+        return select ? select.options[select.selectedIndex]?.text ?? null : null;
+      };
+      return { heading, measure: field("Measure"), division: field("Division") };
+    });
+
+  const pencils = page.locator('button[title="Edit measure"]');
+  await pencils.nth(0).click();
+  await page.waitForTimeout(1200);
+  const first = await openForm();
+  check(Boolean(first && first.measure), "the first measure opens with its own name", first && first.measure);
+
+  // The form stays open; a second pencil is clicked from underneath it.
+  await pencils.nth(1).click();
+  await page.waitForTimeout(1200);
+  const second = await openForm();
+
+  check(
+    Boolean(second) && second.measure !== first.measure,
+    "a second pencil re-seeds the fields",
+    second ? `${first.measure} -> ${second.measure}` : "no form",
+  );
+  check(
+    Boolean(second) && second.measure === second.heading,
+    "and the fields agree with the heading",
+    second ? `heading "${second.heading}" vs field "${second.measure}"` : "no form",
+  );
+  check(
+    Boolean(second) && second.division !== null,
+    "with its own filing beside them",
+    second ? `division ${second.division}` : "no form",
+  );
+
+  await page.close();
+}
+
+/**
  * The toolbar's own two view controls.
  *
  * Both hide columns and neither may change a figure: the sheet's whole
@@ -318,6 +386,7 @@ async function theUatWording(browser) {
     await myEntriesOnAPhone(browser);
     await theUatWording(browser);
     await oneQuarterAtATime(browser);
+    await theFormFollowsThePencil(browser);
   } finally {
     await browser.close();
   }

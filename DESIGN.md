@@ -85,7 +85,7 @@ mode. The grid is tight on purpose.
   Months/Quarters toggle drives all four at once and shows *neither* option
   selected when quarters have been folded individually — a partial state the
   control should admit to rather than round off.
-- **Structure editing** — "Edit structure" is the one toggle that changes what
+- **Structure editing** — **Edit**, the pencil, is the one toggle that changes what
   the row-label column can do, not what it shows: the same statement text, now
   with a `+`, a pencil and a trash icon at its trailing edge. Nothing about the
   seventeen data columns changes, so switching modes never disturbs a reader's

@@ -73,7 +73,7 @@ export function DivisionSheet({
             <a href="/sheet" className="underline hover:text-ink">
               company sheet
             </a>
-            , switch its view to &ldquo;+ Departments&rdquo;, turn on &ldquo;Edit structure&rdquo;, and
+            , switch its view to &ldquo;+ Departments&rdquo;, turn on &ldquo;Edit&rdquo; (the pencil), and
             use the <span className="num text-[10px]">L4+</span> button on the Objective this
             division&apos;s work ladders into.
           </p>

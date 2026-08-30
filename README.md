@@ -142,8 +142,8 @@ a Level 2 or 3 Objective, it must carry an org unit, and it is the only part of
 the tree a division or department lead can extend on their own. Level 4 is as
 deep as the model goes.
 
-To add a measure, turn on **Edit structure** and use the **M+** on an Objective
-row. Theme and Goal rows do not offer it, because a measure filed against a
+To add a measure, turn on **Edit** (the pencil in the toolbar) and use the
+**M+** on an Objective row. Theme and Goal rows do not offer it, because a measure filed against a
 heading would have no statement of intent to answer to.
 
 ## How it is put together
@@ -601,7 +601,7 @@ different times, against different versions.
 ### Editing the structure from the sheet
 
 An ADMIN can add, rename and remove Goals, Themes, Objectives and Control Items
-directly on the company sheet — "Edit structure" in the toolbar reveals a
+directly on the company sheet — **Edit**, the pencil in the toolbar, reveals a
 `+` / rename / delete on every row, without leaving the sheet or opening the
 admin structure builder. Nothing asks for a level or a kind for a plain
 continuation: the server derives both from the parent (a Goal takes a Theme, a

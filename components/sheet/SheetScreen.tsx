@@ -11,7 +11,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { Download, Printer } from "lucide-react";
+import { Download, Pencil, Printer } from "lucide-react";
 import type { SheetModel } from "@/lib/sheet/types";
 import { Button, MultiSelect, Segmented, Select } from "@/components/ui/primitives";
 import {
@@ -652,6 +652,16 @@ export function SheetScreen({
             }}
           />
         )}
+        <MultiSelect
+          label="Department"
+          selected={filters.dics}
+          options={scopedDicOptions.map((dic) => ({
+            value: dic.code,
+            label: dic.type === "DEPARTMENT" ? `${dic.parentCode} / ${dic.code} — ${dic.name}` : `${dic.code} — ${dic.name}`,
+          }))}
+          onChange={(dics) => setFilters((previous) => ({ ...previous, dics }))}
+        />
+
         {/* A preset, not a fourth picker: one click for the question people
             actually arrive with. It filters through matchRows with the rest,
             so "Clear filters" clears it too. */}
@@ -664,16 +674,6 @@ export function SheetScreen({
         >
           Below target
         </Button>
-
-        <MultiSelect
-          label="Department"
-          selected={filters.dics}
-          options={scopedDicOptions.map((dic) => ({
-            value: dic.code,
-            label: dic.type === "DEPARTMENT" ? `${dic.parentCode} / ${dic.code} — ${dic.name}` : `${dic.code} — ${dic.name}`,
-          }))}
-          onChange={(dics) => setFilters((previous) => ({ ...previous, dics }))}
-        />
 
         {canEnterFiguresHere && (
           <>
@@ -706,7 +706,13 @@ export function SheetScreen({
               }}
               title="Add, rename and remove rows directly on the sheet"
             >
-              {editMode ? "Done editing" : "Edit structure"}
+              {/* One word and a pencil. What the toggle actually does lives in
+                  the tooltip now, which is where a name this short has to
+                  put it. */}
+              <span className="flex items-center gap-1">
+                <Pencil size={11} />
+                {editMode ? "Done" : "Edit"}
+              </span>
             </Button>
             {editMode && companyWide && (
               <Button
@@ -799,6 +805,7 @@ export function SheetScreen({
             Adding a {adding.label} under <strong>{adding.under}</strong>
           </p>
           <InlineAdd
+            key={adding.parentId ?? "root"}
             label={adding.label}
             indent={12}
             onCommit={(statement) =>
@@ -818,6 +825,7 @@ export function SheetScreen({
             Adding an objective under <strong>{adding.under}</strong>
           </p>
           <InlineAdd
+            key={adding.parentThemeId}
             label="objective"
             indent={12}
             onCommit={(statement) =>
@@ -845,6 +853,7 @@ export function SheetScreen({
             </p>
           ) : (
             <InlineAddDepartment
+              key={adding.parentObjectiveId}
               indent={12}
               dics={formDics}
               pending={saving}
@@ -876,11 +885,19 @@ export function SheetScreen({
           {/* Same scoping as the add form: a division lead is offered only the
               org units they may file to, fetched server-side rather than
               filtered on screen. The measure's current department is listed
-              regardless, so an edit cannot silently re-file it. */}
+              regardless, so an edit cannot silently re-file it.
+
+              The form is keyed by what is being edited. Every field in it is
+              seeded from `initial` in a useState initialiser, which runs once
+              per mount - so without a key, clicking the pencil on a second
+              measure while the first is open reuses the instance and leaves
+              the first measure's values in the boxes, under a heading naming
+              the second. */}
           {formDics === null ? (
             <p className="px-3 py-2 text-[11px] text-ink-faint">Loading divisions…</p>
           ) : (
           <InlineMeasureForm
+            key={adding.row.id}
             indent={12}
             level={adding.row.level}
             dics={formDics}
@@ -928,6 +945,7 @@ export function SheetScreen({
             </p>
           ) : (
           <InlineMeasureForm
+            key={adding.parentId}
             indent={12}
             /* A Control Item takes the level of the Objective it hangs
                under, which is the same number the server checks when it
