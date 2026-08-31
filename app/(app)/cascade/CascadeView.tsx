@@ -19,7 +19,7 @@ import { EvaluationSymbol } from "@/components/sheet/EvaluationSymbol";
 import { buildCascadeTree, groupOrdinalPrefix, hasDepartmentWork, indentPx, type CascadeNode } from "@/components/sheet/outline";
 import { RichText } from "@/components/ui/RichText";
 import { quarterFigures, type QuarterFigure } from "@/components/sheet/quarter-figures";
-import type { ControlItemRow, SheetModel, SheetRowModel } from "@/lib/sheet/types";
+import { rowKey, type ControlItemRow, type SheetModel, type SheetRowModel } from "@/lib/sheet/types";
 import { formatAchievement, formatValue } from "@/lib/calc/format";
 import { QUARTERS } from "@/lib/domain/period";
 
@@ -62,7 +62,7 @@ export function CascadeView({ model }: { model: SheetModel }) {
 
         <div className="divide-y divide-rule">
           {roots.map((root) => (
-            <div key={root.row.id} className="py-4">
+            <div key={rowKey(root.row)} className="py-4">
               <Branch
                 node={root}
                 parentRow={null}
@@ -104,7 +104,7 @@ function Branch({
       {showGap && <GapLine />}
       {node.children.map((child) => (
         <Branch
-          key={child.row.id}
+          key={rowKey(child.row)}
           node={child}
           parentRow={node.row}
           dicsById={dicsById}

@@ -7,7 +7,7 @@
  * quarterly review reads from.
  */
 
-import type { SheetModel, ControlItemRow, GroupRow } from "@/lib/sheet/types";
+import { rowKey, type SheetModel, type ControlItemRow, type GroupRow } from "@/lib/sheet/types";
 import { ALL_QUARTERS, sheetColumns } from "@/components/sheet/columns";
 import { groupOrdinalPrefix, indentSteps } from "@/components/sheet/outline";
 import { RichText } from "@/components/ui/RichText";
@@ -93,7 +93,7 @@ export function PrintSheet({
               const group = row as GroupRow;
               return (
                 <tr
-                  key={group.id}
+                  key={rowKey(group)}
                   className={
                     group.kind === "GOAL"
                       ? "goal-row"
@@ -117,7 +117,7 @@ export function PrintSheet({
             const item = row as ControlItemRow;
             const cellByKey = new Map(item.cells.map((cell) => [cell.key, cell]));
             return (
-              <tr key={item.id}>
+              <tr key={rowKey(item)}>
                 <td style={{ paddingLeft: `${1 + indentSteps(item) * 3.5}mm` }}>
                   {/* Named once per Objective, as on screen. */}
                   {item.firstOfObjective ? <RichText text={item.name} /> : ""}

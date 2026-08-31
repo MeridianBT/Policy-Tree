@@ -11,7 +11,7 @@
  * level lines every Level 2 up on one vertical, every Level 3 on the next.
  */
 
-import type { SheetRowModel } from "@/lib/sheet/types";
+import { rowKey, type SheetRowModel } from "@/lib/sheet/types";
 
 /** Indent width for one outline step. */
 export const INDENT_STEP_PX = 14;
@@ -83,14 +83,23 @@ export interface CascadeNode {
 }
 
 export function buildCascadeTree(rows: readonly SheetRowModel[]): CascadeNode[] {
-  const byId = new Map<string, CascadeNode>();
-  for (const row of rows) byId.set(row.id, { row, children: [] });
+  // Two maps, because a row's id is not unique across kinds - see `rowKey`.
+  // Every row gets a node of its own, and only a group row may be a parent:
+  // a `path` entry names a Node, and the row standing for that Node is its
+  // heading, never a Control Item that happens to share the id.
+  const byKey = new Map<string, CascadeNode>();
+  const byNodeId = new Map<string, CascadeNode>();
+  for (const row of rows) {
+    const node: CascadeNode = { row, children: [] };
+    byKey.set(rowKey(row), node);
+    if (row.kind !== "CONTROL_ITEM") byNodeId.set(row.id, node);
+  }
 
   const roots: CascadeNode[] = [];
   for (const row of rows) {
-    const node = byId.get(row.id)!;
+    const node = byKey.get(rowKey(row))!;
     const parentId = row.path[row.path.length - 1];
-    const parent = parentId ? byId.get(parentId) : undefined;
+    const parent = parentId ? byNodeId.get(parentId) : undefined;
     if (parent) parent.children.push(node);
     else roots.push(node);
   }

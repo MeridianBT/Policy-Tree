@@ -432,7 +432,10 @@ export function SheetScreen({
   }, [currentUser, companyWide, scopedDics, users, setResult]);
 
   const labelFor = (id: string) => {
-    const row = model.rows.find((candidate) => candidate.id === id);
+    // A Node id, so the heading for it wins over a Control Item sharing the id
+    // (see `rowKey`); an Objective rendering inline has only the item row.
+    const rows = model.rows.filter((candidate) => candidate.id === id);
+    const row = rows.find((candidate) => candidate.kind !== "CONTROL_ITEM") ?? rows[0];
     if (!row) return "";
     return row.kind === "CONTROL_ITEM" ? row.name : row.statement;
   };

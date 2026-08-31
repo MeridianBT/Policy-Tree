@@ -10,6 +10,27 @@ import type { PeriodKey } from "@/lib/domain/period";
 
 export type SheetRowKind = "GOAL" | "OBJECTIVE" | "CONTROL_ITEM";
 
+/**
+ * A row's identity in a list, which its `id` alone cannot give.
+ *
+ * A GroupRow's id is a Node id and a ControlItemRow's is a Control Item id -
+ * two different tables, so nothing stops them colliding. On any database that
+ * came through the flatten migration they collide by construction: that
+ * migration reused each Measure's id for the Objective replacing it, and the
+ * Measure migration before it had reused each Control Item's id for the
+ * Measure. Every Objective on such a database therefore shares its id with its
+ * own first Control Item, and an Objective that carries a header renders both
+ * rows - two React children with the same key, which React explicitly calls
+ * unsupported and which mis-reconciles or throws on the next update.
+ *
+ * So anything keying rows in a list, or resolving one by id, uses this rather
+ * than `id`. The kind is part of the identity because the two rows really are
+ * different things: a statement, and a figure kept against it.
+ */
+export function rowKey(row: Pick<SheetRowModel, "kind" | "id">): string {
+  return `${row.kind === "CONTROL_ITEM" ? "item" : "group"}:${row.id}`;
+}
+
 export interface GroupRow {
   id: string;
   kind: "GOAL" | "OBJECTIVE";

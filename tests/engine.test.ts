@@ -11,7 +11,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createFixture, codeOf, prisma, readCell, setRaw, type Fixture } from "./fixture";
 import { saveEntry, VersionLockedError } from "@/lib/entries/save";
 import { loadSheet } from "@/lib/sheet/query";
-import type { ControlItemRow } from "@/lib/sheet/types";
+import { rowKey, type ControlItemRow } from "@/lib/sheet/types";
 import { NotPermittedError } from "@/lib/auth/errors";
 import { FormulaError } from "@/lib/formula/errors";
 
@@ -478,5 +478,83 @@ describe("keyable cells on the sheet", () => {
   it("leaves targetFormula null for a plain number", async () => {
     const cell = await monthCell(fx.versions.OB);
     expect(cell.targetFormula).toBeNull();
+  });
+});
+
+/**
+ * Every row the sheet hands the client must be addressable on its own.
+ *
+ * A GroupRow's id is a Node id and a ControlItemRow's is a Control Item id -
+ * two tables, so a collision is legal, and on any database that came through
+ * the flatten migration it is guaranteed: that migration reused each Measure's
+ * id for the Objective replacing it, and the Measure migration before it had
+ * reused each Control Item's id for the Measure. This is the shape that took
+ * the deployed app down, and no amount of freshly seeded data has it - the
+ * seeder mints a separate cuid for each - so the ids here are forced.
+ */
+describe("rows are uniquely addressable even when a Node and a Control Item share an id", () => {
+  const SHARED = `shared-${Math.random().toString(36).slice(2, 10)}`;
+  let objectiveId: string;
+
+  beforeAll(async () => {
+    // An Objective, a Control Item carrying its statement's own id, and a
+    // Level 3 beneath it so the Objective renders a heading as well.
+    const objective = await prisma.node.create({
+      data: {
+        id: SHARED,
+        kiId: fx.kiId,
+        parentId: fx.nodes.goal,
+        level: 2,
+        kind: "OBJECTIVE",
+        statement: "Objective sharing an id",
+      },
+    });
+    objectiveId = objective.id;
+    await prisma.controlItem.create({
+      data: {
+        id: SHARED,
+        nodeId: objective.id,
+        code: `SHARED-${SHARED}`,
+        unit: "COUNT",
+        direction: "HIGHER_BETTER",
+        achievementMethod: "RATIO",
+        aggregation: "SUM",
+        decimalPlaces: 0,
+        dicOrgUnitId: fx.orgUnits.alpha,
+        businessUnitId: fx.businessUnits.AUTO,
+        sortOrder: 0,
+      },
+    });
+    await prisma.node.create({
+      data: {
+        kiId: fx.kiId,
+        parentId: objective.id,
+        level: 3,
+        kind: "OBJECTIVE",
+        statement: "Deployed from the shared one",
+      },
+    });
+  });
+
+  afterAll(async () => {
+    await prisma.node.deleteMany({ where: { id: objectiveId } });
+  });
+
+  it("really does have a Node and a Control Item under one id", async () => {
+    // Guards the test itself: if this stops being possible the case below is
+    // no longer testing anything.
+    const node = await prisma.node.findUnique({ where: { id: SHARED } });
+    const item = await prisma.controlItem.findUnique({ where: { id: SHARED } });
+    expect(node).not.toBeNull();
+    expect(item).not.toBeNull();
+  });
+
+  it("emits both rows and gives each a key of its own", async () => {
+    const model = await loadSheet({ kiId: fx.kiId, levels: [1, 2, 3], targetVersionId: null });
+    const sharing = model.rows.filter((row) => row.id === SHARED);
+    expect(sharing.map((row) => row.kind).sort()).toEqual(["CONTROL_ITEM", "OBJECTIVE"]);
+
+    const keys = model.rows.map(rowKey);
+    expect(new Set(keys).size).toBe(keys.length);
   });
 });

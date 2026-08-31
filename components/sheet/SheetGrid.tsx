@@ -17,7 +17,7 @@ import { useCallback, useMemo, useRef, useState } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import Link from "next/link";
 import { ChevronDown, ChevronRight } from "lucide-react";
-import type { SheetModel, ControlItemRow, GroupRow, SheetRowModel } from "@/lib/sheet/types";
+import { rowKey, type SheetModel, type ControlItemRow, type GroupRow, type SheetRowModel } from "@/lib/sheet/types";
 import { matchRows, EMPTY_FILTERS, type SheetFilters } from "./filters";
 
 // Re-exported so callers keep importing their filter types from the grid they
@@ -385,7 +385,7 @@ export function SheetGrid({
               const droppable = dragged !== null && isDropTarget(dragged, row);
               return (
                 <div
-                  key={row.id}
+                  key={rowKey(row)}
                   className="absolute left-0 flex w-full"
                   style={{ top: 0, height: virtualRow.size, transform: `translateY(${virtualRow.start}px)` }}
                   onDragOver={
@@ -485,15 +485,20 @@ function countControlItems(rows: SheetRowModel[]): number {
 function contextFor(rows: SheetRowModel[], topIndex: number): string[] {
   const row = rows[topIndex];
   if (!row) return [];
-  const byId = new Map(rows.map((candidate) => [candidate.id, candidate]));
+  // Group rows only: a path names a Node, and a Control Item row sharing that
+  // id is a figure kept against it, never the heading the breadcrumb wants.
+  const byId = new Map<string, GroupRow>();
+  for (const candidate of rows) {
+    if (candidate.kind !== "CONTROL_ITEM") byId.set(candidate.id, candidate as GroupRow);
+  }
   const chain = row.kind === "CONTROL_ITEM" ? row.path : [...row.path, row.id];
   return chain
     .map((id) => byId.get(id))
-    .filter((node): node is SheetRowModel => Boolean(node))
+    .filter((node): node is GroupRow => Boolean(node))
     // The breadcrumb is one compressed line of context, so emphasis inside it
     // would be noise rather than signal - the markers come off and the words
     // stay.
-    .map((node) => plainText((node as GroupRow).statement));
+    .map((node) => plainText(node.statement));
 }
 
 function ColumnHeader({

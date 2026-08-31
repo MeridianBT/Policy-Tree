@@ -8,7 +8,7 @@
 
 import { describe, expect, it } from "vitest";
 import { buildCascadeTree, hasDepartmentWork } from "@/components/sheet/outline";
-import type { ControlItemRow, GroupRow, SheetRowModel } from "@/lib/sheet/types";
+import { rowKey, type ControlItemRow, type GroupRow, type SheetRowModel } from "@/lib/sheet/types";
 
 function group(id: string, level: number, path: string[], overrides: Partial<GroupRow> = {}): SheetRowModel {
   return {
@@ -116,6 +116,62 @@ describe("buildCascadeTree", () => {
     const goal = group("goal", 1, []);
     const roots = buildCascadeTree([goal, orphan]);
     expect(roots.map((r) => r.row.id).sort()).toEqual(["goal", "late-goal"]);
+  });
+});
+
+/*
+ * The case that took the deployed app down.
+ *
+ * A GroupRow's id is a Node id and a ControlItemRow's is a Control Item id -
+ * different tables, nothing stopping them colliding - and on every database
+ * that came through the flatten migration they collide by construction. The
+ * builder used to key one map by `row.id`, so the Control Item overwrote the
+ * heading: the heading vanished from the tree and the item was pushed into its
+ * parent twice, under a React key it now shared with itself.
+ */
+describe("an Objective whose id its Control Item shares", () => {
+  const SHARED = "shared-id";
+
+  const rows = [
+    group("goal", 1, []),
+    // The Objective's heading, and the figure kept against it. Same id.
+    group(SHARED, 2, ["goal"]),
+    item(SHARED, 2, ["goal", SHARED], { firstOfObjective: false, objectiveId: SHARED }),
+    group("l3", 3, ["goal", SHARED]),
+  ];
+
+  it("keeps both rows, each exactly once", () => {
+    const roots = buildCascadeTree(rows);
+    const flat: SheetRowModel[] = [];
+    const walk = (nodes: ReturnType<typeof buildCascadeTree>) => {
+      for (const node of nodes) {
+        flat.push(node.row);
+        walk(node.children);
+      }
+    };
+    walk(roots);
+    expect(flat).toHaveLength(rows.length);
+    expect(flat.filter((row) => row.kind === "CONTROL_ITEM")).toHaveLength(1);
+    expect(flat.filter((row) => row.id === SHARED)).toHaveLength(2);
+  });
+
+  it("gives every row in the tree a key of its own", () => {
+    const roots = buildCascadeTree(rows);
+    const keys: string[] = [];
+    const walk = (nodes: ReturnType<typeof buildCascadeTree>) => {
+      for (const node of nodes) {
+        keys.push(rowKey(node.row));
+        walk(node.children);
+      }
+    };
+    walk(roots);
+    expect(new Set(keys).size).toBe(keys.length);
+  });
+
+  it("hangs the deployment off the heading, not off the figure", () => {
+    const objective = buildCascadeTree(rows)[0].children[0];
+    expect(objective.row.kind).not.toBe("CONTROL_ITEM");
+    expect(objective.children.map((child) => child.row.id).sort()).toEqual(["l3", SHARED]);
   });
 });
 
