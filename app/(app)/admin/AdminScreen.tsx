@@ -255,7 +255,6 @@ export function AdminScreen({
                   <Field label="Kind">
                     <select name="kind" className={inputClass}>
                       <option value="GOAL">Goal</option>
-                      <option value="THEME">Theme</option>
                       <option value="OBJECTIVE">Objective</option>
                     </select>
                   </Field>

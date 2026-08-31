@@ -6,11 +6,11 @@
  * inside the server action.
  *
  * The first is that siblings are not always the same level. A Level 2
- * Objective can carry both Level 3 Themes continuing the company tree and
+ * Objective can carry both Level 3 Objectives continuing the company tree and
  * Level 4 department branches laddering into it, side by side under the same
- * parent. Reordering is offered "within their level", so a Level 3 Theme moves
- * among Level 3 Themes and the Level 4 branches sitting between them must not
- * be dragged along behind it. The way that is honoured here is by treating the
+ * parent. Reordering is offered "within their level", so a Level 3 Objective
+ * moves among Level 3 Objectives and the Level 4 branches sitting between them
+ * must not be dragged along behind it. The way that is honoured here is by treating the
  * positions the same-level rows occupy as fixed slots: the rows at that level
  * are reshuffled into those slots, and every other sibling keeps the slot it
  * already had.

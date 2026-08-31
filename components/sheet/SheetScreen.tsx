@@ -38,9 +38,8 @@ import {
 } from "./StructureControls";
 import {
   addControlItem,
-  addControlItemToMeasure,
+  addControlItemToObjective,
   addDepartmentBranch,
-  addDepartmentObjective,
   addNode,
   assignableDics,
   assignableUsers,
@@ -392,9 +391,14 @@ export function SheetScreen({
   const [adding, setAdding] = useState<
     | { kind: "NODE"; parentId: string | null; label: string; under: string }
     | { kind: "DEPARTMENT_BRANCH"; parentObjectiveId: string; under: string }
-    | { kind: "DEPARTMENT_OBJECTIVE"; parentThemeId: string; under: string }
     | { kind: "MEASURE"; parentId: string; under: string }
-    | { kind: "CONTROL_ITEM"; measureId: string; row: ControlItemRow }
+    | {
+        kind: "CONTROL_ITEM";
+        objectiveId: string;
+        statement: string;
+        level: number;
+        sibling: ControlItemRow | null;
+      }
     | { kind: "EDIT_MEASURE"; row: ControlItemRow; initial: MeasureValues }
     | null
   >(null);
@@ -478,25 +482,18 @@ export function SheetScreen({
                 responsibleUserId: row.responsibleUserId,
               },
             }),
-          onAddChild: (parentId, kind) => {
-            // A Level 4 Theme's continuation is its own Objective, scoped to
-            // whoever owns that branch; everything above Level 4 is a plain
-            // continuation of the company-wide tree, for a SUPER_ADMIN or an
-            // EXECUTIVE.
-            const parentRow = model.rows.find((row) => row.id === parentId);
-            if (parentRow && parentRow.level === 4 && parentRow.kind !== "CONTROL_ITEM") {
-              setAdding({ kind: "DEPARTMENT_OBJECTIVE", parentThemeId: parentId, under: labelFor(parentId) });
-              return;
-            }
+          onAddChild: (parentId) => {
+            // One kind of child at every level now: an Objective. A Level 4
+            // one carries an org unit, so it goes through the L4+ button
+            // instead, which asks whose it is.
             setAdding({
               kind: "NODE",
               parentId,
-              label: kind === "OBJECTIVE" ? "objective" : "theme",
+              label: "objective",
               under: labelFor(parentId),
             });
           },
-          onAddControlItem: (row) =>
-            setAdding({ kind: "CONTROL_ITEM", measureId: row.measureId, row }),
+          onAddControlItem: (target) => setAdding({ kind: "CONTROL_ITEM", ...target }),
           onAddDepartment: (parentObjectiveId) =>
             setAdding({
               kind: "DEPARTMENT_BRANCH",
@@ -830,26 +827,6 @@ export function SheetScreen({
         </div>
       )}
 
-      {adding?.kind === "DEPARTMENT_OBJECTIVE" && (
-        <div className="border border-rule bg-paper">
-          <p className="border-b border-rule px-3 py-1 text-[11px] text-ink-muted">
-            Adding an objective under <strong>{adding.under}</strong>
-          </p>
-          <InlineAdd
-            key={adding.parentThemeId}
-            label="objective"
-            indent={12}
-            onCommit={(statement) =>
-              run(
-                () => addDepartmentObjective({ kiId: model.kiId, parentThemeId: adding.parentThemeId, statement }),
-                afterChange,
-              )
-            }
-            onCancel={() => setAdding(null)}
-          />
-        </div>
-      )}
-
       {adding?.kind === "DEPARTMENT_BRANCH" && (
         <div className="border border-rule bg-paper">
           <p className="border-b border-rule px-3 py-1 text-[11px] text-ink-muted">
@@ -911,7 +888,7 @@ export function SheetScreen({
             key={adding.row.id}
             indent={12}
             level={adding.row.level}
-            fixedMeasureName={adding.row.firstOfMeasure ? undefined : adding.row.name}
+            fixedMeasureName={adding.row.firstOfObjective ? undefined : adding.row.name}
             dics={formDics}
             businessUnits={model.businessUnits}
             users={users ?? []}
@@ -926,7 +903,7 @@ export function SheetScreen({
                     id: adding.row.id,
                     // Omitted from a row that does not carry the name, which
                     // the server reads as "the measure keeps the name it has".
-                    name: adding.row.firstOfMeasure ? values.name : undefined,
+                    name: adding.row.firstOfObjective ? values.name : undefined,
                     measuredAs: values.measuredAs || null,
                     unit: values.unit,
                     direction: values.direction,
@@ -948,44 +925,50 @@ export function SheetScreen({
       {adding?.kind === "CONTROL_ITEM" && (
         <div className="border border-rule bg-paper">
           <p className="border-b border-rule px-3 py-1 text-[11px] text-ink-muted">
-            Adding a Control Item to <strong>{plainText(adding.row.name)}</strong> — it shares the
-            measure&apos;s name and nothing else: its own unit, direction, roll-up, department and
-            targets, keyed and evaluated separately.
+            Adding a Control Item to <strong>{plainText(adding.statement)}</strong> — it shares the
+            Objective&apos;s statement and nothing else: its own unit, direction, roll-up,
+            department and targets, keyed and evaluated separately.
           </p>
           {formDics === null ? (
             <p className="px-3 py-2 text-[11px] text-ink-faint">Loading divisions…</p>
           ) : (
             <InlineMeasureForm
-              key={adding.measureId}
+              key={adding.objectiveId}
               indent={12}
-              level={adding.row.level}
-              fixedMeasureName={adding.row.name}
+              level={adding.level}
+              fixedMeasureName={adding.statement}
               dics={formDics}
               businessUnits={model.businessUnits}
               users={users ?? []}
               submitLabel="Add Control Item"
               pendingLabel="Adding…"
               pending={saving}
-              /* Seeded from the Control Item beside it, because a second one
-                 usually differs in what it measures rather than in where it is
-                 filed - and the department and business unit are the two
-                 fields somebody would otherwise have to look up. */
-              initial={{
-                name: adding.row.name,
-                measuredAs: "",
-                unit: adding.row.unit,
-                direction: adding.row.direction,
-                aggregation: adding.row.aggregation,
-                decimalPlaces: adding.row.decimalPlaces,
-                dicOrgUnitId: adding.row.dicOrgUnitId,
-                businessUnitId: adding.row.businessUnitId,
-                responsibleUserId: adding.row.responsibleUserId,
-              }}
+              /* Seeded from the Control Item beside it when there is one,
+                 because a second one usually differs in what it measures
+                 rather than in where it is filed - and the department and
+                 business unit are the two fields somebody would otherwise have
+                 to look up. An Objective's first has nothing to copy, so the
+                 form opens on its own defaults. */
+              initial={
+                adding.sibling
+                  ? {
+                      name: adding.statement,
+                      measuredAs: "",
+                      unit: adding.sibling.unit,
+                      direction: adding.sibling.direction,
+                      aggregation: adding.sibling.aggregation,
+                      decimalPlaces: adding.sibling.decimalPlaces,
+                      dicOrgUnitId: adding.sibling.dicOrgUnitId,
+                      businessUnitId: adding.sibling.businessUnitId,
+                      responsibleUserId: adding.sibling.responsibleUserId,
+                    }
+                  : undefined
+              }
               onCommit={(values) =>
                 run(
                   () =>
-                    addControlItemToMeasure({
-                      measureId: adding.measureId,
+                    addControlItemToObjective({
+                      objectiveId: adding.objectiveId,
                       measuredAs: values.measuredAs || null,
                       unit: values.unit,
                       direction: values.direction,

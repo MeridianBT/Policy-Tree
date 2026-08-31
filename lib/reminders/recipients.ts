@@ -22,7 +22,7 @@ import { prisma } from "@/lib/db";
 import { dateToPeriod, kiStartYearOf, periodToDate, type PeriodKey } from "@/lib/domain/period";
 import { reminderPeriodForKi } from "./period";
 import { assignRecipients, subtreeOf, type CandidateUser, type Recipient, type UnkeyedItem } from "./match";
-import { controlItemLabel } from "@/lib/calc/measure-label";
+import { controlItemLabel } from "@/lib/calc/item-label";
 
 export { assignRecipients, subtreeOf } from "./match";
 export type { CandidateUser, OutstandingItem, Recipient, UnkeyedItem } from "./match";
@@ -62,7 +62,7 @@ export async function buildReminderScope(options?: {
 
   const [controlItems, actuals, users, orgUnits] = await Promise.all([
     prisma.controlItem.findMany({
-      where: { measure: { node: { kiId: ki.id } } },
+      where: { node: { kiId: ki.id } },
       select: {
         id: true,
         code: true,
@@ -70,15 +70,14 @@ export async function buildReminderScope(options?: {
         dicOrgUnitId: true,
         responsibleUserId: true,
         dicOrgUnit: { select: { code: true } },
-        measure: {
+        node: {
           select: {
-            name: true,
-            node: { select: { statement: true } },
+            statement: true,
             _count: { select: { controlItems: true } },
           },
         },
       },
-      orderBy: [{ dicOrgUnitId: "asc" }, { measure: { sortOrder: "asc" } }, { sortOrder: "asc" }],
+      orderBy: [{ dicOrgUnitId: "asc" }, { node: { sortOrder: "asc" } }, { sortOrder: "asc" }],
     }),
     prisma.entry.findMany({
       where: { period: periodToDate(period), planVersionId: actVersion.id },
@@ -109,9 +108,9 @@ export async function buildReminderScope(options?: {
       code: item.code,
       // A chase naming the same measure three times helps nobody, so a
       // measure with several Control Items names which one is outstanding.
-      name: controlItemLabel(item.measure.name, item.measuredAs, item.measure._count.controlItems),
+      name: controlItemLabel(item.node.statement, item.measuredAs, item.node._count.controlItems),
       dicCode: item.dicOrgUnit.code,
-      objective: item.measure.node.statement,
+      objective: item.node.statement,
       dicOrgUnitId: item.dicOrgUnitId,
       responsibleUserId: item.responsibleUserId,
     }));

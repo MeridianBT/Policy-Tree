@@ -65,12 +65,9 @@ beforeAll(async () => {
   const objective = await prisma.node.create({
     data: { kiId: draftKiId, parentId: goal.id, level: 2, kind: "OBJECTIVE", statement: "Obj", orgUnitId },
   });
-  const measure = await prisma.measure.create({
-    data: { nodeId: objective.id, name: "Measure" },
-  });
   const item = await prisma.controlItem.create({
     data: {
-      measureId: measure.id,
+      nodeId: objective.id,
       businessUnitId: (await prisma.businessUnit.findUniqueOrThrow({ where: { code: "AUTO" } })).id,
       code: `RST-CI-${suffix}`,
       unit: "COUNT",
@@ -136,8 +133,8 @@ describe("resetKi", () => {
     expect(result.ok).toBe(true);
 
     expect(await prisma.node.count({ where: { kiId: draftKiId } })).toBe(0);
-    expect(await prisma.controlItem.count({ where: { measure: { node: { kiId: draftKiId } } } })).toBe(0);
-    expect(await prisma.entry.count({ where: { controlItem: { measure: { node: { kiId: draftKiId } } } } })).toBe(0);
+    expect(await prisma.controlItem.count({ where: { node: { kiId: draftKiId } } })).toBe(0);
+    expect(await prisma.entry.count({ where: { controlItem: { node: { kiId: draftKiId } } } })).toBe(0);
   });
 
   it("leaves the year itself and its plan versions usable", async () => {

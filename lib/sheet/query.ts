@@ -78,19 +78,17 @@ export async function loadSheet(options: LoadSheetOptions): Promise<SheetModel> 
     }),
     prisma.controlItem.findMany({
       where: {
-        measure: { node: { kiId: ki.id, level: { in: options.levels } } },
+        node: { kiId: ki.id, level: { in: options.levels } },
         ...(options.orgUnitIds ? { dicOrgUnitId: { in: options.orgUnitIds } } : {}),
       },
       include: {
-        measure: { select: { id: true, nodeId: true, name: true, sortOrder: true } },
         dicOrgUnit: { select: { code: true, name: true } },
         businessUnit: { select: { code: true, name: true } },
         responsibleUser: { select: { name: true } },
       },
-      // The measure's order under its Objective first, then a control item's
-      // order within its own measure - which is the order the sheet prints
-      // them in, and the order the name is printed once against.
-      orderBy: [{ measure: { sortOrder: "asc" } }, { sortOrder: "asc" }],
+      // The order an Objective's own Control Items print in, which is also the
+      // order that decides which of them carries the statement.
+      orderBy: { sortOrder: "asc" },
     }),
   ]);
 
@@ -132,15 +130,9 @@ export async function loadSheet(options: LoadSheetOptions): Promise<SheetModel> 
   const nodeById = new Map(nodes.map((node) => [node.id, node]));
   const itemsByNode = new Map<string, typeof controlItems>();
   for (const item of controlItems) {
-    const list = itemsByNode.get(item.measure.nodeId) ?? [];
+    const list = itemsByNode.get(item.nodeId) ?? [];
     list.push(item);
-    itemsByNode.set(item.measure.nodeId, list);
-  }
-  // How many Control Items each Measure carries, so a row can say whether it
-  // is the first of several and the sheet can print the name once.
-  const itemsPerMeasure = new Map<string, number>();
-  for (const item of controlItems) {
-    itemsPerMeasure.set(item.measureId, (itemsPerMeasure.get(item.measureId) ?? 0) + 1);
+    itemsByNode.set(item.nodeId, list);
   }
 
   /** Ancestor chain, outermost first, excluding the node itself. */
@@ -171,7 +163,6 @@ export async function loadSheet(options: LoadSheetOptions): Promise<SheetModel> 
   const rows: SheetRowModel[] = [];
   const groupById = new Map<string, GroupRow>();
   let goalOrdinal = 0;
-  const themes: Array<{ id: string; statement: string }> = [];
 
   /**
    * Every node that belongs on this sheet: those at the requested levels, plus
@@ -193,7 +184,7 @@ export async function loadSheet(options: LoadSheetOptions): Promise<SheetModel> 
     const isGoal = node.kind === "GOAL" && node.level === 1;
     const group: GroupRow = {
       id: node.id,
-      kind: node.kind === "GOAL" ? "GOAL" : node.kind === "THEME" ? "THEME" : "OBJECTIVE",
+      kind: node.kind === "GOAL" ? "GOAL" : "OBJECTIVE",
       level: node.level,
       statement: node.statement,
       ordinal: isGoal ? ++goalOrdinal : null,
@@ -207,29 +198,55 @@ export async function loadSheet(options: LoadSheetOptions): Promise<SheetModel> 
     };
     groupById.set(node.id, group);
     rows.push(group as SheetRowModel);
-    if (node.kind === "THEME") themes.push({ id: node.id, statement: node.statement });
+  }
+
+  /** Objectives with something deployed from them, so they need a header. */
+  const hasDeployment = new Set<string>();
+  for (const node of nodes) {
+    if (node.parentId && inScope.has(node.id)) hasDeployment.add(node.parentId);
   }
 
   /*
-   * Walk the tree in structural order so groups nest correctly, and emit every
-   * group in scope whether or not it carries a measure yet. An Objective with
-   * no Control Item is a real hole in the deployment and the sheet should show
-   * it; it is also the only way a structure can be built up from nothing,
-   * since you cannot add a measure to a row you cannot see.
+   * Walk the tree in structural order so groups nest correctly.
+   *
+   * An Objective with Control Items and nothing deployed from it emits no row
+   * of its own: its statement is printed on the first of them, which also
+   * carries that item's figures. One Control Item therefore reads as a single
+   * row with the statement and the numbers together, which is what the sheet
+   * is for.
+   *
+   * An Objective that *is* deployed from needs a header for what hangs beneath
+   * it, so it emits its group row and its own Control Items sit under it like
+   * any other child - printing what each measures rather than repeating the
+   * statement, which is already above them.
+   *
+   * An Objective with nothing under it at all *does* emit a row, blank across
+   * every column. That is a real hole in the deployment and hiding it would be
+   * the one thing worse than showing it - and it is also how a structure gets
+   * built from nothing, since you cannot add a measure to a row you cannot
+   * see.
    */
   const ordered = [...nodes].sort(compareNodes(nodeById));
   for (const node of ordered) {
     if (!inScope.has(node.id)) continue;
-    emitGroup(node);
 
     const items = itemsByNode.get(node.id);
-    if (!items?.length) continue;
-    const path = [...ancestors(node.id), node.id];
+    if (!items?.length) {
+      emitGroup(node);
+      continue;
+    }
+    const carriesHeader = hasDeployment.has(node.id);
+    const path = ancestors(node.id);
+    for (const ancestor of path) {
+      const ancestorNode = nodeById.get(ancestor);
+      if (ancestorNode && inScope.has(ancestor)) emitGroup(ancestorNode);
+    }
+    if (carriesHeader) emitGroup(node);
 
-    let previousMeasureId: string | null = null;
-    for (const item of items) {
-      const firstOfMeasure = item.measureId !== previousMeasureId;
-      previousMeasureId = item.measureId;
+    for (const [index, item] of items.entries()) {
+      // The statement is on the header when there is one, so no Control Item
+      // repeats it.
+      const firstOfObjective = !carriesHeader && index === 0;
       const built = buildRow({
         controlItem: {
           id: item.id,
@@ -250,14 +267,15 @@ export async function loadSheet(options: LoadSheetOptions): Promise<SheetModel> 
         id: item.id,
         kind: "CONTROL_ITEM",
         code: item.code,
-        // The row's name is its Measure's name, on every one of a measure's
-        // control items. `firstOfMeasure` is what the sheet uses to print it
-        // once; everywhere else - the reminder, /my-entries, the review - a
-        // row still knows what it is called without a second lookup.
-        name: item.measure.name,
-        measureId: item.measureId,
-        firstOfMeasure,
-        measureItemCount: itemsPerMeasure.get(item.measureId) ?? 1,
+        // The row's name is its Objective's statement, on every one of the
+        // Objective's Control Items. `firstOfObjective` is what the sheet uses
+        // to print it once; everywhere else - the reminder, /my-entries, the
+        // review - a row still knows what it is called without a second
+        // lookup.
+        name: node.statement,
+        objectiveId: node.id,
+        firstOfObjective,
+        objectiveItemCount: items.length,
         measuredAs: item.measuredAs ?? defaultMeasuredAs(item.unit),
         measuredAsRaw: item.measuredAs,
         unit: item.unit,
@@ -273,14 +291,16 @@ export async function loadSheet(options: LoadSheetOptions): Promise<SheetModel> 
         responsibleUserId: item.responsibleUserId,
         responsibleUserName: item.responsibleUser?.name ?? null,
         level: node.level,
-        path,
+        path: carriesHeader ? [...path, node.id] : path,
         laddersTo: options.levels.includes(4) ? ladderTarget(node.id) : null,
         cells: built.cells,
         kiSymbol: built.kiCell.symbol,
       };
       rows.push(row as SheetRowModel);
 
-      for (const groupId of path) groupById.get(groupId)?.controlItemIds.push(item.id);
+      for (const groupId of carriesHeader ? [...path, node.id] : path) {
+        groupById.get(groupId)?.controlItemIds.push(item.id);
+      }
     }
   }
 
@@ -315,7 +335,6 @@ export async function loadSheet(options: LoadSheetOptions): Promise<SheetModel> 
       parentCode:
         unit.type === "DEPARTMENT" && unit.parentId ? orgUnitCodeById.get(unit.parentId) ?? null : null,
     })),
-    themes,
     businessUnits: businessUnitRows,
   };
 }

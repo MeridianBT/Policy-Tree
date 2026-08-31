@@ -52,43 +52,41 @@ function item(id: string, level: number, path: string[], overrides: Partial<Cont
 describe("buildCascadeTree", () => {
   it("nests a plain Level 1-3 chain correctly", () => {
     const goal = group("goal", 1, []);
-    const theme = group("theme", 2, ["goal"], { kind: "THEME" });
-    const objective = group("obj", 2, ["goal", "theme"], { kind: "OBJECTIVE" });
-    const ci = item("ci", 2, ["goal", "theme", "obj"]);
+    const l2 = group("l2", 2, ["goal"]);
+    const l3 = group("l3", 3, ["goal", "l2"]);
+    const ci = item("ci", 3, ["goal", "l2", "l3"]);
 
-    const roots = buildCascadeTree([goal, theme, objective, ci]);
+    const roots = buildCascadeTree([goal, l2, l3, ci]);
 
     expect(roots).toHaveLength(1);
     expect(roots[0].row.id).toBe("goal");
     expect(roots[0].children).toHaveLength(1);
-    expect(roots[0].children[0].row.id).toBe("theme");
-    expect(roots[0].children[0].children[0].row.id).toBe("obj");
+    expect(roots[0].children[0].row.id).toBe("l2");
+    expect(roots[0].children[0].children[0].row.id).toBe("l3");
     expect(roots[0].children[0].children[0].children[0].row.id).toBe("ci");
   });
 
   it("attaches a Level 4 branch as a direct child of the Objective it ladders into", () => {
     const goal = group("goal", 1, []);
-    const objective = group("obj", 2, ["goal"], { kind: "OBJECTIVE" });
-    const l4theme = group("l4-theme", 4, ["goal", "obj"], { kind: "THEME", orgUnitId: "dept-1" });
-    const l4objective = group("l4-obj", 4, ["goal", "obj", "l4-theme"], { kind: "OBJECTIVE" });
-    const l4item = item("l4-ci", 4, ["goal", "obj", "l4-theme", "l4-obj"]);
+    const objective = group("obj", 2, ["goal"]);
+    const branch = group("l4", 4, ["goal", "obj"], { orgUnitId: "dept-1" });
+    const l4item = item("l4-ci", 4, ["goal", "obj", "l4"]);
 
-    const roots = buildCascadeTree([goal, objective, l4theme, l4objective, l4item]);
+    const roots = buildCascadeTree([goal, objective, branch, l4item]);
 
     const objectiveNode = roots[0].children[0];
     expect(objectiveNode.row.id).toBe("obj");
     expect(objectiveNode.children).toHaveLength(1);
-    expect(objectiveNode.children[0].row.id).toBe("l4-theme");
+    expect(objectiveNode.children[0].row.id).toBe("l4");
     expect(objectiveNode.children[0].row.level).toBe(4);
-    expect(objectiveNode.children[0].children[0].row.id).toBe("l4-obj");
-    expect(objectiveNode.children[0].children[0].children[0].row.id).toBe("l4-ci");
+    expect(objectiveNode.children[0].children[0].row.id).toBe("l4-ci");
   });
 
   it("gives an Objective with several Level 4 branches all of them as siblings", () => {
     const goal = group("goal", 1, []);
-    const objective = group("obj", 2, ["goal"], { kind: "OBJECTIVE" });
-    const branchA = group("branch-a", 4, ["goal", "obj"], { kind: "THEME" });
-    const branchB = group("branch-b", 4, ["goal", "obj"], { kind: "THEME" });
+    const objective = group("obj", 2, ["goal"]);
+    const branchA = group("branch-a", 4, ["goal", "obj"]);
+    const branchB = group("branch-b", 4, ["goal", "obj"]);
 
     const roots = buildCascadeTree([goal, objective, branchA, branchB]);
 
@@ -99,11 +97,11 @@ describe("buildCascadeTree", () => {
   it("drops nothing and duplicates nothing across a larger tree", () => {
     const rows = [
       group("goal", 1, []),
-      group("theme", 2, ["goal"], { kind: "THEME" }),
-      group("obj", 2, ["goal", "theme"], { kind: "OBJECTIVE" }),
-      item("a", 2, ["goal", "theme", "obj"]),
-      item("b", 2, ["goal", "theme", "obj"]),
-      group("l4", 4, ["goal", "obj"], { kind: "THEME" }),
+      group("l2", 2, ["goal"]),
+      group("l3", 3, ["goal", "l2"]),
+      item("a", 3, ["goal", "l2", "l3"]),
+      item("b", 3, ["goal", "l2", "l3"]),
+      group("l4", 4, ["goal", "l2"]),
     ];
 
     function countNodes(nodes: ReturnType<typeof buildCascadeTree>): number {
@@ -124,7 +122,7 @@ describe("buildCascadeTree", () => {
 describe("hasDepartmentWork", () => {
   it("is false for an Objective with only company-wide children", () => {
     const goal = group("goal", 1, []);
-    const objective = group("obj", 2, ["goal"], { kind: "OBJECTIVE" });
+    const objective = group("obj", 2, ["goal"]);
     const ci = item("ci", 2, ["goal", "obj"]);
     const roots = buildCascadeTree([goal, objective, ci]);
     expect(hasDepartmentWork(roots[0].children[0])).toBe(false);
@@ -132,15 +130,15 @@ describe("hasDepartmentWork", () => {
 
   it("is true the moment any direct child is a Level 4 row", () => {
     const goal = group("goal", 1, []);
-    const objective = group("obj", 2, ["goal"], { kind: "OBJECTIVE" });
-    const l4theme = group("l4", 4, ["goal", "obj"], { kind: "THEME" });
-    const roots = buildCascadeTree([goal, objective, l4theme]);
+    const objective = group("obj", 2, ["goal"]);
+    const branch = group("l4", 4, ["goal", "obj"]);
+    const roots = buildCascadeTree([goal, objective, branch]);
     expect(hasDepartmentWork(roots[0].children[0])).toBe(true);
   });
 
   it("is false for a leaf Objective with no children at all", () => {
     const goal = group("goal", 1, []);
-    const objective = group("obj", 2, ["goal"], { kind: "OBJECTIVE" });
+    const objective = group("obj", 2, ["goal"]);
     const roots = buildCascadeTree([goal, objective]);
     expect(hasDepartmentWork(roots[0].children[0])).toBe(false);
   });

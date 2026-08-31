@@ -8,8 +8,9 @@
  * courtesy and not a control.
  *
  * Nothing here asks for a level or a kind: the server derives both from the
- * parent, so a Goal offers "Add theme", a Theme offers "Add objective" and an
- * Objective offers "Add theme" or "Add measure". That is the whole point of the
+ * parent, so a Goal and a Level 2 Objective each offer "Add objective" and
+ * "Add measure", and any Objective offers "Add Control Item" - a figure kept
+ * against the statement on that very row. That is the whole point of the
  * screen — the admin structure builder could already do this, tediously.
  */
 
@@ -105,7 +106,7 @@ export function RowActions({
           type="button"
           className={`${ICON_BUTTON} text-[9px] font-medium`}
           onClick={onAddControlItem}
-          title="Add another Control Item to this measure"
+          title="Add a Control Item to this Objective"
         >
           CI+
         </button>
@@ -406,8 +407,9 @@ export function InlineMeasureForm({
   /**
    * The Measure's name when it is not this form's to change: adding a second
    * Control Item to a measure, or editing one that is not the measure's first.
-   * A measure is named once, so the field is shown as text rather than offered
-   * twice - and the two rows cannot drift apart by being edited separately.
+   * The statement belongs to the Objective and is printed once, so on any row
+   * that does not carry it the field is shown as text rather than offered a
+   * second time - two rows editing one statement could only drift apart.
    */
   fixedMeasureName?: string;
   dics: DicOption[];
@@ -499,7 +501,7 @@ export function InlineMeasureForm({
         {fixedMeasureName ? (
           <span
             className="flex h-[26px] w-52 items-center truncate px-1.5 text-[11px] text-ink-muted"
-            title="Named once, on the measure. Edit it from the measure's own row."
+            title="The Objective's statement, named once. Edit it on the row that carries it."
           >
             {fixedMeasureName}
           </span>

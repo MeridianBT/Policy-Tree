@@ -63,7 +63,8 @@
   font-size: 7pt;
 }
 
-.print-sheet .theme-row td {
+/* A Level 2 Objective: the top of the deployment, and heavier for it. */
+.print-sheet .level-2-row td {
   background: #ececec;
   font-weight: 600;
 }

@@ -79,11 +79,14 @@ mode. The grid is tight on purpose.
 - **Sticky context bar** — because rows are virtualised they are absolutely
   positioned, and a `position: sticky` group header inside a transformed
   container does not work. Rather than fake it, a single sticky bar under the
-  column header names the Goal › Theme › Objective that the topmost visible row
-  belongs to. It does the job a sticky header does — telling you where you are
+  column header names the Goal and Objectives the topmost visible row belongs
+  to. It does the job a sticky header does — telling you where you are
   when you have scrolled past the heading — without lying about the mechanism.
-- **Group rows** — Goal, Theme and Objective headers sit inline in the row
-  stream, indented one step per level, each with a disclosure control.
+- **Group rows** — a Goal, and any Objective with something under it, sit
+  inline in the row stream as headers, indented one step per level, each with a
+  disclosure control. An Objective carrying one Control Item and nothing else
+  is not a header at all: it is a single row, its statement beside its
+  figures.
 - **Column groups** — quarters and the Ki total are tinted a step darker and
   bounded with `--rule-strong`. They read as summaries, not as more months.
 - **Column outline** — a quarter heading is a disclosure that folds its three
@@ -152,8 +155,8 @@ badly.
   but seventeen columns bury the linkage. The cascade view drops every column
   and keeps only the structure: nested rows, a connecting rule per branch, the
   DIC badge on a department row, and one small evaluation symbol per Control
-  Item. Weight alone separates Goal from Theme from Objective, so no new colour
-  and no new type sizes were introduced. An objective with nothing laddering
+  Item. Weight alone separates a Goal from the Objectives beneath it, so no new
+  colour and no new type sizes were introduced. An objective with nothing laddering
   into it prints a muted line saying so — the gap is the point of the page, and
   hiding it would defeat the reason the page exists.
 

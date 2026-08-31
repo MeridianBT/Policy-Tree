@@ -142,10 +142,12 @@ describe("canAddDepartmentBranch", () => {
     expect(canAddDepartmentBranch({ id: "u1", role: "VIEWER", orgUnitId: "auto" }, objective2)).toBe(false);
   });
 
-  it("never offers it on a Goal, a Theme, or a Level 4 Objective", () => {
+  it("never offers it on a Goal or on a Level 4 Objective", () => {
+    // A Level 4 branch ladders into the company tree, so it hangs off a Level
+    // 2 or 3 Objective - never off the Goal above them, and never off another
+    // department's branch.
     const owner = { id: "u1", role: "OWNER" as const, orgUnitId: "auto" };
     expect(canAddDepartmentBranch(owner, { kind: "GOAL", level: 1 })).toBe(false);
-    expect(canAddDepartmentBranch(owner, { kind: "THEME", level: 2 })).toBe(false);
     expect(canAddDepartmentBranch(owner, { kind: "OBJECTIVE", level: 4 })).toBe(false);
   });
 

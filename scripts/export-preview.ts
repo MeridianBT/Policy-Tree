@@ -99,7 +99,6 @@ async function main() {
     kiStartYear: latest.kiStartYear,
     bands: latest.bands,
     dics: latest.dics,
-    themes: latest.themes,
     bases,
   };
 

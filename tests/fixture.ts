@@ -24,7 +24,7 @@ export interface Fixture {
   businessUnits: Record<string, string>;
   users: Record<string, AuthenticatedUser>;
   /** Level 1/2 nodes, for tests exercising the structure-edit actions. */
-  nodes: { goal: string; theme: string; objective: string };
+  nodes: { goal: string; objective: string };
   cleanup: () => Promise<void>;
 }
 
@@ -113,11 +113,8 @@ export async function createFixture(): Promise<Fixture> {
   const goal = await prisma.node.create({
     data: { kiId: ki.id, level: 1, kind: "GOAL", statement: "Test goal", orgUnitId: company.id },
   });
-  const theme = await prisma.node.create({
-    data: { kiId: ki.id, parentId: goal.id, level: 2, kind: "THEME", statement: "Test theme" },
-  });
   const objective = await prisma.node.create({
-    data: { kiId: ki.id, parentId: theme.id, level: 2, kind: "OBJECTIVE", statement: "Test objective" },
+    data: { kiId: ki.id, parentId: goal.id, level: 2, kind: "OBJECTIVE", statement: "Test objective" },
   });
 
   const itemSpecs = [
@@ -126,14 +123,13 @@ export async function createFixture(): Promise<Fixture> {
     { key: "C", dic: beta.id, responsible: null },
     { key: "D", dic: alphaDept.id, responsible: null },
   ];
+  // Four Control Items on one Objective: the shape a multi-target measure
+  // takes, and the one that catches a query still assuming one item per row.
   const items: Record<string, string> = {};
   for (const [index, spec] of itemSpecs.entries()) {
-    const measure = await prisma.measure.create({
-      data: { nodeId: objective.id, name: `Item ${spec.key}`, sortOrder: index },
-    });
     const item = await prisma.controlItem.create({
       data: {
-        measureId: measure.id,
+        nodeId: objective.id,
         code: `${spec.key}-${suffix}`,
         unit: "COUNT",
         direction: "HIGHER_BETTER",
@@ -143,7 +139,7 @@ export async function createFixture(): Promise<Fixture> {
         dicOrgUnitId: spec.dic,
         businessUnitId: autoBusinessUnitId,
         responsibleUserId: spec.responsible,
-        sortOrder: 0,
+        sortOrder: index,
       },
     });
     items[spec.key] = item.id;
@@ -157,7 +153,7 @@ export async function createFixture(): Promise<Fixture> {
     orgUnits: { company: company.id, alpha: alpha.id, beta: beta.id, alphaDept: alphaDept.id },
     businessUnits: Object.fromEntries(allBusinessUnits.map((unit) => [unit.code, unit.id])),
     users,
-    nodes: { goal: goal.id, theme: theme.id, objective: objective.id },
+    nodes: { goal: goal.id, objective: objective.id },
     async cleanup() {
       await prisma.ki.delete({ where: { id: ki.id } });
       await prisma.appUser.deleteMany({ where: { id: { in: Object.values(users).map((u) => u.id) } } });

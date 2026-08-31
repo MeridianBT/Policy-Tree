@@ -155,96 +155,113 @@ async function main() {
     controlItemId: string; period: Date; planVersionId: string; rawValue: number;
   }> = [];
 
-  async function addItems(nodeId: string, items: Item[], level: number) {
-    for (const [i, item] of items.entries()) {
-      // The Measure carries the name and its place under the Objective; its
-      // Control Items carry how it is measured. Most have exactly one.
-      const measure = await prisma.measure.create({
-        data: { nodeId, name: item.name, sortOrder: i },
-      });
-      const specs = [item, ...(item.also ?? [])];
-      for (const [order, spec] of specs.entries()) {
-        const created = await prisma.controlItem.create({
-          data: {
-            measureId: measure.id,
-            code: spec.code,
-            measuredAs: spec.measuredAs,
-            unit: spec.unit,
-            direction: spec.dir,
-            businessUnitId: businessUnitIds[spec.bu ?? "AUTO"],
-            achievementMethod: spec.method,
-            aggregation: spec.agg,
-            decimalPlaces: spec.dp,
-            dicOrgUnitId: orgByCode.get(spec.dic)!,
-            responsibleUserId: userByOrg.get(spec.dic) ?? null,
-            sortOrder: order,
-          },
-        });
-        itemCount += 1;
-
-        const targets = spread(spec.target);
-        for (let m = 0; m < 12; m++) {
-          const period = month(KI.current.startYear, m);
-          entries.push({ controlItemId: created.id, period, planVersionId: prb.id, rawValue: targets[m] });
-          // The Original Budget sits a little under the press-release number,
-          // so switching Target between versions visibly moves achievement.
-          entries.push({
-            controlItemId: created.id, period, planVersionId: ob.id,
-            rawValue: Number((targets[m] * (spec.dir === "LOWER_BETTER" ? 1.04 : 0.96)).toFixed(spec.dp)),
-          });
-        }
-        for (let m = 0; m < Math.min(MONTHS_KEYED, spec.actual.length); m++) {
-          entries.push({
-            controlItemId: created.id,
-            period: month(KI.current.startYear, m),
-            planVersionId: act.id,
-            rawValue: spec.actual[m],
-          });
-        }
-      }
-    }
-    void level;
-  }
-
-  async function addObjective(parentId: string, level: number, objective: Objective, sortOrder: number) {
-    const obj = await prisma.node.create({
-      data: {
-        kiId: ki.id, parentId, level, kind: "OBJECTIVE",
-        statement: objective.statement, orgUnitId: company.id, sortOrder,
-      },
-    });
-    await addItems(obj.id, objective.items, level);
-
-    if (objective.sub) {
-      const theme3 = await prisma.node.create({
+  // The Objective carries the name; its Control Items carry how it is
+  // measured. Most objectives have exactly one, and that one prints inline on
+  // the objective's own row.
+  async function addControlItems(nodeId: string, item: Item) {
+    const specs = [item, ...(item.also ?? [])];
+    for (const [order, spec] of specs.entries()) {
+      const created = await prisma.controlItem.create({
         data: {
-          kiId: ki.id, parentId: obj.id, level: 3, kind: "THEME",
-          statement: objective.sub.theme, orgUnitId: company.id, sortOrder: 0,
+          nodeId,
+          code: spec.code,
+          measuredAs: spec.measuredAs,
+          unit: spec.unit,
+          direction: spec.dir,
+          businessUnitId: businessUnitIds[spec.bu ?? "AUTO"],
+          achievementMethod: spec.method,
+          aggregation: spec.agg,
+          decimalPlaces: spec.dp,
+          dicOrgUnitId: orgByCode.get(spec.dic)!,
+          responsibleUserId: userByOrg.get(spec.dic) ?? null,
+          sortOrder: order,
         },
       });
+      itemCount += 1;
+
+      const targets = spread(spec.target);
+      for (let m = 0; m < 12; m++) {
+        const period = month(KI.current.startYear, m);
+        entries.push({ controlItemId: created.id, period, planVersionId: prb.id, rawValue: targets[m] });
+        // The Original Budget sits a little under the press-release number,
+        // so switching Target between versions visibly moves achievement.
+        entries.push({
+          controlItemId: created.id, period, planVersionId: ob.id,
+          rawValue: Number((targets[m] * (spec.dir === "LOWER_BETTER" ? 1.04 : 0.96)).toFixed(spec.dp)),
+        });
+      }
+      for (let m = 0; m < Math.min(MONTHS_KEYED, spec.actual.length); m++) {
+        entries.push({
+          controlItemId: created.id,
+          period: month(KI.current.startYear, m),
+          planVersionId: act.id,
+          rawValue: spec.actual[m],
+        });
+      }
+    }
+  }
+
+  /*
+   * The plan is written in goals.ts as Goal > Theme > Objective > measures,
+   * which is how it was drafted and which of them ladders into what. The tree
+   * it seeds is flat: a Goal, then an Objective per measure.
+   *
+   * So a Theme's and an Objective's statements are not nodes any more - each
+   * measure's own name is the Objective statement, and the nesting survives
+   * only to say which company Objective a Level 3 or Level 4 branch hangs
+   * from. That parent is the FIRST measure of the objective it was drafted
+   * under, the same rule the flatten migration used against live data.
+   */
+  async function addObjective(
+    parentId: string,
+    level: number,
+    objective: Objective,
+    sortOrder: number,
+  ): Promise<string | null> {
+    let first: string | null = null;
+    for (const [i, item] of objective.items.entries()) {
+      const node = await prisma.node.create({
+        data: {
+          kiId: ki.id,
+          parentId,
+          level,
+          kind: "OBJECTIVE",
+          statement: item.name,
+          orgUnitId: company.id,
+          sortOrder: sortOrder * 100 + i,
+        },
+      });
+      first ??= node.id;
+      await addControlItems(node.id, item);
+    }
+    if (!first) return null;
+
+    if (objective.sub) {
       for (const [i, o] of objective.sub.objectives.entries()) {
-        await addObjective(theme3.id, 3, o, i);
+        await addObjective(first, 3, o, i);
       }
     }
 
     for (const [i, branch] of (objective.branches ?? []).entries()) {
       const orgUnitId = orgByCode.get(branch.orgUnit)!;
-      const theme4 = await prisma.node.create({
-        data: {
-          kiId: ki.id, parentId: obj.id, level: 4, kind: "THEME",
-          statement: branch.theme, orgUnitId, sortOrder: i,
-        },
-      });
       for (const [j, o] of branch.objectives.entries()) {
-        const obj4 = await prisma.node.create({
-          data: {
-            kiId: ki.id, parentId: theme4.id, level: 4, kind: "OBJECTIVE",
-            statement: o.statement, orgUnitId, sortOrder: j,
-          },
-        });
-        await addItems(obj4.id, o.items, 4);
+        for (const [k, item] of o.items.entries()) {
+          const node = await prisma.node.create({
+            data: {
+              kiId: ki.id,
+              parentId: first,
+              level: 4,
+              kind: "OBJECTIVE",
+              statement: item.name,
+              orgUnitId,
+              sortOrder: i * 100 + j * 10 + k,
+            },
+          });
+          await addControlItems(node.id, item);
+        }
       }
     }
+    return first;
   }
 
   for (const [g, goal] of GOALS.entries()) {
@@ -254,15 +271,10 @@ async function main() {
         statement: goal.statement, orgUnitId: company.id, sortOrder: g,
       },
     });
-    for (const [t, theme] of goal.themes.entries()) {
-      const themeNode = await prisma.node.create({
-        data: {
-          kiId: ki.id, parentId: goalNode.id, level: 2, kind: "THEME",
-          statement: theme.statement, orgUnitId: company.id, sortOrder: t,
-        },
-      });
-      for (const [o, objective] of theme.objectives.entries()) {
-        await addObjective(themeNode.id, 2, objective, o);
+    let order = 0;
+    for (const theme of goal.themes) {
+      for (const objective of theme.objectives) {
+        await addObjective(goalNode.id, 2, objective, order++);
       }
     }
   }

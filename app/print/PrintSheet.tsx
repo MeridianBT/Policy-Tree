@@ -97,8 +97,8 @@ export function PrintSheet({
                   className={
                     group.kind === "GOAL"
                       ? "goal-row"
-                      : group.kind === "THEME"
-                        ? "theme-row"
+                      : group.level === 2
+                        ? "level-2-row"
                         : "objective-row"
                   }
                 >
@@ -119,8 +119,8 @@ export function PrintSheet({
             return (
               <tr key={item.id}>
                 <td style={{ paddingLeft: `${1 + indentSteps(item) * 3.5}mm` }}>
-                  {/* Named once per Measure, as on screen. */}
-                  {item.firstOfMeasure ? <RichText text={item.name} /> : ""}
+                  {/* Named once per Objective, as on screen. */}
+                  {item.firstOfObjective ? <RichText text={item.name} /> : ""}
                 </td>
                 <td className="col-measure">{item.measuredAs}</td>
                 <td>{item.dicCode}</td>

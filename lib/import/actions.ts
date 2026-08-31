@@ -83,21 +83,21 @@ async function buildSnapshot(kiId: string, versionIds: string[]): Promise<Snapsh
       orderBy: [{ level: "asc" }, { sortOrder: "asc" }],
     }),
     prisma.controlItem.findMany({
-      where: { measure: { node: { kiId } } },
+      where: { node: { kiId } },
       select: {
         id: true,
         code: true,
-        measureId: true,
+        nodeId: true,
         measuredAs: true,
         unit: true,
         aggregation: true,
         direction: true,
         dicOrgUnit: { select: { code: true } },
-        measure: { select: { name: true, nodeId: true, node: { select: { level: true } } } },
+        node: { select: { statement: true, level: true } },
       },
     }),
     prisma.entry.findMany({
-      where: { planVersionId: { in: versionIds }, controlItem: { measure: { node: { kiId } } } },
+      where: { planVersionId: { in: versionIds }, controlItem: { node: { kiId } } },
       select: {
         controlItemId: true,
         planVersionId: true,
@@ -149,11 +149,9 @@ async function buildSnapshot(kiId: string, versionIds: string[]): Promise<Snapsh
     items: items.map((item) => ({
       id: item.id,
       code: item.code,
-      measureId: item.measureId,
-      measureName: item.measure.name,
       measuredAs: item.measuredAs ?? "",
-      nodeId: item.measure.nodeId,
-      level: item.measure.node.level,
+      nodeId: item.nodeId,
+      level: item.node.level,
       dicCode: item.dicOrgUnit.code,
       unit: item.unit,
       aggregation: item.aggregation,
@@ -239,7 +237,7 @@ export async function applyImport(_previous: unknown, form: FormData): Promise<I
     const failures: Array<{ row: number; message: string }> = [];
 
     // Structure first, parents before children: the plan lists a Goal before
-    // the Theme under it, so one pass in order is enough.
+    // the Objective under it, so one pass in order is enough.
     const nodeIds = new Map<string, string>();
     let createdNodes = 0;
     for (const node of plan.nodes) {

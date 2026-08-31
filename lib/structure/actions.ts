@@ -6,9 +6,9 @@
  * Two rules shape the ADMIN half of this module.
  *
  * The kind and level of a new node are *derived*, never asked for, for a plain
- * continuation of the tree: a child of a Goal is a Theme one level down; a
- * child of a Theme is an Objective at the same level. So "Add theme" or "Add
- * objective" appears wherever it is valid and never presents a level picker.
+ * continuation of the tree: a child of a Goal is a Level 2 Objective; a child
+ * of a Level 2 Objective is a Level 3 one. So "Add objective" appears wherever
+ * it is valid and never presents a level picker.
  *
  * Deleting is destructive and says so. A node carries its descendants, their
  * Control Items and every figure ever keyed against them. Delete therefore
@@ -34,7 +34,7 @@ import {
   type AuthenticatedUser,
 } from "@/lib/auth/session";
 import { ReorderError, reorderWithinLevel } from "./reorder";
-import { controlItemLabel } from "@/lib/calc/measure-label";
+import { controlItemLabel } from "@/lib/calc/item-label";
 
 export type StructureResult =
   | { ok: true; message: string; id?: string }
@@ -64,10 +64,21 @@ function revalidate() {
 
 // ------------------------------------------------------------------ Reading
 
-/** What kind of child a node can carry, continuing the tree at its own level. */
+/**
+ * What a row can carry beneath it.
+ *
+ * One rule for the whole tree since it was flattened: a Goal, then Objectives
+ * all the way down. Level is depth - a Goal is 1, and each Objective is one
+ * deeper than the Objective above it.
+ *
+ * Level 4 is the exception and the only one: a department branch carries an
+ * org unit, so it goes through `addDepartmentBranch` rather than this plain
+ * continuation. An Objective created here with no org unit would be Level 4
+ * work belonging to nobody.
+ */
 export async function childOptions(
   parentId: string | null,
-): Promise<Array<{ kind: "GOAL" | "THEME" | "OBJECTIVE"; level: number; label: string }>> {
+): Promise<Array<{ kind: "GOAL" | "OBJECTIVE"; level: number; label: string }>> {
   if (!parentId) return [{ kind: "GOAL", level: 1, label: "Goal" }];
 
   const parent = await prisma.node.findUnique({
@@ -78,18 +89,9 @@ export async function childOptions(
 
   switch (parent.kind) {
     case "GOAL":
-      return [{ kind: "THEME", level: parent.level + 1, label: "Theme" }];
-    case "THEME":
-      return [{ kind: "OBJECTIVE", level: parent.level, label: "Objective" }];
+      return [{ kind: "OBJECTIVE", level: 2, label: "Objective" }];
     case "OBJECTIVE":
-      // Only Level 2 continues the company-wide breakdown to a Level 3 Theme.
-      // A Level 3 Objective's next step is always a Level 4 department branch,
-      // which must carry an org unit and therefore goes through
-      // addDepartmentBranch, never this plain continuation - a Theme created
-      // here with no org unit would be a Level 4 node belonging to nobody.
-      // Level 4 is as deep as the model goes: an Objective there carries only
-      // Control Items.
-      return parent.level === 2 ? [{ kind: "THEME", level: 3, label: "Theme" }] : [];
+      return parent.level === 2 ? [{ kind: "OBJECTIVE", level: 3, label: "Objective" }] : [];
   }
 }
 
@@ -101,7 +103,7 @@ const addNodeSchema = z.object({
   statement: z.string().trim().min(1, "Give the row a statement.").max(300),
 });
 
-/** The plain continuation of the tree: a Goal, Theme or Objective, ADMIN only. */
+/** The plain continuation of the tree: a Goal or an Objective, ADMIN only. */
 export async function addNode(input: unknown): Promise<StructureResult> {
   try {
     const user = await requireSession();
@@ -132,9 +134,9 @@ export async function addNode(input: unknown): Promise<StructureResult> {
         kind: target.kind,
         level: target.level,
         statement,
-        // A Theme or Objective inherits its parent's org unit scope (null for
-        // the company-wide Levels 1-3), so it stays consistent if a Level 4
-        // branch is later added beneath it.
+        // An Objective inherits its parent's org unit scope (null for the
+        // company-wide Levels 1-3), so it stays consistent if a Level 4 branch
+        // is later added beneath it.
         orgUnitId: parentNode?.orgUnitId ?? null,
         sortOrder: siblings,
       },
@@ -189,7 +191,7 @@ export async function addDepartmentBranch(input: unknown): Promise<StructureResu
       data: {
         kiId,
         parentId: parentObjectiveId,
-        kind: "THEME",
+        kind: "OBJECTIVE",
         level: 4,
         statement,
         orgUnitId,
@@ -198,57 +200,18 @@ export async function addDepartmentBranch(input: unknown): Promise<StructureResu
     });
 
     revalidate();
-    return { ok: true, message: "Department branch added.", id: created.id };
+    return { ok: true, message: "Department objective added.", id: created.id };
   } catch (error) {
     return permissionAware(error);
   }
 }
 
-const addDepartmentObjectiveSchema = z.object({
-  kiId: z.string().min(1),
-  /** The Level 4 Theme this Objective sits under. */
-  parentThemeId: z.string().min(1),
-  statement: z.string().trim().min(1, "Give the row a statement.").max(300),
-});
-
-/** An Objective under an existing Level 4 Theme, same scope rule as the branch. */
-export async function addDepartmentObjective(input: unknown): Promise<StructureResult> {
-  try {
-    const user = await requireSession();
-    const { kiId, parentThemeId, statement } = addDepartmentObjectiveSchema.parse(input);
-
-    const parent = await prisma.node.findUnique({
-      where: { id: parentThemeId },
-      select: { kind: true, level: true, orgUnitId: true },
-    });
-    if (!parent || parent.kind !== "THEME" || parent.level !== 4) {
-      return { ok: false, message: "That row cannot carry an Objective." };
-    }
-    if (!(await canEditStructureAt(user, 4, parent.orgUnitId))) {
-      throw new NotPermitted(
-        "You can only add to a department branch that belongs to your own division or department.",
-      );
-    }
-
-    const siblings = await prisma.node.count({ where: { kiId, parentId: parentThemeId } });
-    const created = await prisma.node.create({
-      data: {
-        kiId,
-        parentId: parentThemeId,
-        kind: "OBJECTIVE",
-        level: 4,
-        statement,
-        orgUnitId: parent.orgUnitId,
-        sortOrder: siblings,
-      },
-    });
-
-    revalidate();
-    return { ok: true, message: "Objective added.", id: created.id };
-  } catch (error) {
-    return permissionAware(error);
-  }
-}
+/*
+ * `addDepartmentObjective` used to add an Objective under a Level 4 Theme.
+ * There are no Themes now: a department branch *is* an Objective, and a
+ * department that needs a second one calls addDepartmentBranch again against
+ * the same company Objective. One action fewer, and one fewer tier to explain.
+ */
 
 const renameSchema = z.object({
   id: z.string().min(1),
@@ -338,16 +301,16 @@ export async function updateControlItem(input: unknown): Promise<StructureResult
     const item = await prisma.controlItem.findUnique({
       where: { id: data.id },
       select: {
-        measureId: true,
+        nodeId: true,
         dicOrgUnitId: true,
         direction: true,
         aggregation: true,
-        measure: { select: { name: true, node: { select: { level: true, kiId: true } } } },
+        node: { select: { statement: true, level: true, kiId: true } },
       },
     });
     if (!item) return { ok: false, message: "That Control Item no longer exists." };
-    const node = item.measure.node;
-    const label = data.name ?? item.measure.name;
+    const node = item.node;
+    const label = data.name ?? node.statement;
 
     if (!(await canControlItemScope(user, node.level, item.dicOrgUnitId))) {
       throw new NotPermitted();
@@ -392,10 +355,10 @@ export async function updateControlItem(input: unknown): Promise<StructureResult
     // separate decision.
     const achievementMethod = data.direction === "LOWER_BETTER" ? "INVERSE" : "RATIO";
 
-    // The name belongs to the Measure, so renaming here renames every
-    // Control Item's row at once - which is the point of naming it once.
-    if (data.name && data.name !== item.measure.name) {
-      await prisma.measure.update({ where: { id: item.measureId }, data: { name: data.name } });
+    // The name belongs to the Objective, so renaming here renames every one
+    // of its Control Items at once - which is the point of naming it once.
+    if (data.name && data.name !== node.statement) {
+      await prisma.node.update({ where: { id: item.nodeId }, data: { statement: data.name } });
     }
 
     await prisma.controlItem.update({
@@ -441,7 +404,7 @@ async function measureNodeDeletion(
 ): Promise<DeletionImpact & { controlItemIds: string[] }> {
   const nodeIds = await descendantNodeIds(nodeId);
   const controlItems = await prisma.controlItem.findMany({
-    where: { measure: { nodeId: { in: nodeIds } } },
+    where: { nodeId: { in: nodeIds } },
     select: { id: true },
   });
   const controlItemIds = controlItems.map((c) => c.id);
@@ -571,22 +534,23 @@ export async function deleteControlItem(input: unknown): Promise<StructureResult
     const item = await prisma.controlItem.findUnique({
       where: { id },
       select: {
-        measureId: true,
+        nodeId: true,
         measuredAs: true,
         dicOrgUnitId: true,
-        measure: {
+        node: {
           select: {
-            name: true,
-            node: { select: { level: true, kiId: true } },
+            statement: true,
+            level: true,
+            kiId: true,
             _count: { select: { controlItems: true } },
           },
         },
       },
     });
     if (!item) return { ok: false, message: "That Control Item no longer exists." };
-    const node = item.measure.node;
-    const siblingCount = item.measure._count.controlItems;
-    const label = controlItemLabel(item.measure.name, item.measuredAs, siblingCount);
+    const node = item.node;
+    const siblingCount = node._count.controlItems;
+    const label = controlItemLabel(node.statement, item.measuredAs, siblingCount);
     if (!(await canControlItemScope(user, node.level, item.dicOrgUnitId))) {
       throw new NotPermitted();
     }
@@ -600,7 +564,10 @@ export async function deleteControlItem(input: unknown): Promise<StructureResult
     if (locked.length) return lockedRefusal(`"${label}"`, locked);
 
     const entries = await prisma.entry.count({ where: { controlItemId: id } });
-    const lastOfMeasure = siblingCount <= 1;
+    // The Objective survives its last Control Item: an Objective with nothing
+    // measuring it is a hole in the deployment the sheet is meant to show, not
+    // a row to tidy away.
+    const lastOfMeasure = false;
 
     if (!confirm && entries > 0) {
       const impact = { nodes: 0, controlItems: 1, entries };
@@ -611,19 +578,15 @@ export async function deleteControlItem(input: unknown): Promise<StructureResult
         message:
           `Deleting "${label}" removes ${entries} stored ` +
           `${entries === 1 ? "figure" : "figures"}, including every actual keyed against it. ` +
-          (lastOfMeasure
-            ? "That cannot be undone."
-            : `The measure keeps its other ${siblingCount - 1 === 1 ? "Control Item" : "Control Items"}. ` +
+          (siblingCount <= 1
+            ? "The Objective stays, with nothing measuring it. That cannot be undone."
+            : `The Objective keeps its other ${siblingCount - 1 === 1 ? "Control Item" : "Control Items"}. ` +
               "That cannot be undone."),
       };
     }
 
+    void lastOfMeasure;
     await prisma.controlItem.delete({ where: { id } });
-    // A Measure exists to name its Control Items. The last one leaving takes
-    // the measure with it rather than stranding an empty name on the sheet.
-    if (lastOfMeasure) {
-      await prisma.measure.delete({ where: { id: item.measureId } }).catch(() => undefined);
-    }
     revalidate();
     return { ok: true, message: `Deleted "${label}".` };
   } catch (error) {
@@ -722,19 +685,20 @@ async function reorderControlItem(
   const item = await prisma.controlItem.findUnique({
     where: { id },
     select: {
-      measureId: true,
+      nodeId: true,
       dicOrgUnitId: true,
-      measure: {
+      node: {
         select: {
-          nodeId: true,
-          node: { select: { level: true, kiId: true } },
+          level: true,
+          kiId: true,
+          parentId: true,
           _count: { select: { controlItems: true } },
         },
       },
     },
   });
   if (!item) return { ok: false, message: "That Control Item no longer exists." };
-  const node = item.measure.node;
+  const node = item.node;
   if (!(await canControlItemScope(user, node.level, item.dicOrgUnitId))) {
     throw new NotPermitted();
   }
@@ -743,20 +707,18 @@ async function reorderControlItem(
   }
 
   /*
-   * Two different moves wear the same drag handle, and which one it is
-   * follows from what is being dragged rather than from a second control.
+   * Two different moves wear the same drag handle, and which one it is follows
+   * from what is being dragged rather than from a second control.
    *
-   * A Control Item of a measure that has others moves among those - the
-   * measure keeps its place in the plan and its own rows reorder inside it.
-   * A measure of one has no such siblings, so dragging it moves the *measure*
-   * among the measures under its Objective, which is what the drag has always
-   * done and what somebody reordering the sheet means by it.
+   * A Control Item of an Objective judged on several things moves among those
+   * - the Objective keeps its place in the plan and its own rows reorder
+   * inside it. An Objective judged on one thing has no such siblings, so
+   * dragging its row moves the *Objective* among the Objectives beside it,
+   * which is what somebody reordering the sheet means by it.
    */
-  const withinMeasure = item.measure._count.controlItems > 1;
-
-  if (withinMeasure) {
+  if (node._count.controlItems > 1) {
     const siblings = await prisma.controlItem.findMany({
-      where: { measureId: item.measureId },
+      where: { nodeId: item.nodeId },
       orderBy: [{ sortOrder: "asc" }, { id: "asc" }],
       select: { id: true },
     });
@@ -777,33 +739,13 @@ async function reorderControlItem(
     return { ok: true, message: "Moved." };
   }
 
-  // Reordering measures: the row dragged and the row dropped in front of are
-  // both Control Items, so both are resolved to the measures they belong to.
-  const beforeMeasureId = beforeId
-    ? (await prisma.controlItem.findUnique({ where: { id: beforeId }, select: { measureId: true } }))
-        ?.measureId ?? null
+  // Reordering Objectives: the row dragged and the row dropped in front of are
+  // both Control Items, so both resolve to the Objectives they belong to.
+  const beforeNodeId = beforeId
+    ? (await prisma.controlItem.findUnique({ where: { id: beforeId }, select: { nodeId: true } }))
+        ?.nodeId ?? null
     : null;
-  const measures = await prisma.measure.findMany({
-    where: { nodeId: item.measure.nodeId },
-    orderBy: [{ sortOrder: "asc" }, { id: "asc" }],
-    select: { id: true },
-  });
-  // Every measure under one Objective sits at that Objective's level, so they
-  // are all at the same level by construction and the slot machinery in
-  // reorderWithinLevel simply reorders the whole list.
-  const updates = reorderWithinLevel(
-    measures.map((measure) => ({ id: measure.id, level: node.level })),
-    item.measureId,
-    beforeMeasureId,
-  );
-  await prisma.$transaction(
-    updates.map((update) =>
-      prisma.measure.update({ where: { id: update.id }, data: { sortOrder: update.sortOrder } }),
-    ),
-  );
-
-  revalidate();
-  return { ok: true, message: "Moved." };
+  return reorderNode(user, item.nodeId, beforeNodeId);
 }
 
 // ------------------------------------------------------------ Control Items
@@ -840,21 +782,32 @@ export async function addControlItem(input: unknown): Promise<StructureResult> {
 
     const node = await prisma.node.findUnique({
       where: { id: data.nodeId },
-      select: { kind: true, kiId: true, level: true },
+      select: { kind: true, kiId: true, level: true, orgUnitId: true },
     });
     if (!node) return { ok: false, message: "That row no longer exists." };
-    if (node.kind !== "OBJECTIVE") {
-      return { ok: false, message: "A Control Item must sit under an Objective." };
-    }
 
-    // The DIC is what actually determines scope here, not the node's own org
-    // unit: a Control Item's accountable division is chosen at creation, and
-    // an OWNER may only choose one within their own reach.
-    if (node.level === 4) {
-      if (!(await canEditStructureAt(user, 4, data.dicOrgUnitId))) throw new NotPermitted();
-    } else if (!(await canEditStructureAt(user, node.level, null))) {
+    /*
+     * "Add a measure under this row" now means "add an Objective under it,
+     * with the first thing that measures it" - the two are one act since the
+     * tree was flattened.
+     *
+     * A Goal takes a Level 2 Objective and a Level 2 Objective takes a Level
+     * 3. Level 4 is not offered here whatever the row: a department branch
+     * carries an org unit, so it goes through addDepartmentBranch, and an
+     * Objective created here would belong to nobody.
+     */
+    const goingTo = node.level + 1;
+    if (goingTo > 3) {
+      return {
+        ok: false,
+        message:
+          "Level 4 work belongs to a department, so it is added with the L4+ button, which asks " +
+          "which division or department it is for.",
+      };
+    }
+    if (!(await canEditStructureAt(user, goingTo, null))) {
       throw new NotPermitted(
-        "Only a super admin or an executive can add a Control Item to the company structure.",
+        "Only a super admin or an executive can add to the company structure.",
       );
     }
     if (!(await canEditInKi(user, node.kiId))) {
@@ -870,16 +823,24 @@ export async function addControlItem(input: unknown): Promise<StructureResult> {
     // reading for a higher-is-better item, so it is chosen here rather than asked.
     const achievementMethod = data.direction === "LOWER_BETTER" ? "INVERSE" : "RATIO";
 
-    // A new measure and its first Control Item, created together: a Measure
-    // with nothing under it would be a name on the sheet with no figures, and
-    // nothing in the product can key one into existence afterwards.
-    const siblings = await prisma.measure.count({ where: { nodeId: data.nodeId } });
-    const measure = await prisma.measure.create({
-      data: { nodeId: data.nodeId, name: data.name, sortOrder: siblings },
+    // A new Objective and its first Control Item, created together. Adding a
+    // "measure" from the sheet means exactly this now: a statement with one
+    // thing measuring it.
+    const siblings = await prisma.node.count({ where: { kiId: node.kiId, parentId: data.nodeId } });
+    const objective = await prisma.node.create({
+      data: {
+        kiId: node.kiId,
+        parentId: data.nodeId,
+        kind: "OBJECTIVE",
+        level: goingTo,
+        statement: data.name,
+        orgUnitId: node.orgUnitId,
+        sortOrder: siblings,
+      },
     });
     const created = await prisma.controlItem.create({
       data: {
-        measureId: measure.id,
+        nodeId: objective.id,
         code: data.code ? await freeCode(data.code) : await uniqueCode(data.name),
         measuredAs: data.measuredAs,
         unit: data.unit,
@@ -901,47 +862,64 @@ export async function addControlItem(input: unknown): Promise<StructureResult> {
   }
 }
 
-const addToMeasureSchema = addControlItemSchema
+const addToObjectiveSchema = addControlItemSchema
   .omit({ nodeId: true, name: true })
-  .extend({ measureId: z.string().min(1) });
+  .extend({ objectiveId: z.string().min(1) });
 
 /**
- * Another Control Item under a Measure that already exists.
+ * Another Control Item under an Objective that already exists.
  *
- * This is the whole point of Measures: one measure held to several targets at
- * once - a service experience judged on an NPS, a first-time fix rate and a
- * waiting time together. The new Control Item shares only the name. Its unit,
+ * This is what lets one Objective be held to several targets at once - a
+ * service experience judged on an NPS, a first-time fix rate and a waiting
+ * time together. The new Control Item shares only the statement. Its unit,
  * direction, roll-up, department, business unit and responsible person are its
  * own, and it is keyed, rolled up and evaluated entirely separately.
  *
- * Permission follows the measure's own Objective, exactly as adding the first
- * one does, and the department is checked at the level that Objective sits at:
- * adding to a measure is filing work on a division, whichever row on the sheet
- * the form was opened from.
+ * Permission follows the Objective's own level, exactly as adding the first
+ * one does: adding to an Objective is filing work on a division, whichever row
+ * on the sheet the form was opened from.
  */
-export async function addControlItemToMeasure(input: unknown): Promise<StructureResult> {
+export async function addControlItemToObjective(input: unknown): Promise<StructureResult> {
   try {
     const user = await requireSession();
-    const data = addToMeasureSchema.parse(input);
+    const data = addToObjectiveSchema.parse(input);
 
-    const measure = await prisma.measure.findUnique({
-      where: { id: data.measureId },
+    const measure = await prisma.node.findUnique({
+      where: { id: data.objectiveId },
       select: {
-        name: true,
-        node: { select: { kiId: true, level: true } },
+        statement: true,
+        kiId: true,
+        level: true,
+        kind: true,
+        orgUnitId: true,
         _count: { select: { controlItems: true } },
       },
     });
-    if (!measure) return { ok: false, message: "That measure no longer exists." };
+    if (!measure || measure.kind !== "OBJECTIVE") {
+      return { ok: false, message: "That Objective no longer exists." };
+    }
 
-    if (measure.node.level === 4) {
+    if (measure.level === 4) {
+      /*
+       * Both ends, and the branch first.
+       *
+       * A Level 4 Objective belongs to the division or department that started
+       * it, so adding to it is editing their branch - checking only the
+       * Department the form chose would let any division lead hang their own
+       * work off somebody else's row.
+       */
+      if (!(await canEditStructureAt(user, 4, measure.orgUnitId))) {
+        throw new NotPermitted(
+          "That branch belongs to another division. You can only add to your own.",
+        );
+      }
       if (!(await canEditStructureAt(user, 4, data.dicOrgUnitId))) throw new NotPermitted();
-    } else if (!(await canEditStructureAt(user, measure.node.level, null))) {
+    } else if (!(await canEditStructureAt(user, measure.level, null))) {
       throw new NotPermitted(
         "Only a super admin or an executive can add a Control Item to the company structure.",
       );
     }
-    if (!(await canEditInKi(user, measure.node.kiId))) {
+    if (!(await canEditInKi(user, measure.kiId))) {
       throw new NotPermitted("That year is closed. Only a super admin can add to it.");
     }
     if (!(await canAssignTo(user, data.responsibleUserId))) {
@@ -953,10 +931,10 @@ export async function addControlItemToMeasure(input: unknown): Promise<Structure
     const achievementMethod = data.direction === "LOWER_BETTER" ? "INVERSE" : "RATIO";
     const created = await prisma.controlItem.create({
       data: {
-        measureId: data.measureId,
-        // The code is derived from the measure and what this one measures, so
-        // three Control Items of one measure do not collide on the name alone.
-        code: await uniqueCode(`${measure.name} ${data.measuredAs ?? ""}`),
+        nodeId: data.objectiveId,
+        // Derived from the statement and what this one measures, so three
+        // Control Items of one Objective do not collide on the name alone.
+        code: await uniqueCode(`${measure.statement} ${data.measuredAs ?? ""}`),
         measuredAs: data.measuredAs,
         unit: data.unit,
         direction: data.direction,
@@ -973,7 +951,7 @@ export async function addControlItemToMeasure(input: unknown): Promise<Structure
     revalidate();
     return {
       ok: true,
-      message: `Added a Control Item to "${measure.name}".`,
+      message: `Added a Control Item to "${measure.statement}".`,
       id: created.id,
     };
   } catch (error) {

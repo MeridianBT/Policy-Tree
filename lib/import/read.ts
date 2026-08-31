@@ -26,9 +26,13 @@ export interface ImportRow {
   actual: string | number | null;
   /** Structure columns, used only when a row would create something. */
   goal: string;
-  theme: string;
+  /**
+   * The Objective this row is deployed from, blank on a Level 2 row whose
+   * parent is the Goal itself.
+   */
+  parentObjective: string;
+  /** The row's own Objective statement - what the sheet prints beside it. */
   objective: string;
-  measure: string;
   controlItem: string;
   dic: string;
   businessUnit: string;
@@ -78,9 +82,8 @@ const COLUMNS: Record<string, keyof ImportRow> = {
   target: "target",
   actual: "actual",
   goal: "goal",
-  theme: "theme",
+  parentobjective: "parentObjective",
   objective: "objective",
-  measure: "measure",
   controlitem: "controlItem",
   dic: "dic",
   department: "dic",
@@ -198,6 +201,26 @@ export async function readWorkbook(buffer: ArrayBuffer): Promise<ReadResult> {
     if (normaliseHeader(cellText(cell)) === "periodtype") periodTypeColumn = columnNumber;
   });
 
+  /*
+   * A workbook exported before the plan tree was flattened.
+   *
+   * Its Goal / Theme / Objective columns are the *ancestors* of a row whose
+   * own name sat in a Measure column, and this reader would take the ancestor
+   * for the row itself: every figure would still land correctly by Code, but
+   * the preview would report a rename on every line and place a new row under
+   * the wrong parent. One refusal naming the reason is worth more than a
+   * thousand misleading notes.
+   */
+  const headers = new Set<string>();
+  headerRow.eachCell((cell) => headers.add(normaliseHeader(cellText(cell))));
+  if (headers.has("theme")) {
+    throw new ImportReadError(
+      "That workbook was exported before the plan tree was flattened - it still has a Theme " +
+        "column. Export the sheet again and edit the new file; the figures in this one would " +
+        "still be read, but its Goal, Theme and Objective columns no longer mean what they say.",
+    );
+  }
+
   const has = (key: keyof ImportRow) => [...byColumn.values()].includes(key);
   if (!has("code") || !has("period")) {
     throw new ImportReadError(
@@ -255,9 +278,8 @@ export async function readWorkbook(buffer: ArrayBuffer): Promise<ReadResult> {
       target,
       actual,
       goal: cellText(raw.goal ?? null),
-      theme: cellText(raw.theme ?? null),
+      parentObjective: cellText(raw.parentObjective ?? null),
       objective: cellText(raw.objective ?? null),
-      measure: cellText(raw.measure ?? null),
       controlItem: cellText(raw.controlItem ?? null),
       dic: cellText(raw.dic ?? null),
       businessUnit: cellText(raw.businessUnit ?? null),

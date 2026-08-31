@@ -32,10 +32,10 @@ export interface AuditRow {
 export interface ControlItemDetail {
   id: string;
   code: string;
-  /** The Measure's name. Several Control Items can share it. */
+  /** The Objective's statement. Several Control Items can share it. */
   name: string;
   measuredAs: string;
-  /** The measure's other Control Items, empty when it has only this one. */
+  /** The Objective's other Control Items, empty when it has only this one. */
   siblings: Array<{ id: string; code: string; measuredAs: string }>;
   unit: string;
   direction: string;
@@ -72,10 +72,10 @@ export async function loadControlItem(controlItemId: string): Promise<ControlIte
     include: {
       dicOrgUnit: { select: { code: true, name: true } },
       responsibleUser: { select: { name: true } },
-      measure: {
+      node: {
         include: {
-          node: { include: { ki: true } },
-          // Sibling control items, so this page can say which of a measure's
+          ki: true,
+          // The Objective's other Control Items, so this page can say which of
           // several this one is - and offer the others.
           controlItems: {
             select: { id: true, code: true, measuredAs: true, unit: true },
@@ -85,7 +85,7 @@ export async function loadControlItem(controlItemId: string): Promise<ControlIte
       },
     },
   });
-  const node = item.measure.node;
+  const node = item.node;
 
   const kiStartYear = kiStartYearOf(dateToPeriod(node.ki.startDate));
   const months = kiMonths(kiStartYear);
@@ -147,12 +147,12 @@ export async function loadControlItem(controlItemId: string): Promise<ControlIte
   return {
     id: item.id,
     code: item.code,
-    name: item.measure.name,
+    name: node.statement,
     measuredAs: item.measuredAs ?? item.unit.toLowerCase(),
-    // The other Control Items of the same Measure, so a page opened on one of
-    // three can reach the other two rather than sending the reader back to the
-    // sheet to find them.
-    siblings: item.measure.controlItems
+    // The Objective's other Control Items, so a page opened on one of three
+    // can reach the other two rather than sending the reader back to the sheet
+    // to find them.
+    siblings: node.controlItems
       .filter((sibling) => sibling.id !== item.id)
       .map((sibling) => ({
         id: sibling.id,

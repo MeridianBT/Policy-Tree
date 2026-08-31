@@ -8,11 +8,11 @@ import type { SheetCell } from "@/lib/calc/row";
 import type { EvaluationBandSpec, Unit, VersionSpec } from "@/lib/calc/types";
 import type { PeriodKey } from "@/lib/domain/period";
 
-export type SheetRowKind = "GOAL" | "THEME" | "OBJECTIVE" | "CONTROL_ITEM";
+export type SheetRowKind = "GOAL" | "OBJECTIVE" | "CONTROL_ITEM";
 
 export interface GroupRow {
   id: string;
-  kind: "GOAL" | "THEME" | "OBJECTIVE";
+  kind: "GOAL" | "OBJECTIVE";
   level: number;
   statement: string;
   /** Level 1 Goals only: their position in the company's priority list. */
@@ -32,17 +32,18 @@ export interface ControlItemRow {
   kind: "CONTROL_ITEM";
   code: string;
   /**
-   * The Measure's name, carried on every one of its Control Items so that a
-   * row always knows what it is called. The sheet prints it once per measure -
-   * see `firstOfMeasure` - and the screens that show one line per control item
-   * with no grouping to lean on pair it with `measuredAs`.
+   * The Objective's statement, carried on every one of its Control Items so
+   * that a row always knows what it is called. The sheet prints it once per
+   * Objective - see `firstOfObjective` - and the screens that show one line per
+   * Control Item with no grouping to lean on pair it with `measuredAs`.
    */
   name: string;
-  measureId: string;
-  /** True on the first Control Item of its Measure, in sheet order. */
-  firstOfMeasure: boolean;
-  /** How many Control Items this row's Measure carries, itself included. */
-  measureItemCount: number;
+  /** The Objective this row records. Its statement is the row's `name`. */
+  objectiveId: string;
+  /** True on the first Control Item of its Objective, in sheet order. */
+  firstOfObjective: boolean;
+  /** How many Control Items this row's Objective carries, itself included. */
+  objectiveItemCount: number;
   /** How the target and actual are measured, e.g. "Units sold", "% of sales". */
   measuredAs: string;
   unit: Unit;
@@ -103,13 +104,6 @@ export interface SheetModel {
     type: "DIVISION" | "DEPARTMENT";
     parentCode: string | null;
   }>;
-  /**
-   * Theme statements present. The sheet no longer filters by Theme - the
-   * outline itself groups by one, so a filter that repeated it earned no
-   * space in a toolbar with three that do not. Kept because
-   * scripts/export-preview.ts still ships them with a preview snapshot.
-   */
-  themes: Array<{ id: string; statement: string }>;
   /**
    * Every business unit, for the filter control and the add-measure form.
    * Every one of them, not merely those already carrying a measure: a new

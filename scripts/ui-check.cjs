@@ -301,7 +301,11 @@ async function theFormFollowsThePencil(browser) {
         const input = label.querySelector("input");
         if (input) return input.value;
         const select = label.querySelector("select");
-        return select ? select.options[select.selectedIndex]?.text ?? null : null;
+        if (select) return select.options[select.selectedIndex]?.text ?? null;
+        // A field the form shows as text: the Objective's statement on a row
+        // that does not carry it, which is edited on the row that does.
+        const fixed = label.querySelector("span");
+        return fixed ? fixed.textContent.trim() : null;
       };
       return { heading, measure: field("Measure"), division: field("Division") };
     });
@@ -439,6 +443,58 @@ async function theUploadPreviewWritesNothing(browser) {
  * test: the sheet names the measure once rather than three times, and every
  * screen that shows one line per Control Item still tells the three apart.
  */
+/**
+ * The flattened tree, on the sheet.
+ *
+ * An Objective is a statement with figures against it, and the two rules that
+ * make that readable are hard to see any other way: an Objective carrying one
+ * Control Item and nothing deployed from it is ONE row, statement and numbers
+ * together; an Objective something IS deployed from prints its statement once,
+ * as the header of what hangs beneath it, and never again on the rows below.
+ */
+async function anObjectiveReadsAsOneStatement(browser) {
+  console.log("\nAn Objective's statement is printed exactly once");
+  const page = await browser.newPage({ viewport: { width: 1500, height: 900 } });
+  await signIn(page);
+  await page.waitForTimeout(1500);
+
+  const printed = (statement) =>
+    page.evaluate(
+      (text) =>
+        [...document.querySelectorAll("a, span")].filter(
+          (element) => element.textContent.trim() === text,
+        ).length,
+      statement,
+    );
+
+  // "New vehicle deliveries" carries a Control Item AND a Level 3 deployment,
+  // which is the case that used to print the name twice - once inline on its
+  // own figures and again as the header for what ladders from it.
+  const deployedFrom = await printed("New vehicle deliveries");
+  check(deployedFrom === 1, "an Objective that is deployed from names itself once", `${deployedFrom} found`);
+
+  // Its own Control Item still reaches its detail screen, even though the
+  // statement above it is the row carrying the name.
+  const continuation = await page.evaluate(
+    () => [...document.querySelectorAll('a[href^="/control-item/"]')].filter((a) => a.textContent.trim() === "└").length,
+  );
+  check(continuation > 0, "and its own figures still link to the Control Item", `${continuation} continuation rows`);
+
+  // An Objective with one Control Item and nothing under it is a single row:
+  // the statement and the numbers together.
+  const inline = await page.evaluate(() => {
+    const link = [...document.querySelectorAll("a")].find(
+      (a) => a.textContent.trim() === "Market share",
+    );
+    if (!link) return null;
+    const row = link.closest("div.group") ?? link.parentElement?.parentElement;
+    return row ? row.textContent.includes("% of total VFACTS market") : null;
+  });
+  check(inline === true, "an Objective of one reads as a single row, statement beside its figures");
+
+  await page.close();
+}
+
 async function severalControlItemsUnderOneMeasure(browser) {
   console.log("\nA measure can carry several Control Items");
   const page = await browser.newPage({ viewport: { width: 1500, height: 900 } });
@@ -595,6 +651,7 @@ async function theUatWording(browser) {
     await panelsStayOnScreen(browser);
     await panelsDismiss(browser);
     await theMonthEndReview(browser);
+    await anObjectiveReadsAsOneStatement(browser);
     await severalControlItemsUnderOneMeasure(browser);
     await adminIsInSections(browser);
     await theUploadPreviewWritesNothing(browser);

@@ -195,23 +195,38 @@ async function main() {
   let controlItemCount = 0;
   let entryCount = 0;
 
-  async function createControlItem(
-    nodeId: string,
+  /*
+   * One Objective per seeded measure.
+   *
+   * The tree is flat: a measure's name *is* the Objective statement, and the
+   * Objective carries the Control Item that records it. An Objective held to
+   * several Control Items is what the model allows; the demo plan does not
+   * need one to make its point.
+   */
+  async function createObjective(
+    parentId: string,
+    level: number,
     spec: SeedControlItem,
     sortOrder: number,
+    orgUnitId: string,
     /** Files the measure against a Department rather than its Division. */
     dicCode?: string,
-  ): Promise<void> {
+  ): Promise<string> {
     const dic = dicCode ?? spec.dic;
-    // One Measure per seeded measure, each with one Control Item. A measure
-    // held to several is what the model now allows; the demo plan does not
-    // need one to make its point.
-    const measure = await prisma.measure.create({
-      data: { nodeId, name: spec.name, sortOrder },
+    const node = await prisma.node.create({
+      data: {
+        kiId: ki.id,
+        parentId,
+        level,
+        kind: "OBJECTIVE",
+        statement: spec.name,
+        orgUnitId,
+        sortOrder,
+      },
     });
     const controlItem = await prisma.controlItem.create({
       data: {
-        measureId: measure.id,
+        nodeId: node.id,
         code: spec.code,
         measuredAs: spec.measuredAs,
         unit: spec.unit,
@@ -222,12 +237,14 @@ async function main() {
         businessUnitId: businessUnitIds.AUTO,
         dicOrgUnitId: orgUnitByCode.get(dic)!.id,
         responsibleUserId: userByOrg.get(dic) ?? userByOrg.get(spec.dic) ?? null,
+        sortOrder: 0,
       },
     });
     controlItemIdByCode.set(spec.code, controlItem.id);
-    objectiveNodeByControlItem.set(spec.code, nodeId);
+    objectiveNodeByControlItem.set(spec.code, node.id);
     controlItemCount++;
     entryCount += await seedEntries(controlItem.id, spec);
+    return node.id;
   }
 
   async function seedEntries(controlItemId: string, spec: SeedControlItem): Promise<number> {
@@ -295,66 +312,31 @@ async function main() {
       },
     });
 
-    let themeOrder = 0;
+    /*
+     * The plan is drafted in seed-data.ts as Goal > Theme > Objective >
+     * measures, which is how somebody writes one down. The tree it seeds is
+     * flat: a Goal, then an Objective per measure.
+     *
+     * A Theme's and an Objective's statements are therefore not nodes - each
+     * measure's own name is the Objective statement - and the drafted nesting
+     * survives only to say which company Objective a Level 3 branch hangs
+     * from. That parent is the FIRST measure of the objective it was drafted
+     * under, the same rule the flatten migration applied to live data.
+     */
+    let order = 0;
     for (const theme of goal.themes) {
-      const themeNode = await prisma.node.create({
-        data: {
-          kiId: ki.id,
-          parentId: goalNode.id,
-          level: 2,
-          kind: "THEME",
-          statement: theme.statement,
-          orgUnitId: company.id,
-          sortOrder: themeOrder++,
-        },
-      });
-
-      let objectiveOrder = 0;
       for (const objective of theme.objectives) {
-        const objectiveNode = await prisma.node.create({
-          data: {
-            kiId: ki.id,
-            parentId: themeNode.id,
-            level: 2,
-            kind: "OBJECTIVE",
-            statement: objective.statement,
-            orgUnitId: company.id,
-            sortOrder: objectiveOrder++,
-          },
-        });
-        for (const [index, spec] of objective.controlItems.entries()) {
-          await createControlItem(objectiveNode.id, spec, index);
+        let first: string | null = null;
+        for (const spec of objective.controlItems) {
+          const id = await createObjective(goalNode.id, 2, spec, order++, company.id);
+          first ??= id;
         }
+        if (!first) continue;
 
-        // Level 3 sits under a Level 3 theme that hangs off the Level 2 objective.
-        if (objective.children?.length) {
-          const level3Theme = await prisma.node.create({
-            data: {
-              kiId: ki.id,
-              parentId: objectiveNode.id,
-              level: 3,
-              kind: "THEME",
-              statement: objective.childTheme ?? `${theme.statement} — deployment`,
-              orgUnitId: company.id,
-              sortOrder: 0,
-            },
-          });
-          let childOrder = 0;
-          for (const child of objective.children) {
-            const childNode = await prisma.node.create({
-              data: {
-                kiId: ki.id,
-                parentId: level3Theme.id,
-                level: 3,
-                kind: "OBJECTIVE",
-                statement: child.statement,
-                orgUnitId: company.id,
-                sortOrder: childOrder++,
-              },
-            });
-            for (const [index, spec] of child.controlItems.entries()) {
-              await createControlItem(childNode.id, spec, index);
-            }
+        let childOrder = 0;
+        for (const child of objective.children ?? []) {
+          for (const spec of child.controlItems) {
+            await createObjective(first, 3, spec, childOrder++, company.id);
           }
         }
       }
@@ -370,30 +352,15 @@ async function main() {
       const parentObjectiveId = objectiveNodeByControlItem.get(objective.laddersToControlItem);
       if (!parentObjectiveId) throw new Error(`Unknown ladder target ${objective.laddersToControlItem}`);
 
-      const themeNode = await prisma.node.create({
-        data: {
-          kiId: ki.id,
-          parentId: parentObjectiveId,
-          level: 4,
-          kind: "THEME",
-          statement: level4.theme,
-          orgUnitId,
-          sortOrder: divisionIndex,
-        },
-      });
-      const objectiveNode = await prisma.node.create({
-        data: {
-          kiId: ki.id,
-          parentId: themeNode.id,
-          level: 4,
-          kind: "OBJECTIVE",
-          statement: objective.statement,
-          orgUnitId,
-          sortOrder: objectiveIndex,
-        },
-      });
       for (const [index, spec] of objective.controlItems.entries()) {
-        await createControlItem(objectiveNode.id, spec, index, level4.department);
+        await createObjective(
+          parentObjectiveId,
+          4,
+          spec,
+          divisionIndex * 100 + objectiveIndex * 10 + index,
+          orgUnitId,
+          level4.department,
+        );
       }
     }
   }

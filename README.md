@@ -103,10 +103,8 @@ applies no such skip: that is a decision rather than a sweep.
 | **Ki** | The fiscal year, 1 April – 31 March. `Ki 2026` = Apr 2026 → Mar 2027. |
 | **Quarter** | Q1 Apr–Jun, Q2 Jul–Sep, Q3 Oct–Dec, Q4 Jan–Mar. |
 | **Goal** | Level 1. A company priority statement, no measurement. |
-| **Theme** | A grouping heading under a Goal, at Levels 2, 3 and 4. |
-| **Objective** | A statement of intent under a Theme, carrying Control Items. |
-| **Measure** | What an Objective is measured by, named once. Carries one Control Item, or several. |
-| **Control Item** | The measurement method — how a target and actual are measured ("Units sold", "% of sales"). One row on the sheet, with its own unit, direction, targets and actuals. |
+| **Objective** | Levels 2, 3 and 4. A statement of intent, carrying Control Items and deploying into further Objectives beneath it. |
+| **Control Item** | The measurement method — how a target and actual are measured ("Units sold", "% of sales"). One row on the sheet, with its own unit, direction, targets and actuals. An Objective may carry several. |
 | **DIC** | Division In Charge: the org unit accountable for a Control Item. Shown on every screen as **Department**, since the org unit named is usually one. |
 | **Version** | A named plan snapshot: OB, PRB, 1QFC, 2QFC, 3QFC, ACT. |
 
@@ -114,29 +112,36 @@ Levels 1–3 form the single company page; Level 4 is the division drill-down.
 
 ### What each level holds
 
-The tree alternates: a **Theme** is a heading and carries nothing measurable, an
-**Objective** is what Control Items hang from. That is the rule people trip on —
-a measure needs an Objective to sit under, at any level.
+One kind of row repeats all the way down. A **Goal** is a company priority and
+is never measured; everything beneath it is an **Objective**, which carries
+Control Items, deploys into further Objectives, or does both.
 
 ```
 Ki 103KI
-└── Goal (L1)                    statement only — no measures, ever
-    └── Theme (L2)               heading
-        └── Objective (L2)       ← Measures live here
-            ├── Measure          named once
-            │   └── Control Item   control item · targets · actuals
-            └── Theme (L3)       heading, the company breakdown continued
-                └── Objective (L3)  ← Measures live here
-                    ├── Measure
-                    └── Theme (L4)      a department branch, carrying an org unit
-                        └── Objective (L4)  ← Measures live here
-                            └── Measure
+└── Goal (L1)                     statement only — no measures, ever
+    └── Objective (L2)            statement · control items · targets · actuals
+        ├── Control Item          unit · direction · roll-up · DIC · owner
+        ├── Control Item          another target against the same statement
+        ├── Objective (L3)        the company breakdown, deployed from above
+        │   └── Control Item
+        └── Objective (L4)        a department branch, carrying an org unit
+            └── Control Item
 ```
 
-So Levels **2, 3 and 4 all carry measures**, with targets and actuals, and only
-Level 1 is description-only. The demo data is exactly that shape: 5 Goals with
-no measures at all, and 83 Control Items — one measure among them held to three
-of them — each with a target on every forecast version and an actual for every
+So Levels **2, 3 and 4 are all the same thing** — an Objective with figures
+against it — and only Level 1 is description-only. An Objective with no Control
+Items yet renders as a blank row, which is how a plan gets built from nothing
+and how a hole in the deployment stays visible.
+
+On the sheet an Objective is named exactly once. One carrying a single Control
+Item and nothing deployed from it is a **single row**, its statement beside its
+figures. One that anything hangs from — a second Control Item, or an Objective
+deployed from it — prints its statement as the header of that group, and the
+rows beneath it name only what each measures.
+
+The demo data is exactly that shape: 5 Goals with no measures at all, and 83
+Control Items across 81 Objectives — one Objective among them held to three of
+them — each with a target on every forecast version and an actual for every
 closed month.
 
 A Level 4 branch is the one that differs in kind rather than depth: it hangs off
@@ -144,55 +149,60 @@ a Level 2 or 3 Objective, it must carry an org unit, and it is the only part of
 the tree a division or department lead can extend on their own. Level 4 is as
 deep as the model goes.
 
-#### A Measure may be held to several Control Items
+#### An Objective may be held to several Control Items
 
-A measure is usually judged on one thing, and then a Measure has one Control
-Item and the sheet draws it as it always has: the name in **Measures**, the
-control item in **Control Item**, one row.
+An objective is usually judged on one thing, and then it carries one Control
+Item and the sheet draws it as a single row: the statement in **Measures**, the
+control item in **Control Item**, its figures across the months.
 
 Sometimes it is judged on several at once. Servicing is not effortless because
 of any one of an NPS, a first-time fix rate and a waiting time — it is all
 three together, and the demo plan carries exactly that under "Service
-experience". So a Measure holds as many Control Items as it needs, and the
+experience". So an Objective holds as many Control Items as it needs, and the
 split between them is deliberately uneven:
 
-- The **Measure** carries the name, its place under the Objective and its
-  order. That is all.
+- The **Objective** carries the statement, its place in the tree and its order.
+  That is all.
 - Each **Control Item** carries everything else — its own code, unit,
   direction, roll-up, decimals, department, business unit, responsible person,
   targets and actuals. It is keyed, rolled up and evaluated separately, and a
   formula addresses it by its own code.
 
-That unevenness is what keeps the change small: the filters, the permission
-checks, the formula engine, the entries, the audit trail and the month-end
-reminder all still operate on exactly the row they always did.
+That unevenness is what keeps the filters, the permission checks, the formula
+engine, the entries, the audit trail and the month-end reminder all operating
+on exactly the row they always did.
 
-On the sheet the name is printed **once**, on the measure's first Control Item;
-the rows beneath leave the Measures column to a faint `└` and are told apart by
-their own Control Item text. Repeating one name down three rows says nothing
-the reader did not already know and costs the width those rows need. Away from
-the sheet — `/my-entries`, the month-end review, the reminder mail — there is no
-grouping to lean on, so a line reads `Service experience — Days to next
-available booking`. A measure of one is never dressed up that way
-(`lib/calc/measure-label.ts`).
+On the sheet the statement is printed **once**. An Objective with one Control
+Item and nothing deployed from it prints it inline, beside its own figures.
+Anything more — a second Control Item, or an Objective laddering from it — and
+the statement becomes the header of that group; the rows beneath leave the
+Measures column to a faint `└` and are told apart by their own Control Item
+text. Repeating one statement down three rows says nothing the reader did not
+already know and costs the width those rows need. Away from the sheet —
+`/my-entries`, the month-end review, the reminder mail — there is no grouping to
+lean on, so a line reads `Service experience — Days to next available booking`.
+An Objective of one is never dressed up that way (`lib/calc/item-label.ts`).
 
-Editing follows the same rule. **CI+** on a measure's row adds another Control
-Item to it, seeded from the one beside it, with the name shown but not offered.
-The pencil on the first row edits the measure *and* that Control Item; on a
-later row it edits the Control Item only. Renaming from the first row renames
-every row at once, because there is one name. Deleting one of several leaves
-the measure standing; deleting the last takes the measure with it, because a
-Measure with nothing under it would be a name on the sheet with no figures and
-no way to key one.
+Editing follows the same rule. **CI+** on any Objective adds a Control Item to
+it, seeded from the one beside it when there is one, with the statement shown
+but not offered. The pencil on the row carrying the statement edits the
+Objective *and* that Control Item; on any other row it edits the Control Item
+only. Renaming from the row that carries it renames the Objective, so every row
+beneath follows at once. Deleting a Control Item never takes the Objective with
+it — an Objective is a statement of intent in its own right, and one with
+nothing measuring it reads as a blank row, which is a real hole in the
+deployment and better seen than hidden.
 
-Dragging follows from what is dragged: a Control Item of a measure that has
-others moves among those, and a measure of one moves the measure among the
-measures under its Objective — which is what reordering the sheet has always
+Dragging follows from what is dragged: a Control Item of an Objective that has
+others moves among those, and the only Control Item of an Objective moves the
+Objective among its siblings — which is what reordering the sheet has always
 meant.
 
 To add a measure, turn on **Edit** (the pencil in the toolbar) and use the
-**M+** on an Objective row. Theme and Goal rows do not offer it, because a measure filed against a
-heading would have no statement of intent to answer to.
+**M+** on a Goal or Level 2 Objective row — it creates the Objective and the
+first Control Item measuring it together. **CI+** on any Objective adds another
+Control Item to *that* Objective, which is also how a blank row gets its first
+figure.
 
 ## How it is put together
 
@@ -303,8 +313,8 @@ override: a closed version is the record of what was committed, and editing it
 would rewrite history.
 
 This table covers *entries* — the numbers keyed into a Control Item. Editing
-the *plan structure itself* (adding a Theme, a Level 4 branch, a whole Control
-Item) is a separate, narrower permission, covered under "Editing the structure
+the *plan structure itself* (adding an Objective, a Level 4 branch, a whole
+Control Item) is a separate, narrower permission, covered under "Editing the structure
 from the sheet" below.
 
 Accountability and data entry are separate fields. `dic_org_unit_id` is the
@@ -494,7 +504,7 @@ shared mailbox does not fill with hundreds of copies nobody reads.
 Entry is `Tab` to move and save, `Enter` to save and drop a row, `Escape` to
 revert. No modal dialogs anywhere in that flow.
 
-The sheet outlines in both directions. Rows fold at Goal, Theme and Objective;
+The sheet outlines in both directions. Rows fold at Goal and Objective;
 columns fold by quarter — tap a quarter heading to condense its three months
 into the quarter figure, or use the Columns toggle to condense all four at once
 and read the whole Ki at quarter level. Condensing is a view concern and
@@ -528,7 +538,7 @@ year would be worse than useless.
 ### Emptying a year
 
 Admin → *Empty year* on any Ki that is not current. It removes every Goal,
-Theme, Objective, Control Item and stored figure for that year; the year
+Objective, Control Item and stored figure for that year; the year
 itself and its six plan versions survive, so it is immediately ready to be
 built again or copied into.
 
@@ -648,15 +658,15 @@ different times, against different versions.
 
 ### Editing the structure from the sheet
 
-An ADMIN can add, rename and remove Goals, Themes, Objectives and Control Items
+An ADMIN can add, rename and remove Goals, Objectives and Control Items
 directly on the company sheet — **Edit**, the pencil in the toolbar, reveals a
 `+` / rename / delete on every row, without leaving the sheet or opening the
 admin structure builder. Nothing asks for a level or a kind for a plain
-continuation: the server derives both from the parent (a Goal takes a Theme, a
-Theme takes an Objective, a Level 2 Objective takes a Level 3 Theme), so the
-only decision left is what to call the new row.
+continuation: the server derives both from the parent (a Goal takes a Level 2
+Objective, a Level 2 Objective takes a Level 3), so the only decision left is
+what to call the new row.
 
-Deletion is destructive — a Goal carries every Theme, Objective, Control Item
+Deletion is destructive — a Goal carries every Objective, Control Item
 and stored figure beneath it — so it runs in two steps. The first click reports
 exactly what would be lost ("removes 7 rows beneath it, 7 Control Items, 315
 stored figures"); only a second, explicit confirmation removes anything. The
@@ -747,15 +757,15 @@ against it.
 #### Reordering by dragging
 
 In edit mode every row also grows a grip on its right-hand end. Dragging it
-moves the row **among its own siblings at its own level** — a Theme moves
-among Themes under the same Goal, a measure among the measures under the same
-Objective — and a drop line shows where it will land. Drag it anywhere else
+moves the row **among its own siblings at its own level** — an Objective moves
+among the Objectives under the same Goal, a Control Item among the Control
+Items of the same Objective — and a drop line shows where it will land. Drag it anywhere else
 and no line appears, because there is nowhere valid to drop it.
 
 "Within their level" is not cosmetic. A Level 2 Objective can carry Level 3
-Themes continuing the company breakdown *and* Level 4 department branches
-laddering into it, side by side under one parent. Reordering the Themes must
-leave those branches exactly where they were, so `lib/structure/reorder.ts`
+Objectives continuing the company breakdown *and* Level 4 department branches
+laddering into it, side by side under one parent. Reordering the Level 3 rows
+must leave those branches exactly where they were, so `lib/structure/reorder.ts`
 treats the positions the same-level rows occupy as fixed slots and reshuffles
 only what sits in them. Nothing else moves.
 
@@ -787,16 +797,16 @@ the loop:
   department lead ladders their own deployment from wherever it belongs in the
   company structure, not only from rows that happen to already carry their
   division's DIC.
-- Once a branch exists, its owning lead can extend it — add an Objective under
-  their Theme, add a Control Item under their Objective, rename or delete any
-  of it — the same way an ADMIN can, but never outside their own org unit or a
+- Once a branch exists, its owning lead can extend it — add a Control Item to
+  it, start a second branch off the same company Objective, rename or delete
+  any of it — the same way an ADMIN can, but never outside their own org unit or a
   department beneath it. `components/sheet/permissions.ts` mirrors this rule
   client-side to decide which pencils and trash cans to draw; every action
   re-derives the real answer from the database regardless of what the toolbar
   showed.
 - A plain continuation from a Level 3 Objective is refused outright, even for
   an ADMIN — the next step from Level 3 is always a Level 4 branch, and that
-  must carry an org unit. A Theme created by the generic "add child" path
+  must carry an org unit. An Objective created by the generic "add child" path
   would belong to nobody.
 
 #### The Division/Department view
@@ -847,7 +857,7 @@ Item. The cascade view is built for the opposite problem: when Department
 work lives on its own page or its own slide, it is easy to lose sight of
 whether it genuinely ladders up to a Company Goal, or has quietly become
 disconnected busy work. So this page shows nothing but structure — every
-Goal, numbered, down through its Themes and Objectives, down to whichever
+Goal, numbered, down through its Objectives, down to whichever
 Departments have laddered a Level 4 branch in underneath, on one continuous
 page with a connecting line the eye can follow.
 
@@ -1013,8 +1023,8 @@ it refuses to take.
 
 - A row whose **Code** matches an existing Control Item writes that item's
   figures, and changes nothing else about it.
-- A row whose Code is unknown can **create** a Measure and Control Item, and
-  any Goal, Theme or Objective above it that is not there yet — matched by
+- A row whose Code is unknown can **create** an Objective and Control Item, and
+  the Goal or parent Objective above it if either is not there yet — matched by
   statement, so a statement that matches nothing is created rather than treated
   as a rename of whatever looked closest.
 - Anything the file does not mention is **left exactly as it is**. There is no
@@ -1048,6 +1058,13 @@ handled rather than documented away:
 
 - Only `Period type` = **Month** rows are read. Quarters and the Ki total are
   rolled up at read time and there is nothing behind them to write into.
+- The structure columns are `Goal`, `Parent objective` and `Objective` — the
+  row's own statement is **Objective**, and `Parent objective` is blank on a
+  Level 2 row, whose parent is the Goal itself. A workbook exported before the
+  tree was flattened still carries a `Theme` column, and is refused by name
+  rather than misread: its Goal/Theme/Objective columns are the ancestors of a
+  row whose own name sat in a `Measure` column, so reading them as they stand
+  would report a rename on every line.
 - `Period` is accepted as `2026-04` **or** as a real date, because Excel turns
   the first into the second the moment somebody retypes the cell.
 - The version the **Target** column writes to is chosen on the form, not in the
@@ -1191,7 +1208,7 @@ reason is written where a reader will meet it.
   rule: actual once a quarter has closed, target while it is open, and the
   fallback when a closed quarter has nothing keyed into it yet
 - `lib/calc/reorder.test.ts` — dragging a row among its siblings, including
-  that a Level 4 department branch keeps its position when a Level 3 Theme
+  that a Level 4 department branch keeps its position when a Level 3 Objective
   beside it moves
 - `lib/calc/review.test.ts` — the month-end review's rule: worsening ranked
   above holding above recovering, a lower-is-better measure staying in the same
@@ -1202,8 +1219,8 @@ reason is written where a reader will meet it.
 - `lib/calc/dic-label.test.ts` — a department chip carrying only what the
   Division control has not already said, and never letting two same-named
   departments read alike
-- `lib/calc/measure-label.test.ts` — a Control Item named for itself only when
-  its Measure carries more than one
+- `lib/calc/item-label.test.ts` — a Control Item named for itself only when its
+  Objective carries more than one
 - `lib/calc/import-plan.test.ts` — what an uploaded workbook may do: an empty
   cell never a deletion, a stale Objective column refused rather than obeyed, an
   unknown code refused unless creation was asked for, a figure that already

@@ -26,10 +26,10 @@ import type { PeriodKey } from "@/lib/domain/period";
 
 // ------------------------------------------------------------------ Snapshot
 
-/** A Goal, Theme or Objective as it currently stands. */
+/** A Goal or an Objective as it currently stands. */
 export interface SnapshotNode {
   id: string;
-  kind: "GOAL" | "THEME" | "OBJECTIVE";
+  kind: "GOAL" | "OBJECTIVE";
   level: number;
   statement: string;
   /** Ancestor ids, outermost first. */
@@ -39,10 +39,8 @@ export interface SnapshotNode {
 export interface SnapshotItem {
   id: string;
   code: string;
-  measureId: string;
-  measureName: string;
   measuredAs: string;
-  /** The Objective this item hangs under. */
+  /** The Objective this item records. Its statement is what the sheet prints. */
   nodeId: string;
   level: number;
   dicCode: string;
@@ -82,10 +80,10 @@ export interface Refusal {
   detail: string;
 }
 
-/** A Goal, Theme or Objective the file would bring into existence. */
+/** A Goal or an Objective the file would bring into existence. */
 export interface NodeCreation {
   key: string;
-  kind: "GOAL" | "THEME" | "OBJECTIVE";
+  kind: "GOAL" | "OBJECTIVE";
   level: number;
   statement: string;
   /** The creation key or existing node id this hangs under; null for a Goal. */
@@ -151,9 +149,10 @@ export interface PlanRow {
   target: string | number | null;
   actual: string | number | null;
   goal: string;
-  theme: string;
+  /** The Objective this row is deployed from; blank on a Level 2 row. */
+  parentObjective: string;
+  /** The row's own Objective statement. */
   objective: string;
-  measure: string;
   controlItem: string;
   dic: string;
   businessUnit: string;
@@ -225,14 +224,19 @@ export function buildImportPlan(
   const measureKeys = new Map<string, string>();
 
   /**
-   * The Objective a row names, as an existing id or a creation key.
+   * What a new row would hang under, as an existing id or a creation key.
+   *
+   * The tree is Goal > Objective > Objective, so a row names at most two
+   * things above itself: its Goal, and the Objective it is deployed from. A
+   * blank "Parent objective" means the Goal itself, which is where a Level 2
+   * Objective sits.
    *
    * Matching is by statement within a parent, which is what the file carries.
    * A statement that matches nothing is created rather than treated as a
    * rename of something nearby: guessing which existing row somebody meant to
    * rename is exactly the silent restructuring this module refuses to do.
    */
-  function resolveObjective(row: PlanRow): string | null {
+  function resolveParent(row: PlanRow): string | null {
     const goalStatement = row.goal.replace(/^\d+\.\s*/, "").trim();
     if (!goalStatement || !row.objective) return null;
 
@@ -272,26 +276,17 @@ export function buildImportPlan(
       goalKey = create("GOAL", 1, goalStatement, null);
     }
 
-    // A Theme is optional in the file only in the sense that a plan without
-    // one is malformed; the export always writes it.
-    const themeStatement = row.theme.trim();
-    if (!themeStatement) return null;
-    let themeKey = nodeKeys.get(`THEME:${goalKey}:${themeStatement.toLowerCase()}`) ?? null;
-    themeKey ??= findChild(goalKey, "THEME", themeStatement);
-    if (!themeKey) {
-      if (!options.allowCreate) return null;
-      themeKey = create("THEME", 2, themeStatement, goalKey);
-    }
+    const parentStatement = row.parentObjective.trim();
+    if (!parentStatement) return goalKey;
 
-    const objectiveStatement = row.objective.trim();
-    let objectiveKey =
-      nodeKeys.get(`OBJECTIVE:${themeKey}:${objectiveStatement.toLowerCase()}`) ?? null;
-    objectiveKey ??= findChild(themeKey, "OBJECTIVE", objectiveStatement);
-    if (!objectiveKey) {
+    let parentKey =
+      nodeKeys.get(`OBJECTIVE:${goalKey}:${parentStatement.toLowerCase()}`) ?? null;
+    parentKey ??= findChild(goalKey, "OBJECTIVE", parentStatement);
+    if (!parentKey) {
       if (!options.allowCreate) return null;
-      objectiveKey = create("OBJECTIVE", 2, objectiveStatement, themeKey);
+      parentKey = create("OBJECTIVE", 2, parentStatement, goalKey);
     }
-    return objectiveKey;
+    return parentKey;
   }
 
   for (const row of rows) {
@@ -312,13 +307,24 @@ export function buildImportPlan(
     const existing = row.code ? itemByCode.get(row.code.toLowerCase()) : undefined;
 
     if (existing) {
-      // The file may say where it thinks the measure lives. If that disagrees
-      // with where it actually lives, the row is refused rather than obeyed:
-      // moving work between Objectives or departments is the both-ends
-      // authority act updateControlItem guards, and a stale column must not
-      // perform it in bulk.
+      /*
+       * The file may say where it thinks the measure lives. If that disagrees
+       * with where it actually lives, the row is refused rather than obeyed:
+       * moving work between Objectives or departments is the both-ends
+       * authority act updateControlItem guards, and a stale column must not
+       * perform it in bulk.
+       *
+       * Only the *parent* counts as a move. The Objective column is the row's
+       * own statement, and a difference there is a rename, which is noted with
+       * the other differences below and never applied.
+       */
       const node = nodeById.get(existing.nodeId);
-      const movedObjective = row.objective && node && !same(node.statement, row.objective);
+      const parentId = node?.path[node.path.length - 1] ?? null;
+      const parent = parentId ? nodeById.get(parentId) : undefined;
+      const fileParent = row.parentObjective.trim();
+      // Blank means the file says nothing, not "move it to the Goal".
+      const movedObjective =
+        Boolean(fileParent) && !(parent?.kind === "OBJECTIVE" && same(parent.statement, fileParent));
       const movedDic = row.dic && !same(existing.dicCode, row.dic);
       if (movedObjective || movedDic) {
         plan.refusals.push({
@@ -326,7 +332,9 @@ export function buildImportPlan(
           code: existing.code,
           reason: "WOULD_MOVE",
           detail: movedObjective
-            ? `is filed under "${node?.statement ?? ""}"; the file puts it under "${row.objective}". Move it on the sheet.`
+            ? `is deployed from ${
+                parent?.kind === "OBJECTIVE" ? `"${parent.statement}"` : "its Goal"
+              }; the file puts it under "${fileParent}". Move it on the sheet.`
             : `is filed to ${existing.dicCode}; the file says ${row.dic}. Move it on the sheet.`,
         });
         continue;
@@ -334,8 +342,11 @@ export function buildImportPlan(
 
       // Settings are read and reported, never applied. Direction and roll-up
       // reach back through closed figures, and a bulk path is the last place
-      // to change what a stored number means.
+      // to change what a stored number means. The statement is here for the
+      // same reason: renaming a row is one deliberate edit, not a side effect
+      // of uploading a year of figures.
       for (const [label, fileValue, current] of [
+        ["Objective", row.objective, node?.statement ?? ""],
         ["Unit", row.unit, existing.unit],
         ["Roll-up", row.aggregation, existing.aggregation],
       ] as const) {
@@ -396,12 +407,12 @@ export function buildImportPlan(
       continue;
     }
 
-    if (!row.measure || !row.objective || !row.goal || !row.theme) {
+    if (!row.objective || !row.goal) {
       plan.refusals.push({
         row: row.row,
         code: row.code,
         reason: "INCOMPLETE_NEW_ROW",
-        detail: "A new measure needs a Goal, a Theme, an Objective and a Measure name.",
+        detail: "A new measure needs a Goal and an Objective statement.",
       });
       continue;
     }
@@ -426,13 +437,13 @@ export function buildImportPlan(
       continue;
     }
 
-    const parentKey = resolveObjective(row);
+    const parentKey = resolveParent(row);
     if (!parentKey) {
       plan.refusals.push({
         row: row.row,
         code: row.code,
         reason: "INCOMPLETE_NEW_ROW",
-        detail: `Could not place "${row.measure}" - its Goal, Theme and Objective did not resolve.`,
+        detail: `Could not place "${row.objective}" - its Goal and parent Objective did not resolve.`,
       });
       continue;
     }
@@ -456,12 +467,12 @@ export function buildImportPlan(
       continue;
     }
 
-    const measureKey = `${parentKey}::${row.measure.toLowerCase()}::${row.controlItem.toLowerCase()}`;
+    const measureKey = `${parentKey}::${row.objective.toLowerCase()}::${row.controlItem.toLowerCase()}`;
     if (!measureKeys.has(measureKey)) {
       measureKeys.set(measureKey, measureKey);
       plan.measures.push({
         key: measureKey,
-        name: row.measure,
+        name: row.objective,
         parentKey,
         code: row.code,
         measuredAs: row.controlItem,

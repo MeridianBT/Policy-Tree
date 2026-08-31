@@ -44,9 +44,8 @@ vi.mock("@/lib/auth/session", async () => {
 
 const {
   addControlItem,
-  addControlItemToMeasure,
+  addControlItemToObjective,
   addDepartmentBranch,
-  addDepartmentObjective,
   addNode,
   assignableDics,
   deleteControlItem,
@@ -111,13 +110,14 @@ describe("company-wide structure (Levels 1-3)", () => {
   });
 
   it("never lets a continuation from a Level 3 Objective create an orphaned Level 4 node", async () => {
-    // Build down to a Level 3 Objective, then confirm addNode refuses to
-    // continue past it - that step must go through addDepartmentBranch, which
-    // always carries an org unit.
-    const l3Theme = await addNode({ kiId: fx.kiId, parentId: fx.nodes.objective, statement: "L3 theme" });
-    expect(l3Theme.ok && l3Theme.id).toBeTruthy();
-    const l3ThemeId = (l3Theme as { id: string }).id;
-    const l3Objective = await addNode({ kiId: fx.kiId, parentId: l3ThemeId, statement: "L3 objective" });
+    // Continue to a Level 3 Objective, then confirm addNode refuses to go
+    // past it - that step must go through addDepartmentBranch, which always
+    // carries an org unit.
+    const l3Objective = await addNode({
+      kiId: fx.kiId,
+      parentId: fx.nodes.objective,
+      statement: "L3 objective",
+    });
     expect(l3Objective.ok && l3Objective.id).toBeTruthy();
     const l3ObjectiveId = (l3Objective as { id: string }).id;
 
@@ -142,7 +142,7 @@ describe("addDepartmentBranch - the department-lead path", () => {
     if (result.ok && result.id) {
       const node = await prisma.node.findUniqueOrThrow({ where: { id: result.id } });
       expect(node.level).toBe(4);
-      expect(node.kind).toBe("THEME");
+      expect(node.kind).toBe("OBJECTIVE");
       expect(node.orgUnitId).toBe(fx.orgUnits.alpha);
     }
   });
@@ -189,17 +189,12 @@ describe("addDepartmentBranch - the department-lead path", () => {
       statement: "For depth test",
     });
     const branchId = (branch as { id: string }).id;
-    const objective = await addDepartmentObjective({
-      kiId: fx.kiId,
-      parentThemeId: branchId,
-      statement: "Depth objective",
-    });
-    expect(objective.ok).toBe(true);
-    const objectiveId = (objective as { id: string }).id;
 
+    // The branch *is* the Objective now, so laddering off it would be asking
+    // for a Level 5.
     const tooDeep = await addDepartmentBranch({
       kiId: fx.kiId,
-      parentObjectiveId: objectiveId,
+      parentObjectiveId: branchId,
       orgUnitId: fx.orgUnits.alpha,
       statement: "Too deep",
     });
@@ -212,7 +207,6 @@ describe("addDepartmentBranch - the department-lead path", () => {
 
 describe("editing an existing Level 4 branch", () => {
   let branchId: string;
-  let objectiveId: string;
 
   beforeAll(async () => {
     asUser(fx.users.alphaLead);
@@ -223,19 +217,16 @@ describe("editing an existing Level 4 branch", () => {
       statement: "Editable branch",
     });
     branchId = (branch as { id: string }).id;
-    const objective = await addDepartmentObjective({
-      kiId: fx.kiId,
-      parentThemeId: branchId,
-      statement: "Editable objective",
-    });
-    objectiveId = (objective as { id: string }).id;
   });
 
-  it("lets the owning division lead add an Objective under their own branch", async () => {
+  it("lets the owning division lead start a second branch of their own", async () => {
+    // A department that needs a second Objective ladders another branch off
+    // the same company Objective; there is no tier between the two any more.
     asUser(fx.users.alphaLead);
-    const result = await addDepartmentObjective({
+    const result = await addDepartmentBranch({
       kiId: fx.kiId,
-      parentThemeId: branchId,
+      parentObjectiveId: fx.nodes.objective,
+      orgUnitId: fx.orgUnits.alpha,
       statement: "A second objective",
     });
     expect(result.ok).toBe(true);
@@ -243,19 +234,23 @@ describe("editing an existing Level 4 branch", () => {
 
   it("refuses a different division's lead adding to it", async () => {
     asUser(fx.users.betaLead);
-    const result = await addDepartmentObjective({
-      kiId: fx.kiId,
-      parentThemeId: branchId,
-      statement: "Should not land here",
+    const result = await addControlItemToObjective({
+      objectiveId: branchId,
+      measuredAs: "Should not land here",
+      unit: "COUNT",
+      direction: "HIGHER_BETTER",
+      aggregation: "SUM",
+      decimalPlaces: 0,
+      dicOrgUnitId: fx.orgUnits.beta,
+      businessUnitId: fx.businessUnits.AUTO,
     });
     expect(result.ok).toBe(false);
   });
 
   it("lets the owning lead add a Control Item, scoped to their own DIC", async () => {
     asUser(fx.users.alphaLead);
-    const result = await addControlItem({
-      nodeId: objectiveId,
-      name: "Alpha's own measure",
+    const result = await addControlItemToObjective({
+      objectiveId: branchId,
       measuredAs: "Widgets",
       unit: "COUNT",
       direction: "HIGHER_BETTER",
@@ -269,9 +264,8 @@ describe("editing an existing Level 4 branch", () => {
 
   it("refuses that same lead assigning the Control Item to another division's DIC", async () => {
     asUser(fx.users.alphaLead);
-    const result = await addControlItem({
-      nodeId: objectiveId,
-      name: "Should be refused",
+    const result = await addControlItemToObjective({
+      objectiveId: branchId,
       measuredAs: "Widgets",
       unit: "COUNT",
       direction: "HIGHER_BETTER",
@@ -285,9 +279,8 @@ describe("editing an existing Level 4 branch", () => {
 
   it("chooses INVERSE achievement automatically for a lower-is-better measure", async () => {
     asUser(fx.users.alphaLead);
-    const result = await addControlItem({
-      nodeId: objectiveId,
-      name: "Cost measure",
+    const result = await addControlItemToObjective({
+      objectiveId: branchId,
       measuredAs: "US$",
       unit: "CURRENCY",
       direction: "LOWER_BETTER",
@@ -365,7 +358,16 @@ describe("deleting a Level 4 branch - two-step confirmation, scoped", () => {
       statement: "Branch with a child",
     });
     const branchId = (branch as { id: string }).id;
-    await addDepartmentObjective({ kiId: fx.kiId, parentThemeId: branchId, statement: "Child objective" });
+    await addControlItemToObjective({
+      objectiveId: branchId,
+      measuredAs: "Child figure",
+      unit: "COUNT",
+      direction: "HIGHER_BETTER",
+      aggregation: "SUM",
+      decimalPlaces: 0,
+      dicOrgUnitId: fx.orgUnits.alpha,
+      businessUnitId: fx.businessUnits.AUTO,
+    });
 
     const firstCall = await deleteNode({ id: branchId, confirm: false });
     expect(firstCall.ok).toBe(false);
@@ -391,14 +393,8 @@ describe("Control Item deletion, scoped the same way", () => {
       orgUnitId: fx.orgUnits.alpha,
       statement: "For item deletion",
     });
-    const objective = await addDepartmentObjective({
-      kiId: fx.kiId,
-      parentThemeId: (branch as { id: string }).id,
-      statement: "Objective for item deletion",
-    });
-    const item = await addControlItem({
-      nodeId: (objective as { id: string }).id,
-      name: "Disposable measure",
+    const item = await addControlItemToObjective({
+      objectiveId: (branch as { id: string }).id,
       measuredAs: "Units",
       unit: "COUNT",
       direction: "HIGHER_BETTER",
@@ -483,10 +479,9 @@ describe("a locked version is not the delete's to take", () => {
     asUser(fx.users.admin);
     const goal = await addNode({ kiId: fx.kiId, parentId: null, statement: "Locked goal" });
     goalId = goal.ok ? goal.id! : "";
-    const theme = await addNode({ kiId: fx.kiId, parentId: goalId, statement: "Locked theme" });
     const objective = await addNode({
       kiId: fx.kiId,
-      parentId: theme.ok ? theme.id! : "",
+      parentId: goalId,
       statement: "Locked objective",
     });
     const item = await addControlItem({
@@ -590,12 +585,17 @@ describe("an EXECUTIVE reaches Level 4 as well", () => {
     branchId = (branch as { id: string }).id;
   });
 
-  it("adds an Objective under another division's branch", async () => {
+  it("adds a Control Item to another division's branch", async () => {
     asUser(fx.users.executive);
-    const result = await addDepartmentObjective({
-      kiId: fx.kiId,
-      parentThemeId: branchId,
-      statement: "Objective added by an executive",
+    const result = await addControlItemToObjective({
+      objectiveId: branchId,
+      measuredAs: "Added by an executive",
+      unit: "COUNT",
+      direction: "HIGHER_BETTER",
+      aggregation: "SUM",
+      decimalPlaces: 0,
+      dicOrgUnitId: fx.orgUnits.alpha,
+      businessUnitId: fx.businessUnits.AUTO,
     });
     expect(result.ok).toBe(true);
   });
@@ -619,10 +619,15 @@ describe("an EXECUTIVE reaches Level 4 as well", () => {
   it("still refuses a division lead the same reach", async () => {
     // The rule widened for EXECUTIVE only. An OWNER's scope is unchanged.
     asUser(fx.users.betaLead);
-    const result = await addDepartmentObjective({
-      kiId: fx.kiId,
-      parentThemeId: branchId,
-      statement: "Beta reaching into Alpha",
+    const result = await addControlItemToObjective({
+      objectiveId: branchId,
+      measuredAs: "Beta reaching into Alpha",
+      unit: "COUNT",
+      direction: "HIGHER_BETTER",
+      aggregation: "SUM",
+      decimalPlaces: 0,
+      dicOrgUnitId: fx.orgUnits.beta,
+      businessUnitId: fx.businessUnits.AUTO,
     });
     expect(result.ok).toBe(false);
   });
@@ -634,38 +639,40 @@ describe("an EXECUTIVE reaches Level 4 as well", () => {
 });
 
 describe("reordering rows", () => {
-  /** Measure ids under the fixture Objective, in the order the sheet shows them. */
+  /** Control Item ids under the fixture Objective, in the order the sheet shows them. */
   async function measureOrder(): Promise<string[]> {
-    const rows = await prisma.measure.findMany({
+    const rows = await prisma.controlItem.findMany({
       where: { nodeId: fx.nodes.objective },
       orderBy: [{ sortOrder: "asc" }, { id: "asc" }],
-      select: { name: true },
+      select: { id: true },
     });
-    return rows.map((row) => row.name);
+    return rows.map((row) => row.id);
   }
 
+  const ABCD = () => [fx.items.A, fx.items.B, fx.items.C, fx.items.D];
+
   it("moves a measure in front of the one it was dropped on", async () => {
-    expect(await measureOrder()).toEqual(["Item A", "Item B", "Item C", "Item D"]);
+    expect(await measureOrder()).toEqual(ABCD());
 
     const result = await reorderRow({ kind: "MEASURE", id: fx.items.D, beforeId: fx.items.A });
     expect(result.ok).toBe(true);
-    expect(await measureOrder()).toEqual(["Item D", "Item A", "Item B", "Item C"]);
+    expect(await measureOrder()).toEqual([fx.items.D, fx.items.A, fx.items.B, fx.items.C]);
 
     // Put it back, this time by dropping it past the end.
     expect((await reorderRow({ kind: "MEASURE", id: fx.items.D, beforeId: null })).ok).toBe(true);
-    expect(await measureOrder()).toEqual(["Item A", "Item B", "Item C", "Item D"]);
+    expect(await measureOrder()).toEqual(ABCD());
   });
 
   it("refuses a target that is not a sibling", async () => {
     // The id of a row under a different parent. Nothing about the request looks
     // malformed - it is only the sibling check that catches it.
     const stranger = await prisma.controlItem.findFirstOrThrow({
-      where: { measure: { nodeId: { not: fx.nodes.objective } } },
+      where: { nodeId: { not: fx.nodes.objective } },
       select: { id: true },
     });
     const result = await reorderRow({ kind: "MEASURE", id: fx.items.A, beforeId: stranger.id });
     expect(result.ok).toBe(false);
-    expect(await measureOrder()).toEqual(["Item A", "Item B", "Item C", "Item D"]);
+    expect(await measureOrder()).toEqual(ABCD());
   });
 
   it("refuses an OWNER reordering the company-wide Levels 1-3", async () => {
@@ -675,7 +682,7 @@ describe("reordering rows", () => {
     expect((await reorderRow({ kind: "MEASURE", id: fx.items.A, beforeId: fx.items.C })).ok).toBe(
       false,
     );
-    expect(await measureOrder()).toEqual(["Item A", "Item B", "Item C", "Item D"]);
+    expect(await measureOrder()).toEqual(ABCD());
   });
 
   it("refuses a VIEWER outright", async () => {
@@ -686,15 +693,15 @@ describe("reordering rows", () => {
   });
 
   it("reorders nodes among their siblings without touching their parent", async () => {
-    const first = await addNode({ kiId: fx.kiId, parentId: fx.nodes.theme, statement: "Reorder me" });
-    const second = await addNode({ kiId: fx.kiId, parentId: fx.nodes.theme, statement: "And me" });
+    const first = await addNode({ kiId: fx.kiId, parentId: fx.nodes.goal, statement: "Reorder me" });
+    const second = await addNode({ kiId: fx.kiId, parentId: fx.nodes.goal, statement: "And me" });
     const firstId = (first as { id: string }).id;
     const secondId = (second as { id: string }).id;
 
     expect((await reorderRow({ kind: "NODE", id: secondId, beforeId: firstId })).ok).toBe(true);
 
     const siblings = await prisma.node.findMany({
-      where: { parentId: fx.nodes.theme },
+      where: { parentId: fx.nodes.goal },
       orderBy: [{ sortOrder: "asc" }, { id: "asc" }],
       select: { id: true, parentId: true },
     });
@@ -702,7 +709,7 @@ describe("reordering rows", () => {
       siblings.map((node) => node.id).indexOf(firstId),
     );
     // The whole point of writing only sort_order: nothing was re-filed.
-    expect(siblings.every((node) => node.parentId === fx.nodes.theme)).toBe(true);
+    expect(siblings.every((node) => node.parentId === fx.nodes.goal)).toBe(true);
   });
 
   it("leaves a Level 4 department branch alone when a Level 3 sibling moves", async () => {
@@ -760,11 +767,11 @@ describe("editing a Control Item", () => {
       select: {
         measuredAs: true, unit: true, direction: true,
         aggregation: true, decimalPlaces: true, dicOrgUnitId: true, businessUnitId: true,
-        measure: { select: { name: true } },
+        node: { select: { statement: true } },
       },
     });
-    const { measure, ...rest } = item;
-    return { id, name: measure.name, ...rest };
+    const { node, ...rest } = item;
+    return { id, name: node.statement, ...rest };
   }
 
   /*
@@ -785,14 +792,8 @@ describe("editing a Control Item", () => {
       statement: "Alpha branch for edit tests",
     });
     alphaBranchId = (branch as { id: string }).id;
-    const objective = await addDepartmentObjective({
-      kiId: fx.kiId,
-      parentThemeId: alphaBranchId,
-      statement: "Alpha objective for edit tests",
-    });
-    const measure = await addControlItem({
-      nodeId: (objective as { id: string }).id,
-      name: "Alpha L4 measure",
+    const measure = await addControlItemToObjective({
+      objectiveId: alphaBranchId,
       measuredAs: null,
       unit: "COUNT",
       direction: "HIGHER_BETTER",
@@ -962,11 +963,11 @@ describe("who may be made responsible", () => {
       select: {
         measuredAs: true, unit: true, direction: true, aggregation: true,
         decimalPlaces: true, dicOrgUnitId: true, businessUnitId: true, responsibleUserId: true,
-        measure: { select: { name: true } },
+        node: { select: { statement: true } },
       },
     });
-    const { measure, ...rest } = item;
-    return { id, name: measure.name, ...rest };
+    const { node, ...rest } = item;
+    return { id, name: node.statement, ...rest };
   }
 
   beforeEach(() => asUser(fx.users.admin));
@@ -1016,12 +1017,8 @@ describe("who may be made responsible", () => {
       kiId: fx.kiId, parentObjectiveId: fx.nodes.objective,
       orgUnitId: fx.orgUnits.alpha, statement: "Alpha branch for responsible tests",
     });
-    const objective = await addDepartmentObjective({
-      kiId: fx.kiId, parentThemeId: (branch as { id: string }).id,
-      statement: "Alpha objective for responsible tests",
-    });
-    const measure = await addControlItem({
-      nodeId: (objective as { id: string }).id, name: "Alpha responsible test", measuredAs: null,
+    const measure = await addControlItemToObjective({
+      objectiveId: (branch as { id: string }).id, measuredAs: null,
       unit: "COUNT", direction: "HIGHER_BETTER", aggregation: "SUM", decimalPlaces: 0,
       dicOrgUnitId: fx.orgUnits.alpha, businessUnitId: fx.businessUnits.AUTO,
     });
@@ -1064,26 +1061,41 @@ describe("who may be made responsible", () => {
   });
 });
 
-describe("a Measure with several Control Items", () => {
+describe("an Objective with several Control Items", () => {
   /*
-   * The case the Measure model exists for: one measure held to several targets
-   * at once. They share a name and nothing else - each has its own unit,
-   * direction, department, targets and evaluation - so what is worth pinning
-   * is that the name is shared and that everything else stays separate.
+   * The case the flattened tree exists for: one Objective held to several
+   * targets at once. They share a statement and nothing else - each has its
+   * own unit, direction, department, targets and evaluation - so what is worth
+   * pinning is that the statement is shared and that everything else stays
+   * separate.
    */
-  let measureId: string;
+  let objectiveId: string;
   let firstItemId: string;
 
-  async function itemsOfMeasure() {
+  async function itemsOfObjective() {
     return prisma.controlItem.findMany({
-      where: { measureId },
+      where: { nodeId: objectiveId },
       orderBy: [{ sortOrder: "asc" }, { id: "asc" }],
       select: { id: true, code: true, measuredAs: true, unit: true, dicOrgUnitId: true },
     });
   }
 
+  const secondItem = (overrides: Record<string, unknown> = {}) => ({
+    objectiveId,
+    measuredAs: "% fixed first time",
+    unit: "PERCENT" as const,
+    direction: "HIGHER_BETTER" as const,
+    aggregation: "AVERAGE" as const,
+    decimalPlaces: 1,
+    dicOrgUnitId: fx.orgUnits.alpha,
+    businessUnitId: fx.businessUnits.AUTO,
+    ...overrides,
+  });
+
   beforeEach(async () => {
     asUser(fx.users.admin);
+    // "Add a measure" is one act now: a child Objective and the first thing
+    // that measures it, created together.
     const created = await addControlItem({
       nodeId: fx.nodes.objective,
       name: "Service experience",
@@ -1096,34 +1108,27 @@ describe("a Measure with several Control Items", () => {
       businessUnitId: fx.businessUnits.AUTO,
     });
     firstItemId = (created as { id: string }).id;
-    measureId = (
+    objectiveId = (
       await prisma.controlItem.findUniqueOrThrow({
         where: { id: firstItemId },
-        select: { measureId: true },
+        select: { nodeId: true },
       })
-    ).measureId;
+    ).nodeId;
   });
 
   afterEach(async () => {
-    await prisma.measure.deleteMany({ where: { id: measureId } });
+    await prisma.node.deleteMany({ where: { id: objectiveId } });
   });
 
-  it("adds a second Control Item under the same name", async () => {
-    const result = await addControlItemToMeasure({
-      measureId,
-      measuredAs: "% fixed first time",
-      unit: "PERCENT",
-      direction: "HIGHER_BETTER",
-      aggregation: "AVERAGE",
-      decimalPlaces: 1,
-      dicOrgUnitId: fx.orgUnits.beta,
-      businessUnitId: fx.businessUnits.MC,
-    });
+  it("adds a second Control Item under the same statement", async () => {
+    const result = await addControlItemToObjective(
+      secondItem({ dicOrgUnitId: fx.orgUnits.beta, businessUnitId: fx.businessUnits.MC }),
+    );
     expect(result.ok).toBe(true);
 
-    const items = await itemsOfMeasure();
+    const items = await itemsOfObjective();
     expect(items).toHaveLength(2);
-    // Everything except the name is the new Control Item's own.
+    // Everything except the statement is the new Control Item's own.
     expect(items[1].unit).toBe("PERCENT");
     expect(items[1].dicOrgUnitId).toBe(fx.orgUnits.beta);
     expect(items[0].unit).toBe("INDEX");
@@ -1132,17 +1137,8 @@ describe("a Measure with several Control Items", () => {
     expect(items[1].code).not.toBe(items[0].code);
   });
 
-  it("renames every Control Item at once, because the name is the measure's", async () => {
-    await addControlItemToMeasure({
-      measureId,
-      measuredAs: "% fixed first time",
-      unit: "PERCENT",
-      direction: "HIGHER_BETTER",
-      aggregation: "AVERAGE",
-      decimalPlaces: 1,
-      dicOrgUnitId: fx.orgUnits.alpha,
-      businessUnitId: fx.businessUnits.AUTO,
-    });
+  it("renames every Control Item at once, because the statement is the Objective's", async () => {
+    await addControlItemToObjective(secondItem());
 
     const result = await updateControlItem({
       id: firstItemId,
@@ -1157,24 +1153,16 @@ describe("a Measure with several Control Items", () => {
     });
     expect(result.ok).toBe(true);
 
-    const measure = await prisma.measure.findUniqueOrThrow({ where: { id: measureId } });
-    expect(measure.name).toBe("Ownership experience");
-    expect(await itemsOfMeasure()).toHaveLength(2);
+    const objective = await prisma.node.findUniqueOrThrow({ where: { id: objectiveId } });
+    expect(objective.statement).toBe("Ownership experience");
+    expect(await itemsOfObjective()).toHaveLength(2);
   });
 
-  it("leaves the name alone when the form did not offer it", async () => {
-    // The form opened from a Control Item that is not the measure's first has
-    // no Measure field, so it sends none - and that must not blank the name.
-    const second = await addControlItemToMeasure({
-      measureId,
-      measuredAs: "% fixed first time",
-      unit: "PERCENT",
-      direction: "HIGHER_BETTER",
-      aggregation: "AVERAGE",
-      decimalPlaces: 1,
-      dicOrgUnitId: fx.orgUnits.alpha,
-      businessUnitId: fx.businessUnits.AUTO,
-    });
+  it("leaves the statement alone when the form did not offer it", async () => {
+    // The form opened from a Control Item that is not the Objective's first
+    // has no name field, so it sends none - and that must not blank the
+    // statement.
+    const second = await addControlItemToObjective(secondItem());
 
     const result = await updateControlItem({
       id: (second as { id: string }).id,
@@ -1188,75 +1176,52 @@ describe("a Measure with several Control Items", () => {
     });
     expect(result.ok).toBe(true);
 
-    const measure = await prisma.measure.findUniqueOrThrow({ where: { id: measureId } });
-    expect(measure.name).toBe("Service experience");
-    const items = await itemsOfMeasure();
+    const objective = await prisma.node.findUniqueOrThrow({ where: { id: objectiveId } });
+    expect(objective.statement).toBe("Service experience");
+    const items = await itemsOfObjective();
     expect(items[1].measuredAs).toBe("% fixed at first visit");
   });
 
-  it("keeps the measure when one of several Control Items is deleted", async () => {
-    await addControlItemToMeasure({
-      measureId,
-      measuredAs: "% fixed first time",
-      unit: "PERCENT",
-      direction: "HIGHER_BETTER",
-      aggregation: "AVERAGE",
-      decimalPlaces: 1,
-      dicOrgUnitId: fx.orgUnits.alpha,
-      businessUnitId: fx.businessUnits.AUTO,
-    });
+  it("keeps the Objective when one of several Control Items is deleted", async () => {
+    await addControlItemToObjective(secondItem());
 
     expect((await deleteControlItem({ id: firstItemId })).ok).toBe(true);
-    expect(await prisma.measure.count({ where: { id: measureId } })).toBe(1);
-    expect(await itemsOfMeasure()).toHaveLength(1);
+    expect(await prisma.node.count({ where: { id: objectiveId } })).toBe(1);
+    expect(await itemsOfObjective()).toHaveLength(1);
   });
 
-  it("takes the measure with the last Control Item to leave", async () => {
-    // A Measure exists to name its Control Items. An empty one would be a name
-    // on the sheet with no figures under it and no way to key one.
+  it("keeps the Objective standing when its last Control Item leaves", async () => {
+    // The behaviour the flattening introduced. An Objective is a statement of
+    // intent in its own right: with nothing measuring it, it reads as a blank
+    // row on the sheet - which is a real hole in the deployment, and the one
+    // thing worse than showing it would be hiding it.
     expect((await deleteControlItem({ id: firstItemId })).ok).toBe(true);
-    expect(await prisma.measure.count({ where: { id: measureId } })).toBe(0);
+    expect(await prisma.node.count({ where: { id: objectiveId } })).toBe(1);
+    expect(await itemsOfObjective()).toHaveLength(0);
   });
 
-  it("refuses an OWNER adding to a company-level measure", async () => {
-    // The fixture Objective is Level 2, which is company-wide whichever
-    // division somebody leads - the same rule as adding the first one.
+  it("refuses an OWNER adding to a company-level Objective", async () => {
+    // The Objective sits at Level 3 under the fixture's Level 2, which is
+    // company-wide whichever division somebody leads - the same rule as adding
+    // the first one.
     asUser(fx.users.ownerAlpha);
-    const result = await addControlItemToMeasure({
-      measureId,
-      measuredAs: "% fixed first time",
-      unit: "PERCENT",
-      direction: "HIGHER_BETTER",
-      aggregation: "AVERAGE",
-      decimalPlaces: 1,
-      dicOrgUnitId: fx.orgUnits.alpha,
-      businessUnitId: fx.businessUnits.AUTO,
-    });
+    const result = await addControlItemToObjective(secondItem());
     expect(result.ok).toBe(false);
-    expect(await itemsOfMeasure()).toHaveLength(1);
+    expect(await itemsOfObjective()).toHaveLength(1);
   });
 
-  it("reorders a measure's own Control Items without moving the measure", async () => {
-    const second = await addControlItemToMeasure({
-      measureId,
-      measuredAs: "% fixed first time",
-      unit: "PERCENT",
-      direction: "HIGHER_BETTER",
-      aggregation: "AVERAGE",
-      decimalPlaces: 1,
-      dicOrgUnitId: fx.orgUnits.alpha,
-      businessUnitId: fx.businessUnits.AUTO,
-    });
+  it("reorders an Objective's own Control Items without moving the Objective", async () => {
+    const second = await addControlItemToObjective(secondItem());
     const secondId = (second as { id: string }).id;
 
-    const before = await prisma.measure.findUniqueOrThrow({ where: { id: measureId } });
+    const before = await prisma.node.findUniqueOrThrow({ where: { id: objectiveId } });
     expect((await reorderRow({ kind: "MEASURE", id: secondId, beforeId: firstItemId })).ok).toBe(
       true,
     );
 
-    expect((await itemsOfMeasure()).map((item) => item.id)).toEqual([secondId, firstItemId]);
-    // The measure itself has not moved among its siblings.
-    const after = await prisma.measure.findUniqueOrThrow({ where: { id: measureId } });
+    expect((await itemsOfObjective()).map((item) => item.id)).toEqual([secondId, firstItemId]);
+    // The Objective itself has not moved among its siblings.
+    const after = await prisma.node.findUniqueOrThrow({ where: { id: objectiveId } });
     expect(after.sortOrder).toBe(before.sortOrder);
   });
 });

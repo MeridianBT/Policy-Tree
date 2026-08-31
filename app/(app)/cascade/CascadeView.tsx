@@ -141,13 +141,14 @@ function Row({
   const isGoal = row.kind === "GOAL";
   const isDepartmentBranch = row.level === 4;
   const dic = isDepartmentBranch && row.orgUnitId ? dicsById.get(row.orgUnitId) : undefined;
-  // Same weight convention as the sheet grid: Goal is boldest, Theme carries
-  // some weight, Objective sits quietest of the three - the one visual cue
-  // telling apart rows that otherwise share an indent step.
+  // Same weight convention as the sheet grid, and by level rather than kind
+  // since every row below Level 1 is an Objective: the Goal is boldest, a
+  // Level 2 Objective carries some weight, and the deployment beneath it sits
+  // quietest - the one visual cue telling apart rows that share an indent step.
   const tone =
     row.kind === "GOAL"
       ? "text-[14px] font-semibold"
-      : row.kind === "THEME"
+      : row.level === 2
         ? "text-[13px] font-medium"
         : "text-[13px] text-ink-muted";
 
@@ -187,10 +188,22 @@ function ControlItemLine({
   return (
     <div className="flex items-baseline gap-2 py-0.5 text-[12px] text-ink-muted">
       <EvaluationSymbol symbol={kiCell?.symbol ?? null} label={kiCell?.symbolLabel} color={kiCell?.symbolColor} size={12} />
-      <span className="min-w-0 flex-1 truncate text-ink">
-        <RichText text={row.name} />
-      </span>
-      <span className="min-w-0 shrink truncate text-[11px] text-ink-faint">({row.measuredAs})</span>
+      {/* The statement is on the row that carries it - the Objective's header
+          when it has one, or this row when it does not. A row underneath a
+          header names what it measures instead, rather than repeating the
+          statement immediately below itself. */}
+      {row.firstOfObjective ? (
+        <>
+          <span className="min-w-0 flex-1 truncate text-ink">
+            <RichText text={row.name} />
+          </span>
+          <span className="min-w-0 shrink truncate text-[11px] text-ink-faint">
+            ({row.measuredAs})
+          </span>
+        </>
+      ) : (
+        <span className="min-w-0 flex-1 truncate text-ink">{row.measuredAs}</span>
+      )}
       {dic && (
         <span
           className="shrink-0 rounded-sm border border-rule px-1 text-[10px] text-ink-muted"

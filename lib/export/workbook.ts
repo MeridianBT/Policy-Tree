@@ -191,10 +191,12 @@ function buildDataTab(workbook: ExcelJS.Workbook, { model, basisLabel }: ExportO
     { header: "Ki", key: "ki", width: 10 },
     { header: "Target basis", key: "basis", width: 16 },
     { header: "Goal", key: "goal", width: 40 },
-    { header: "Theme", key: "theme", width: 30 },
-    { header: "Objective", key: "objective", width: 40 },
+    // The tree is Goal > Objective > Objective, so the ancestor chain is the
+    // Goal and at most one Objective above this row's own. "Parent objective"
+    // is blank on a Level 2 row, whose parent is the Goal itself.
+    { header: "Parent objective", key: "parentObjective", width: 40 },
     { header: "Level", key: "level", width: 7 },
-    { header: "Measure", key: "measure", width: 32 },
+    { header: "Objective", key: "objective", width: 32 },
     { header: "Control Item", key: "controlItem", width: 26 },
     { header: "Code", key: "code", width: 14 },
     { header: "DIC", key: "dic", width: 7 },
@@ -228,21 +230,19 @@ function buildDataTab(workbook: ExcelJS.Workbook, { model, basisLabel }: ExportO
     const item = row as ControlItemRow;
     const ancestors = item.path.map((id) => groupById.get(id)).filter(Boolean) as GroupRow[];
     const goal = ancestors.find((a) => a.kind === "GOAL");
-    const theme = [...ancestors].reverse().find((a) => a.kind === "THEME");
-    const objective = [...ancestors].reverse().find((a) => a.kind === "OBJECTIVE");
+    const parentObjective = [...ancestors].reverse().find((a) => a.kind === "OBJECTIVE");
 
     for (const cell of item.cells) {
       const added = sheet.addRow({
         ki: model.kiCode,
         basis: basisLabel,
         goal: goal ? plainText(groupHeading(goal.statement, goal.ordinal)) : "",
-        theme: plainText(theme?.statement ?? ""),
-        objective: plainText(objective?.statement ?? ""),
+        parentObjective: plainText(parentObjective?.statement ?? ""),
         level: item.level,
         // The Data tab is for pivoting, so its text is plain: a marker in
         // a pivot label is noise, and the emphasis is already carried on
         // the Sheet tab where somebody reads it.
-        measure: plainText(item.name),
+        objective: plainText(item.name),
         controlItem: item.measuredAs,
         code: item.code,
         dic: item.dicCode,

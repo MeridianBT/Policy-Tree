@@ -220,7 +220,7 @@ export async function copyStructure(fromKiId: string, toKiId: string): Promise<A
     const nodes = await prisma.node.findMany({
       where: { kiId: fromKiId },
       orderBy: [{ level: "asc" }, { sortOrder: "asc" }],
-      include: { measures: { include: { controlItems: true } } },
+      include: { controlItems: true },
     });
 
     const idMap = new Map<string, string>();
@@ -244,36 +244,29 @@ export async function copyStructure(fromKiId: string, toKiId: string): Promise<A
         idMap.set(node.id, created.id);
         copiedNodes++;
 
-        for (const measure of node.measures) {
-          // The Measure comes across whole, with its Control Items under it:
-          // a measure held to three targets is still held to three next year.
-          const copiedMeasure = await tx.measure.create({
-            data: { nodeId: created.id, name: measure.name, sortOrder: measure.sortOrder },
+        for (const item of node.controlItems) {
+          await tx.controlItem.create({
+            data: {
+              nodeId: created.id,
+              // Codes are unique across the database, so they are namespaced
+              // by Ki when a structure is copied forward.
+              code: `${item.code}@${target.code.replace(/\s+/g, "")}`,
+              measuredAs: item.measuredAs,
+              // Copied forward as-is: next year's plan starts from this
+              // year's, and a measure does not change business unit by
+              // crossing a year boundary.
+              businessUnitId: item.businessUnitId,
+              unit: item.unit,
+              direction: item.direction,
+              achievementMethod: item.achievementMethod,
+              aggregation: item.aggregation,
+              decimalPlaces: item.decimalPlaces,
+              dicOrgUnitId: item.dicOrgUnitId,
+              responsibleUserId: item.responsibleUserId,
+              sortOrder: item.sortOrder,
+            },
           });
-          for (const item of measure.controlItems) {
-            await tx.controlItem.create({
-              data: {
-                measureId: copiedMeasure.id,
-                // Codes are unique across the database, so they are namespaced
-                // by Ki when a structure is copied forward.
-                code: `${item.code}@${target.code.replace(/\s+/g, "")}`,
-                measuredAs: item.measuredAs,
-                // Copied forward as-is: next year's plan starts from this
-                // year's, and a measure does not change business unit by
-                // crossing a year boundary.
-                businessUnitId: item.businessUnitId,
-                unit: item.unit,
-                direction: item.direction,
-                achievementMethod: item.achievementMethod,
-                aggregation: item.aggregation,
-                decimalPlaces: item.decimalPlaces,
-                dicOrgUnitId: item.dicOrgUnitId,
-                responsibleUserId: item.responsibleUserId,
-                sortOrder: item.sortOrder,
-              },
-            });
-            copiedItems++;
-          }
+          copiedItems++;
         }
       }
     }, { timeout: 60_000 });
@@ -294,7 +287,7 @@ const nodeSchema = z.object({
   kiId: z.string(),
   parentId: z.string().nullable(),
   level: z.number().int().min(1).max(4),
-  kind: z.enum(["GOAL", "THEME", "OBJECTIVE"]),
+  kind: z.enum(["GOAL", "OBJECTIVE"]),
   statement: z.string().min(1),
   orgUnitId: z.string().nullable(),
 });
@@ -339,8 +332,8 @@ export async function createControlItem(input: unknown): Promise<AdminResult> {
     const data = controlItemSchema.parse(input);
 
     const node = await prisma.node.findUniqueOrThrow({ where: { id: data.nodeId } });
-    // A Control Item is what an Objective is measured by; it cannot hang off a
-    // Goal or a Theme.
+    // A Control Item is what an Objective is measured by; it cannot hang off
+    // a Goal.
     if (node.kind !== "OBJECTIVE") {
       return { ok: false, message: "A Control Item must sit under an Objective." };
     }
@@ -352,16 +345,13 @@ export async function createControlItem(input: unknown): Promise<AdminResult> {
       };
     }
 
-    // The admin builder creates a measure of one, the same shape the sheet's
-    // own "add measure" produces. Adding a second Control Item to a measure is
-    // done on the sheet, where the measure it joins is visible.
+    // The builder adds a Control Item to the Objective chosen, which is what
+    // measuring an Objective means now. A second one is added the same way.
     const { nodeId, name, ...item } = data;
-    const siblings = await prisma.measure.count({ where: { nodeId } });
-    const measure = await prisma.measure.create({
-      data: { nodeId, name, sortOrder: siblings },
-    });
+    void name;
+    const siblings = await prisma.controlItem.count({ where: { nodeId } });
     await prisma.controlItem.create({
-      data: { ...item, measureId: measure.id, sortOrder: 0 },
+      data: { ...item, nodeId, sortOrder: siblings },
     });
 
     revalidatePath("/admin");
@@ -380,7 +370,7 @@ export async function createControlItem(input: unknown): Promise<AdminResult> {
 async function assertLadderValid(
   parentId: string | null,
   level: number,
-  kind: "GOAL" | "THEME" | "OBJECTIVE",
+  kind: "GOAL" | "OBJECTIVE",
 ): Promise<void> {
   if (level === 1) {
     if (kind !== "GOAL") throw new Error("Level 1 carries the company Goals and nothing else.");
@@ -399,7 +389,7 @@ async function assertLadderValid(
     if (!laddersTo) {
       throw new Error(
         `A Level ${level} Objective must ladder into an Objective at a level above it. ` +
-          "Put it under a Theme whose parent chain reaches one.",
+          "Put it under an Objective whose parent chain reaches one.",
       );
     }
   }
@@ -544,15 +534,15 @@ export async function kiResetImpact(kiId: string): Promise<KiResetImpact | null>
 
   const [nodes, controlItems, entries] = await Promise.all([
     prisma.node.count({ where: { kiId } }),
-    prisma.controlItem.count({ where: { measure: { node: { kiId } } } }),
-    prisma.entry.count({ where: { controlItem: { measure: { node: { kiId } } } } }),
+    prisma.controlItem.count({ where: { node: { kiId } } }),
+    prisma.entry.count({ where: { controlItem: { node: { kiId } } } }),
   ]);
   return { kiCode: ki.code, nodes, controlItems, entries };
 }
 
 /**
- * Empty a Ki: every Goal, Theme, Objective, Control Item and stored figure for
- * that year, gone. The year itself and its six plan versions survive, so it is
+ * Empty a Ki: every Goal, Objective, Control Item and stored figure for that
+ * year, gone. The year itself and its six plan versions survive, so it is
  * immediately ready to be built again or copied into.
  *
  * There is no undo, and no soft delete to recover from - so the caller must

@@ -1,16 +1,16 @@
 "use client";
 
 /**
- * The company sheet. A dense grid of Control Items grouped by Objective, Theme
- * and Goal, with a frozen row-label block on the left and sticky column
- * headers above.
+ * The company sheet. A dense grid of Control Items grouped by the Objectives
+ * and Goals above them, with a frozen row-label block on the left and sticky
+ * column headers above.
  *
  * Rows are virtualised: a Ki with 200 Control Items plus its group headers is
  * around 260 rows of 17 columns, and rendering all of it makes scrolling
  * stutter. Because virtualised rows are absolutely positioned, a
  * `position: sticky` group header inside the scroller cannot work - so instead
- * a single sticky context bar under the column header names the Goal › Theme ›
- * Objective that the topmost visible row belongs to. See DESIGN.md.
+ * a single sticky context bar under the column header names the Goal and
+ * Objectives the topmost visible row belongs to. See DESIGN.md.
  */
 
 import { useCallback, useMemo, useRef, useState } from "react";
@@ -45,11 +45,11 @@ const GROUP_ROW_HEIGHT = 28;
  *
  * Reordering is offered "within their level", which here means three things at
  * once must match: the same parent, the same level, and the same sort of row.
- * A Level 2 Objective can carry Level 3 Themes and Level 4 department branches
- * as siblings, and a Theme dragged past a branch would otherwise reshuffle work
- * belonging to a department its author may not touch. The server enforces all
- * three again; this is what stops the drop line from ever appearing somewhere
- * the drop would be refused.
+ * A Level 2 Objective can carry Level 3 Objectives and Level 4 department
+ * branches as siblings, and a company row dragged past a branch would otherwise
+ * reshuffle work belonging to a department its author may not touch. The server
+ * enforces all three again; this is what stops the drop line from ever
+ * appearing somewhere the drop would be refused.
  */
 interface DraggedRow {
   id: string;
@@ -152,11 +152,21 @@ export interface EditingHandlers {
    * of the Ki before this.
    */
   onEditControlItem: (row: ControlItemRow) => void;
-  onAddChild: (parentId: string, kind: "THEME" | "OBJECTIVE") => void;
+  onAddChild: (parentId: string) => void;
   onAddDepartment: (parentObjectiveId: string) => void;
   onAddMeasure: (nodeId: string) => void;
   /** Another Control Item under a Measure that already exists. */
-  onAddControlItem: (row: ControlItemRow) => void;
+  /**
+   * Another Control Item on an Objective, opened either from a blank Objective
+   * row - where it is that Objective's first, and there is no sibling to copy
+   * from - or from the row carrying the statement, where there is.
+   */
+  onAddControlItem: (target: {
+    objectiveId: string;
+    statement: string;
+    level: number;
+    sibling: ControlItemRow | null;
+  }) => void;
   onDeleteNode: (id: string) => void;
   onDeleteControlItem: (id: string) => void;
   onReorder: (request: ReorderRequest) => void;
@@ -471,7 +481,7 @@ function countControlItems(rows: SheetRowModel[]): number {
   return rows.filter((row) => row.kind === "CONTROL_ITEM").length;
 }
 
-/** The Goal › Theme › Objective the topmost visible row sits under. */
+/** The Goal › Objective chain the topmost visible row sits under. */
 function contextFor(rows: SheetRowModel[], topIndex: number): string[] {
   const row = rows[topIndex];
   if (!row) return [];
@@ -577,10 +587,13 @@ function GroupRowView({
   editing?: EditingHandlers;
   drag?: RowDragHandlers;
 }) {
+  // Every group row below Level 1 is an Objective now, so the weight steps by
+  // level rather than by kind: Goal boldest, a Level 2 Objective carrying some
+  // weight, Level 3 and 4 quietest.
   const tone =
     row.kind === "GOAL"
       ? "bg-paper-band-strong text-ink font-semibold text-[13px]"
-      : row.kind === "THEME"
+      : row.level === 2
         ? "bg-paper-band text-ink font-medium text-[12px]"
         : "bg-paper-sunken text-ink-muted text-[12px]";
 
@@ -618,16 +631,12 @@ function GroupRowView({
           const owns = canEditStructureAt(editing.user, editing.dics, row.level, row.orgUnitId);
           const companyWide =
             editing.user.role === "SUPER_ADMIN" || editing.user.role === "EXECUTIVE";
-          // A plain continuation only exists for a Goal, a Theme, or a Level 2
-          // Objective (its Level 3 Theme); everything deeper is a department
-          // branch, added separately below. Continuation of the company-wide
-          // tree belongs to a SUPER_ADMIN or an EXECUTIVE; a Level 4 Theme's
-          // own continuation (its Objective) is scoped to whoever owns that
-          // branch.
-          const childContinues =
-            row.kind !== "OBJECTIVE" || row.level === 2;
-          const canAddChild =
-            row.level < 4 ? companyWide && childContinues : owns && childContinues;
+          // A Goal continues into a Level 2 Objective and a Level 2 Objective
+          // into a Level 3; everything deeper is a department branch, added
+          // separately below because it carries an org unit. Continuation of
+          // the company-wide tree belongs to a SUPER_ADMIN or an EXECUTIVE.
+          const childContinues = row.kind === "GOAL" || row.level === 2;
+          const canAddChild = companyWide && childContinues;
           // Moving a row is the same authority as renaming it: it changes how
           // the plan reads, not what it records.
           const canReorder = row.level < 4 ? companyWide : owns;
@@ -642,16 +651,28 @@ function GroupRowView({
             )}
             <RowActions
               canAddChild={canAddChild}
-              childLabel={row.kind === "THEME" ? "objective" : "theme"}
+              childLabel="objective"
               canAddDepartment={canAddDepartmentBranch(editing.user, row)}
-              canAddMeasure={row.kind === "OBJECTIVE" && (row.level < 4 ? companyWide : owns)}
+              // M+ adds a child Objective already carrying one Control Item,
+              // which is what "add a measure here" has always meant.
+              canAddMeasure={childContinues && companyWide}
+              // CI+ measures THIS Objective. A group row is by definition one
+              // with nothing under it yet, so this is how a blank row stops
+              // being blank.
+              canAddControlItem={row.kind === "OBJECTIVE" && (row.level < 4 ? companyWide : owns)}
               canRename={row.level < 4 ? companyWide : owns}
               canDelete={row.level < 4 ? companyWide : owns}
-              onAddChild={() =>
-                editing.onAddChild(row.id, row.kind === "THEME" ? "OBJECTIVE" : "THEME")
-              }
+              onAddChild={() => editing.onAddChild(row.id)}
               onAddDepartment={() => editing.onAddDepartment(row.id)}
               onAddMeasure={() => editing.onAddMeasure(row.id)}
+              onAddControlItem={() =>
+                editing.onAddControlItem({
+                  objectiveId: row.id,
+                  statement: row.statement,
+                  level: row.level,
+                  sibling: null,
+                })
+              }
               onRename={() => editing.onStartRename(row.id)}
               onDelete={() => editing.onDeleteNode(row.id)}
             />
@@ -720,7 +741,7 @@ function ControlItemRowView({
           experience" down three rows says nothing the reader did not already
           know and costs the width their own Control Items need.
         */}
-        {row.firstOfMeasure ? (
+        {row.firstOfObjective ? (
           <Link
             href={`/control-item/${row.id}`}
             // A link is a drag source by default, so dragging a measure by its
@@ -728,21 +749,27 @@ function ControlItemRowView({
             draggable={false}
             className="min-w-0 flex-1 truncate text-[12px] hover:underline"
             title={
-              row.measureItemCount > 1
-                ? `${plainText(row.name)} — ${row.measureItemCount} Control Items`
+              row.objectiveItemCount > 1
+                ? `${plainText(row.name)} — ${row.objectiveItemCount} Control Items`
                 : `${plainText(row.name)} (${row.code})`
             }
           >
             <RichText text={row.name} />
           </Link>
         ) : (
-          <span
-            className="min-w-0 flex-1 truncate text-[12px] text-ink-faint"
-            aria-hidden
-            title={plainText(row.name)}
+          // A Control Item whose statement is printed above it - the second of
+          // several, or any of them under an Objective that carries a header.
+          // Still a link: the detail screen is where its own figures, formula
+          // and history live, and reaching it should not depend on which row
+          // of the Objective happened to get the name.
+          <Link
+            href={`/control-item/${row.id}`}
+            draggable={false}
+            className="min-w-0 flex-1 truncate text-[12px] text-ink-faint hover:underline"
+            title={`${plainText(row.name)} — ${row.measuredAs} (${row.code})`}
           >
             └
-          </span>
+          </Link>
         )}
         {editing &&
         (row.level < 4
@@ -757,18 +784,41 @@ function ControlItemRowView({
               />
             )}
             <RowActions
-              canAddChild={false}
-              childLabel=""
-              canAddMeasure={false}
-              // Offered on the row that carries the measure's name, because
-              // that is the row that reads as the measure.
-              canAddControlItem={row.firstOfMeasure}
+              /*
+               * This row IS its Objective when it carries the statement: an
+               * Objective with Control Items prints no group row of its own,
+               * so everything that used to sit on that header lives here.
+               * Without it a Level 2 Objective that already had one figure
+               * against it could never be deployed any further, which is the
+               * whole of the cascade.
+               */
+              // The enclosing guard has already established that a row below
+              // Level 4 is only editable here by a SUPER_ADMIN or an EXECUTIVE,
+              // which is exactly the authority the company tree needs.
+              canAddChild={row.firstOfObjective && row.level === 2}
+              childLabel="objective"
+              canAddMeasure={row.firstOfObjective && row.level === 2}
+              canAddDepartment={
+                row.firstOfObjective &&
+                canAddDepartmentBranch(editing.user, { kind: "OBJECTIVE", level: row.level })
+              }
+              // Offered on the row that carries the statement, because that is
+              // the row that reads as the Objective.
+              canAddControlItem={row.firstOfObjective}
               canRename
-              renameLabel={row.measureItemCount > 1 ? "Edit Control Item" : "Edit measure"}
+              renameLabel={row.objectiveItemCount > 1 ? "Edit Control Item" : "Edit measure"}
               canDelete
-              onAddChild={() => {}}
-              onAddMeasure={() => {}}
-              onAddControlItem={() => editing.onAddControlItem(row)}
+              onAddChild={() => editing.onAddChild(row.objectiveId)}
+              onAddMeasure={() => editing.onAddMeasure(row.objectiveId)}
+              onAddDepartment={() => editing.onAddDepartment(row.objectiveId)}
+              onAddControlItem={() =>
+                editing.onAddControlItem({
+                  objectiveId: row.objectiveId,
+                  statement: row.name,
+                  level: row.level,
+                  sibling: row,
+                })
+              }
               onRename={() => editing.onEditControlItem(row)}
               onDelete={() => editing.onDeleteControlItem(row.id)}
             />
@@ -787,7 +837,7 @@ function ControlItemRowView({
         style={{ left: "var(--label-width)", width: "var(--measure-width)" }}
         title={`${row.measuredAs} · rolled up by ${row.aggregation.toLowerCase()}`}
       >
-        {row.measureItemCount > 1 ? (
+        {row.objectiveItemCount > 1 ? (
           // One of several under one name, so this column is what tells them
           // apart - and on rows that no longer carry the name, it is also the
           // way to reach the measure's own page.

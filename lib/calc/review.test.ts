@@ -47,9 +47,9 @@ function item(
   return {
     id,
     kind: "CONTROL_ITEM",
-    measureId: `measure-${id}`,
-    firstOfMeasure: true,
-    measureItemCount: 1,
+    objectiveId: `measure-${id}`,
+    firstOfObjective: true,
+    objectiveItemCount: 1,
     code: id,
     name: `Item ${id}`,
     measuredAs: "Units",

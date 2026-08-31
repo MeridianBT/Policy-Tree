@@ -19,23 +19,20 @@ const snapshot: Snapshot = {
   businessUnitCodes: ["AUTO", "MC", "SHARED"],
   nodes: [
     { id: "goal", kind: "GOAL", level: 1, statement: "Profit and Growth", path: [] },
-    { id: "theme", kind: "THEME", level: 2, statement: "Volume and share", path: ["goal"] },
     {
-      id: "objective",
+      id: "deliveries",
       kind: "OBJECTIVE",
       level: 2,
-      statement: "Grow retail volume",
-      path: ["goal", "theme"],
+      statement: "New vehicle deliveries",
+      path: ["goal"],
     },
   ],
   items: [
     {
       id: "item-1",
       code: "AU-VOL",
-      measureId: "measure-1",
-      measureName: "New vehicle deliveries",
       measuredAs: "Units delivered",
-      nodeId: "objective",
+      nodeId: "deliveries",
       level: 2,
       dicCode: "AUTO",
       unit: "COUNT",
@@ -54,9 +51,9 @@ function row(overrides: Partial<PlanRow> = {}): PlanRow {
     target: 5000,
     actual: null,
     goal: "Profit and Growth",
-    theme: "Volume and share",
-    objective: "Grow retail volume",
-    measure: "New vehicle deliveries",
+    // Blank on a Level 2 row: its parent is the Goal itself.
+    parentObjective: "",
+    objective: "New vehicle deliveries",
     controlItem: "Units delivered",
     dic: "AUTO",
     businessUnit: "AUTO",
@@ -126,11 +123,22 @@ describe("writing figures against a measure that exists", () => {
 });
 
 describe("never moves, never renames", () => {
-  it("refuses a row whose Objective column moved the measure", () => {
-    const result = plan([row({ objective: "Some other objective" })]);
+  it("refuses a row whose Parent objective column moved the measure", () => {
+    const result = plan([row({ parentObjective: "Some other objective" })]);
     expect(result.figures).toHaveLength(0);
     expect(result.refusals[0].reason).toBe("WOULD_MOVE");
-    expect(result.refusals[0].detail).toContain("Grow retail volume");
+    expect(result.refusals[0].detail).toContain("its Goal");
+  });
+
+  it("treats a changed Objective statement as a rename: noted, never applied", () => {
+    // The statement is the row's own name now, so a difference there is not a
+    // move. Renaming is one deliberate edit on the sheet, not a side effect of
+    // uploading a year of figures - and the figures still land.
+    const result = plan([row({ objective: "Deliveries, new vehicles" })]);
+    expect(result.refusals).toHaveLength(0);
+    expect(result.figures).toHaveLength(1);
+    expect(result.notes[0].note).toContain("Objective");
+    expect(result.notes[0].note).toContain("Left as it is.");
   });
 
   it("refuses a row whose Department column moved the measure", () => {
@@ -147,9 +155,10 @@ describe("never moves, never renames", () => {
   });
 
   it("compares statements as somebody reads them", () => {
-    // Trailing space and case are not a move.
-    const result = plan([row({ objective: "  grow retail VOLUME ", dic: "auto" })]);
+    // Trailing space and case are neither a move nor a rename.
+    const result = plan([row({ objective: "  new VEHICLE deliveries ", dic: "auto" })]);
     expect(result.refusals).toHaveLength(0);
+    expect(result.notes).toHaveLength(0);
     expect(result.figures).toHaveLength(1);
   });
 });
@@ -158,9 +167,9 @@ describe("creating what is not there", () => {
   const newRow = row({
     row: 9,
     code: "AU-NEW",
-    measure: "Test drives booked",
+    objective: "Test drives booked",
     controlItem: "Bookings",
-    objective: "Grow retail volume",
+    parentObjective: "New vehicle deliveries",
   });
 
   it("refuses an unknown code when creation is off", () => {
@@ -170,13 +179,13 @@ describe("creating what is not there", () => {
     expect(result.refusals[0].reason).toBe("UNKNOWN_CODE");
   });
 
-  it("creates the measure under an Objective that already exists", () => {
+  it("deploys the measure from an Objective that already exists", () => {
     const result = plan([newRow], true);
     expect(result.nodes).toHaveLength(0);
     expect(result.measures).toHaveLength(1);
     expect(result.measures[0]).toMatchObject({
       name: "Test drives booked",
-      parentKey: "objective",
+      parentKey: "deliveries",
       code: "AU-NEW",
       dicCode: "AUTO",
     });
@@ -184,69 +193,84 @@ describe("creating what is not there", () => {
     expect(result.figures[0].controlItemId).toBeNull();
   });
 
+  it("hangs a measure with no parent objective off the Goal itself", () => {
+    // Which is where a Level 2 Objective sits, and the export writes the
+    // column blank for exactly those rows.
+    const result = plan([row({ code: "AU-L2", objective: "Brand consideration" })], true);
+    expect(result.nodes).toHaveLength(0);
+    expect(result.measures[0].parentKey).toBe("goal");
+  });
+
   it("creates a measure once for all twelve of its months", () => {
     const months = snapshot.months.map((period, index) =>
-      row({ row: 10 + index, code: "AU-NEW", period, measure: "Test drives booked", controlItem: "Bookings" }),
+      row({
+        row: 10 + index,
+        code: "AU-NEW",
+        period,
+        objective: "Test drives booked",
+        controlItem: "Bookings",
+      }),
     );
     const result = plan(months, true);
     expect(result.measures).toHaveLength(1);
     expect(result.figures).toHaveLength(3);
   });
 
-  it("creates the Goal, Theme and Objective above it when they are missing", () => {
+  it("creates the Goal and the parent Objective above it when they are missing", () => {
     const result = plan(
       [
         row({
           code: "NEW-1",
           goal: "A brand new goal",
-          theme: "A brand new theme",
-          objective: "A brand new objective",
-          measure: "A brand new measure",
+          parentObjective: "A brand new objective",
+          objective: "A brand new measure",
         }),
       ],
       true,
     );
-    expect(result.nodes.map((node) => node.kind)).toEqual(["GOAL", "THEME", "OBJECTIVE"]);
+    expect(result.nodes.map((node) => node.kind)).toEqual(["GOAL", "OBJECTIVE"]);
     // Each hangs off the one above it, so the apply can create them in order.
     expect(result.nodes[1].parentKey).toBe(result.nodes[0].key);
-    expect(result.nodes[2].parentKey).toBe(result.nodes[1].key);
-    expect(result.measures[0].parentKey).toBe(result.nodes[2].key);
+    expect(result.measures[0].parentKey).toBe(result.nodes[1].key);
   });
 
-  it("reuses a Goal that exists and creates only the Theme below it", () => {
+  it("reuses a Goal that exists and creates only the Objective below it", () => {
     const result = plan(
-      [row({ code: "NEW-2", theme: "A new theme", objective: "A new objective", measure: "M" })],
+      [row({ code: "NEW-2", parentObjective: "A new objective", objective: "M" })],
       true,
     );
-    expect(result.nodes.map((node) => node.kind)).toEqual(["THEME", "OBJECTIVE"]);
+    expect(result.nodes.map((node) => node.kind)).toEqual(["OBJECTIVE"]);
     expect(result.nodes[0].parentKey).toBe("goal");
   });
 
   it("ignores the number a Goal is printed with", () => {
     // The export writes "1.  Profit and Growth"; the Goal is still that Goal.
-    const result = plan([row({ code: "NEW-3", goal: "1.  Profit and Growth", measure: "M" })], true);
+    const result = plan(
+      [row({ code: "NEW-3", goal: "1.  Profit and Growth", objective: "M" })],
+      true,
+    );
     expect(result.nodes.filter((node) => node.kind === "GOAL")).toHaveLength(0);
   });
 
   it("refuses a new row that does not say where it belongs", () => {
-    const result = plan([row({ code: "NEW-4", objective: "", measure: "M" })], true);
+    const result = plan([row({ code: "NEW-4", objective: "" })], true);
     expect(result.refusals[0].reason).toBe("INCOMPLETE_NEW_ROW");
   });
 
   it("refuses a new row filed against a department that does not exist", () => {
-    const result = plan([row({ code: "NEW-5", measure: "M", dic: "NOPE" })], true);
+    const result = plan([row({ code: "NEW-5", objective: "M", dic: "NOPE" })], true);
     expect(result.refusals[0].reason).toBe("UNKNOWN_DIC");
   });
 
   it("refuses a new row with a business unit that does not exist", () => {
-    const result = plan([row({ code: "NEW-6", measure: "M", businessUnit: "NOPE" })], true);
+    const result = plan([row({ code: "NEW-6", objective: "M", businessUnit: "NOPE" })], true);
     expect(result.refusals[0].reason).toBe("UNKNOWN_BUSINESS_UNIT");
   });
 
   it("sends a new Level 4 row to the sheet instead of guessing", () => {
     // A department branch carries an org unit and ladders into an Objective
     // above it, and the file states neither.
-    const result = plan([row({ code: "NEW-7", level: 4, measure: "M" })], true);
+    const result = plan([row({ code: "NEW-7", level: 4, objective: "M" })], true);
     expect(result.refusals[0].reason).toBe("LEVEL_4_NEEDS_THE_SHEET");
     expect(result.measures).toHaveLength(0);
   });
@@ -258,7 +282,7 @@ describe("settings on a new measure", () => {
       [
         row({
           code: "NEW-8",
-          measure: "Cost per lead",
+          objective: "Cost per lead",
           unit: "CURRENCY",
           aggregation: "AVERAGE",
           direction: "Lower is better",
@@ -277,7 +301,7 @@ describe("settings on a new measure", () => {
 
   it("refuses a unit it does not know rather than defaulting", () => {
     // A percent measure created as a summed count reads wrong for a year.
-    const result = plan([row({ code: "NEW-9", measure: "M", unit: "furlongs" })], true);
+    const result = plan([row({ code: "NEW-9", objective: "M", unit: "furlongs" })], true);
     expect(result.refusals[0].reason).toBe("UNKNOWN_SETTING");
     expect(result.measures).toHaveLength(0);
   });

@@ -3,15 +3,12 @@
  * numbered.
  *
  * Indentation is driven by the row's **level**, not by how deep it happens to
- * sit in the tree. Those two differ: a Level 3 Objective hangs off a Level 3
- * Theme which hangs off a Level 2 Objective, so tree depth varies between
- * branches while the level does not. Indenting by depth left rows of the same
- * level sitting at different distances from the margin, which is exactly what
- * the eye uses to read a policy deployment sheet. Indenting by level lines
- * every Level 2 up on one vertical, every Level 3 on the next.
- *
- * Theme and Objective share a level and therefore share an indent; they are
- * told apart by weight and tint instead.
+ * sit in the tree. Those two differ: a Level 4 department branch hangs off
+ * whichever Level 2 or Level 3 Objective it ladders into, so tree depth varies
+ * between branches while the level does not. Indenting by depth left rows of
+ * the same level sitting at different distances from the margin, which is
+ * exactly what the eye uses to read a policy deployment sheet. Indenting by
+ * level lines every Level 2 up on one vertical, every Level 3 on the next.
  */
 
 import type { SheetRowModel } from "@/lib/sheet/types";
@@ -36,8 +33,8 @@ export const CARET_WIDTH_PX = 16;
  * Steps in from the margin.
  *
  * A Level 1 Goal sits at the margin. A Control Item sits one step in from the
- * Objective that carries it, which puts it level with any sub-Theme of that
- * same Objective — where it belongs, since both are its children.
+ * Objective that carries it, which puts it level with any Objective deployed
+ * from that same Objective — where it belongs, since both are its children.
  */
 export function indentSteps(row: Pick<SheetRowModel, "kind" | "level">): number {
   return row.kind === "CONTROL_ITEM" ? row.level : row.level - 1;
