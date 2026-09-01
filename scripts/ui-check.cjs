@@ -318,6 +318,116 @@ async function departmentChipsDoNotRepeatTheDivision(browser) {
  * is that the escape still works: a print page has to grow past the viewport,
  * where the shell pins the body to the window and hides the overflow.
  */
+/**
+ * A measure added to a row appears against that row.
+ *
+ * Adding one to a Goal makes a Level 2 Objective, and to a Level 2 makes a
+ * Level 3 - the level was never the problem. Where it landed was: a new child
+ * went after every sibling, and a Goal on the demo plan carries thirty-one
+ * Objectives, so the row arrived some sixty below the heading just clicked.
+ * Off the screen entirely, which reads as nothing having happened.
+ *
+ * Indentation is the level made visible, so it is what this asserts: an
+ * Objective rendering inline sits one step in from the heading above it, and
+ * one step further again for the Level 3 beneath that. See
+ * components/sheet/outline.ts for the ladder.
+ */
+async function addingAMeasureLandsAgainstItsRow(browser) {
+  console.log("\nA measure lands against the row it was added from");
+  const page = await browser.newPage({ viewport: { width: 1700, height: 950 } });
+  await signIn(page);
+  await page.locator('button[title="Add, rename and remove rows directly on the sheet"]').click();
+  await page.waitForTimeout(1500);
+
+  const rows = () =>
+    page.evaluate(() =>
+      [...document.querySelectorAll('[style*="--label-width"]')]
+        .map((cell) => {
+          const indent = /padding-left:\s*([0-9.]+)px/.exec(cell.getAttribute("style") || "");
+          const text = [...cell.childNodes].map((node) => node.textContent).join("").trim();
+          return { indent: indent ? Number(indent[1]) : null, text };
+        })
+        // Only row cells: the grid container carries --label-width too, and
+        // its textContent is the whole sheet.
+        .filter((row) => row.text && row.indent !== null));
+
+  const add = async (buttonIndex, name) => {
+    await page.locator('button[title="Add measure"]').nth(buttonIndex).click();
+    await page.waitForTimeout(900);
+    await page
+      .locator('.bg-paper-sunken input[type="text"], .bg-paper-sunken input:not([type])')
+      .first()
+      .fill(name);
+    await page.waitForTimeout(300);
+    await page.locator("button", { hasText: /^Add measure$/ }).last().click();
+    await page.waitForTimeout(4000);
+    const all = await rows();
+    const at = all.findIndex((row) => row.text.includes(name));
+    return { all, at, indent: at === -1 ? null : all[at].indent };
+  };
+
+  const stamp = Date.now().toString().slice(-5);
+  const goalName = `UICHECK-L2-${stamp}`;
+  const onGoal = await add(0, goalName);
+  check(onGoal.at !== -1, "a measure added to a Goal is on the screen at all");
+  // The row after the Goal heading the button sat on - counted from that
+  // heading rather than from the top, so anything else already under the Goal
+  // does not make this say the wrong thing.
+  const goalRow = onGoal.all.findIndex((row) => row.indent === 4);
+  check(
+    goalRow !== -1 && onGoal.at === goalRow + 1,
+    "and directly under that Goal",
+    `Goal at row ${goalRow}, measure at row ${onGoal.at}`,
+  );
+  check(onGoal.indent === 32, "at Level 2", `indent ${onGoal.indent}px`);
+
+  const childName = `UICHECK-L3-${stamp}`;
+  const onObjective = await add(1, childName);
+  check(onObjective.at !== -1, "a measure added to that Level 2 is on the screen");
+  check(onObjective.indent === 46, "and sits a level deeper, at Level 3", `indent ${onObjective.indent}px`);
+  const parentAt = onObjective.all.findIndex((row) => row.text.includes(goalName));
+  check(
+    parentAt !== -1 && onObjective.at - parentAt <= 2,
+    "directly beneath the Level 2 it was added from",
+    `parent row ${parentAt}, new row ${onObjective.at}`,
+  );
+
+  /*
+   * Put the demo data back: delete the Level 2, which carries the Level 3.
+   *
+   * Targeted from inside the page rather than with a CSS locator, because the
+   * grid container carries --label-width as well and holds every row's trash
+   * can - a locator scoped that way clicks the wrong one, which on this screen
+   * means deleting somebody else's branch.
+   */
+  const clicked = await page.evaluate((name) => {
+    for (const cell of document.querySelectorAll('[style*="--label-width"]')) {
+      if (!/padding-left/.test(cell.getAttribute("style") || "")) continue;
+      if (!cell.textContent.includes(name)) continue;
+      const trash = cell.querySelector('button[title="Delete"]');
+      if (!trash) return false;
+      trash.click();
+      return true;
+    }
+    return false;
+  }, goalName);
+  if (clicked) {
+    await page.waitForTimeout(1500);
+    const confirm = page.locator("button", { hasText: "Delete anyway" });
+    if (await confirm.count()) {
+      await confirm.first().click();
+      await page.waitForTimeout(3000);
+    }
+  }
+  const left = await rows();
+  check(
+    !left.some((row) => row.text.includes(goalName)),
+    "and the check tidies up after itself",
+    left.some((row) => row.text.includes(goalName)) ? "still there" : "",
+  );
+  await page.close();
+}
+
 async function thePrintPageIsOneDocument(browser) {
   console.log("\nThe print route is one document, and flows");
   const page = await browser.newPage({ viewport: { width: 1500, height: 900 } });
@@ -907,6 +1017,7 @@ async function theUatWording(browser) {
     await myEntriesOnAPhone(browser);
     await theUatWording(browser);
     await oneQuarterAtATime(browser);
+    await addingAMeasureLandsAgainstItsRow(browser);
     await thePrintPageIsOneDocument(browser);
     await theToolbarFinds(browser);
     await collapsingSurvivesTheScopeToggle(browser);

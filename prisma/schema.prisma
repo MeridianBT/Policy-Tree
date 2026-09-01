@@ -197,7 +197,11 @@ model Node {
   sortOrder Int      @default(0) @map("sort_order")
 
   ki       Ki       @relation(fields: [kiId], references: [id], onDelete: Cascade)
-  parent   Node?    @relation("NodeTree", fields: [parentId], references: [id])
+  /// Cascade, so deleting a row takes the branch beneath it. Left unset, an
+  /// optional relation defaults to SetNull, which orphaned every child of a
+  /// deleted Objective - and an orphan has no ancestor chain, so it reappeared
+  /// on the sheet as though it were a Goal.
+  parent   Node?    @relation("NodeTree", fields: [parentId], references: [id], onDelete: Cascade)
   children Node[]   @relation("NodeTree")
   orgUnit  OrgUnit? @relation(fields: [orgUnitId], references: [id])
 

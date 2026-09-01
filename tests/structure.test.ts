@@ -650,6 +650,52 @@ describe("an EXECUTIVE reaches Level 4 as well", () => {
  * what put a new Level 4 department branch halfway down the company
  * deployment it had just been laddered onto.
  */
+/**
+ * Deleting a row takes the branch beneath it.
+ *
+ * The self-relation on `node` carried no delete action, and an optional
+ * relation defaults to SetNull rather than Cascade - so deleting an Objective
+ * left its children behind with no parent. `deleteNode` claims otherwise in a
+ * comment and the confirmation prompt promises it out loud ("removes 7 rows
+ * beneath it"), which is what made this invisible: everything *said* the right
+ * thing.
+ *
+ * An orphan is worse than a leak. A row with no parent has no ancestor chain,
+ * so the sheet treats it as a root and prints it beside the Goals - at the top
+ * of the company plan, under no heading at all.
+ */
+describe("deleting a row takes what hangs off it", () => {
+  it("removes the children, rather than orphaning them", async () => {
+    asUser(fx.users.admin);
+    const parent = await addNode({
+      kiId: fx.kiId,
+      parentId: fx.nodes.goal,
+      statement: "Doomed objective",
+    });
+    const parentId = (parent as { id: string }).id;
+    const child = await addNode({ kiId: fx.kiId, parentId, statement: "Its deployment" });
+    const childId = (child as { id: string }).id;
+
+    // Two steps, because the first call only reports what would be lost.
+    const reported = await deleteNode({ id: parentId, confirm: false });
+    expect(reported.ok).toBe(false);
+    expect((await deleteNode({ id: parentId, confirm: true })).ok).toBe(true);
+
+    expect(await prisma.node.findUnique({ where: { id: parentId } })).toBeNull();
+    expect(await prisma.node.findUnique({ where: { id: childId } })).toBeNull();
+  });
+
+  it("leaves nothing behind without a parent", async () => {
+    // The shape the bug produced, asserted against the whole Ki rather than
+    // one row: only a Level 1 Goal may sit at the root of a plan.
+    const rootless = await prisma.node.findMany({
+      where: { kiId: fx.kiId, parentId: null },
+      select: { level: true, statement: true },
+    });
+    expect(rootless.every((node) => node.level === 1)).toBe(true);
+  });
+});
+
 describe("where a new row lands among its siblings", () => {
   let parentId: string;
 
@@ -687,7 +733,7 @@ describe("where a new row lands among its siblings", () => {
       select: { sortOrder: true, level: true },
     });
 
-  it("puts a Level 4 branch after every sibling, not into a gap between them", async () => {
+  it("puts a Level 4 branch ahead of every sibling, not into a gap between them", async () => {
     asUser(fx.users.alphaLead);
     const branch = await addDepartmentBranch({
       kiId: fx.kiId,
@@ -697,16 +743,30 @@ describe("where a new row lands among its siblings", () => {
     });
     expect(branch.ok).toBe(true);
 
-    const rows = await sortOrders();
+    // The first branch under this Objective, so there is no Level 4 sibling to
+    // go ahead of; `compareNodes` already orders it above the Level 3 rows.
     const created = await prisma.node.findUniqueOrThrow({
       where: { id: (branch as { id: string }).id },
       select: { sortOrder: true },
     });
-    expect(created.sortOrder).toBe(102);
-    // Last in the list, which is what "underneath the Objective it laddered
-    // onto" means once that Objective's own deployment is on screen too.
-    expect(rows[rows.length - 1].sortOrder).toBe(created.sortOrder);
-    expect(rows.map((row) => row.sortOrder)).toEqual([0, 1, 100, 101, 102]);
+    expect(created.sortOrder).toBe(0);
+
+    // A second one goes ahead of the first, which is what "beneath the row you
+    // clicked" means once a branch is already there.
+    const second = await addDepartmentBranch({
+      kiId: fx.kiId,
+      parentObjectiveId: parentId,
+      orgUnitId: fx.orgUnits.alpha,
+      statement: "Alpha's second deployment",
+    });
+    const secondRow = await prisma.node.findUniqueOrThrow({
+      where: { id: (second as { id: string }).id },
+      select: { sortOrder: true },
+    });
+    expect(secondRow.sortOrder).toBe(-1);
+
+    const level4 = (await sortOrders()).filter((row) => row.level === 4);
+    expect(level4.map((row) => row.sortOrder)).toEqual([-1, 0]);
   });
 
   it("shows the branch directly beneath the Objective it laddered onto", async () => {
@@ -744,9 +804,49 @@ describe("where a new row lands among its siblings", () => {
       where: { id: (objective as { id: string }).id },
       select: { sortOrder: true },
     });
-    expect(created.sortOrder).toBe(102);
+    expect(created.sortOrder).toBe(-1);
     const rows = await sortOrders();
-    expect(rows[rows.length - 1].sortOrder).toBe(created.sortOrder);
+    expect(rows[0].sortOrder).toBe(created.sortOrder);
+  });
+
+  it("puts a measure added to a Goal directly under that Goal", async () => {
+    /*
+     * The case that sent somebody looking for a row that was not on screen.
+     * A Goal on the demo plan carries thirty-one Objectives, so appending put
+     * a new one some sixty rows below the heading that had just been clicked.
+     */
+    asUser(fx.users.admin);
+    const before = await prisma.node.count({ where: { parentId: fx.nodes.goal } });
+    const created = await addControlItem({
+      nodeId: fx.nodes.goal,
+      name: "Straight under the Goal",
+      measuredAs: "Units",
+      unit: "COUNT",
+      direction: "HIGHER_BETTER",
+      aggregation: "SUM",
+      decimalPlaces: 0,
+      dicOrgUnitId: fx.orgUnits.alpha,
+      businessUnitId: fx.businessUnits.AUTO,
+    });
+    expect(created.ok).toBe(true);
+
+    // One Level 2 Objective, carrying one Control Item - not a Level 3, and
+    // not an Objective on its own with nothing measuring it.
+    const item = await prisma.controlItem.findUniqueOrThrow({
+      where: { id: (created as { id: string }).id },
+      select: { node: { select: { id: true, level: true, parentId: true, sortOrder: true } } },
+    });
+    expect(item.node.level).toBe(2);
+    expect(item.node.parentId).toBe(fx.nodes.goal);
+    expect(await prisma.node.count({ where: { parentId: fx.nodes.goal } })).toBe(before + 1);
+
+    // And it is the Goal's first child, so it renders against the heading.
+    const children = await prisma.node.findMany({
+      where: { parentId: fx.nodes.goal },
+      orderBy: { sortOrder: "asc" },
+      select: { id: true },
+    });
+    expect(children[0].id).toBe(item.node.id);
   });
 });
 
@@ -838,10 +938,21 @@ describe("reordering rows", () => {
     const l3ThemeB = await addNode({ kiId: fx.kiId, parentId: fx.nodes.objective, statement: "L3 B" });
 
     const branchId = (branch as { id: string }).id;
-    const branchBefore = await prisma.node.findUniqueOrThrow({
-      where: { id: branchId },
-      select: { sortOrder: true },
-    });
+    /*
+     * Its *position*, not its number. `reorderWithinLevel` renumbers every
+     * sibling densely from the order it was handed, so a row that did not move
+     * can still come out with a different integer - what must not change is
+     * where it sits among them.
+     */
+    const positionOfBranch = async () => {
+      const siblings = await prisma.node.findMany({
+        where: { parentId: fx.nodes.objective },
+        orderBy: [{ sortOrder: "asc" }, { id: "asc" }],
+        select: { id: true },
+      });
+      return siblings.findIndex((sibling) => sibling.id === branchId);
+    };
+    const branchBefore = await positionOfBranch();
 
     expect(
       (
@@ -853,11 +964,7 @@ describe("reordering rows", () => {
       ).ok,
     ).toBe(true);
 
-    const branchAfter = await prisma.node.findUniqueOrThrow({
-      where: { id: branchId },
-      select: { sortOrder: true },
-    });
-    expect(branchAfter.sortOrder).toBe(branchBefore.sortOrder);
+    expect(await positionOfBranch()).toBe(branchBefore);
   });
 });
 
