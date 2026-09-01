@@ -430,6 +430,20 @@ export function SheetGrid({
 
   const resetLabel = useCallback(() => resizeLabel(LABEL_WIDTH_DEFAULT), [resizeLabel]);
 
+  /**
+   * Node ids that something on the sheet ladders off.
+   *
+   * An Objective rendering inline has no heading to carry a disclosure caret,
+   * so its own row needs one - but only when there is actually something
+   * beneath it to fold away. Every row already carries its ancestor chain, so
+   * the set is just those chains flattened.
+   */
+  const deployedFrom = useMemo(() => {
+    const ids = new Set<string>();
+    for (const row of filtered) for (const ancestor of row.path) ids.add(ancestor);
+    return ids;
+  }, [filtered]);
+
   const context = useMemo(() => contextFor(visible, topRowIndex), [visible, topRowIndex]);
   const itemCount = visible.filter((row) => row.kind === "CONTROL_ITEM").length;
 
@@ -529,6 +543,13 @@ export function SheetGrid({
                       editing={editing}
                       drag={rowDrag}
                       entry={entry}
+                      collapsed={collapsed.has((row as ControlItemRow).objectiveId)}
+                      onToggle={
+                        (row as ControlItemRow).firstOfObjective &&
+                        deployedFrom.has((row as ControlItemRow).objectiveId)
+                          ? () => toggle((row as ControlItemRow).objectiveId)
+                          : undefined
+                      }
                       registerInput={registerInput}
                       onEnterKey={focusNextMeasure}
                       onPasteFrom={pasteFrom}
@@ -571,18 +592,30 @@ function contextFor(rows: SheetRowModel[], topIndex: number): string[] {
   if (!row) return [];
   // Group rows only: a path names a Node, and a Control Item row sharing that
   // id is a figure kept against it, never the heading the breadcrumb wants.
-  const byId = new Map<string, GroupRow>();
+  /*
+   * A path entry names a Node, and the row standing for that Node is either a
+   * heading or - when the Objective is held to one Control Item - the item row
+   * itself. Headings win where both exist, which is why they are written last.
+   */
+  const statementById = new Map<string, string>();
   for (const candidate of rows) {
-    if (candidate.kind !== "CONTROL_ITEM") byId.set(candidate.id, candidate as GroupRow);
+    if (candidate.kind === "CONTROL_ITEM" && candidate.firstOfObjective) {
+      statementById.set(candidate.objectiveId, candidate.name);
+    }
+  }
+  for (const candidate of rows) {
+    if (candidate.kind !== "CONTROL_ITEM") {
+      statementById.set(candidate.id, (candidate as GroupRow).statement);
+    }
   }
   const chain = row.kind === "CONTROL_ITEM" ? row.path : [...row.path, row.id];
   return chain
-    .map((id) => byId.get(id))
-    .filter((node): node is GroupRow => Boolean(node))
+    .map((id) => statementById.get(id))
+    .filter((statement): statement is string => Boolean(statement))
     // The breadcrumb is one compressed line of context, so emphasis inside it
     // would be noise rather than signal - the markers come off and the words
     // stay.
-    .map((node) => plainText(node.statement));
+    .map((statement) => plainText(statement));
 }
 
 /**
@@ -860,6 +893,8 @@ function ControlItemRowView({
   editing,
   drag,
   entry,
+  collapsed,
+  onToggle,
   registerInput,
   onEnterKey,
   onPasteFrom,
@@ -872,6 +907,9 @@ function ControlItemRowView({
   editing?: EditingHandlers;
   drag?: RowDragHandlers;
   entry?: EntryHandlers;
+  /** Set only when this row is an Objective something ladders off. */
+  collapsed?: boolean;
+  onToggle?: () => void;
   registerInput: (key: string, element: HTMLInputElement | null) => void;
   onEnterKey: (fromRowId: string, columnKey: string) => void;
   onPasteFrom: (rowId: string, period: string, text: string) => boolean;
@@ -888,9 +926,26 @@ function ControlItemRowView({
         className="sticky left-0 z-10 flex h-full shrink-0 items-center gap-2 bg-paper px-2 group-hover:bg-paper-sunken"
         style={{ width: "var(--label-width)", paddingLeft: indentPx(row) }}
       >
-        {/* Stands in for the group rows' disclosure caret, so a Control Item
-            lands on the same vertical as a group at the same step. */}
-        <span className="size-4 shrink-0" aria-hidden />
+        {/*
+          An Objective held to one Control Item is this row, so if anything
+          ladders off it the caret that folds it away has to live here - there
+          is no heading to put it on. Every other Control Item row keeps an
+          empty spacer of the same width, so a row lands on the same vertical
+          as a group row at the same step.
+        */}
+        {onToggle ? (
+          <button
+            type="button"
+            onClick={onToggle}
+            aria-expanded={!collapsed}
+            aria-label={`${collapsed ? "Expand" : "Collapse"} ${plainText(row.name)}`}
+            className="flex size-4 shrink-0 items-center justify-center rounded-sm hover:bg-rule"
+          >
+            {collapsed ? <ChevronRight size={12} /> : <ChevronDown size={12} />}
+          </button>
+        ) : (
+          <span className="size-4 shrink-0" aria-hidden />
+        )}
         {/*
           A Measure is named once. Its first Control Item carries the name; the
           rest of its rows leave the column empty, because repeating "Service
@@ -973,7 +1028,20 @@ function ControlItemRowView({
                 })
               }
               onRename={() => editing.onEditControlItem(row)}
-              onDelete={() => editing.onDeleteControlItem(row.id)}
+              /*
+               * On a row that carries the statement and is the Objective's
+               * only Control Item, the row IS the Objective, so the trash can
+               * has to remove the Objective - deleting just the measure would
+               * leave the statement behind as a blank row nobody asked for.
+               * Where the Objective has more than one, this row is one measure
+               * among several and deleting it means exactly that. Either way
+               * the confirmation names what would be lost before anything goes.
+               */
+              onDelete={() =>
+                row.objectiveItemCount === 1
+                  ? editing.onDeleteNode(row.objectiveId)
+                  : editing.onDeleteControlItem(row.id)
+              }
             />
           </>
         ) : (

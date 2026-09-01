@@ -2,13 +2,13 @@
  * How a row sits in the outline: how far it is indented, and what it is
  * numbered.
  *
- * Indentation is driven by the row's **level**, not by how deep it happens to
- * sit in the tree. Those two differ: a Level 4 department branch hangs off
- * whichever Level 2 or Level 3 Objective it ladders into, so tree depth varies
- * between branches while the level does not. Indenting by depth left rows of
- * the same level sitting at different distances from the margin, which is
- * exactly what the eye uses to read a policy deployment sheet. Indenting by
- * level lines every Level 2 up on one vertical, every Level 3 on the next.
+ * Indentation is driven by the row's **level**, and never by how deep it
+ * happens to sit in the tree or in the emitted rows. A row of a given level
+ * lands on one vertical wherever it appears, which is exactly what the eye
+ * uses to read a policy deployment sheet. The case that makes the difference
+ * visible is an Objective held to a single Control Item: it prints no heading,
+ * so the figures sit on the statement's own row - and that row is the
+ * Objective, indented as one.
  */
 
 import { rowKey, type SheetRowModel } from "@/lib/sheet/types";
@@ -30,20 +30,31 @@ export const OUTLINE_BASE_PX = 4;
 export const CARET_WIDTH_PX = 16;
 
 /**
+ * How a row is described to the indent rules: its kind, its level, and — for a
+ * Control Item — whether it is the row carrying its Objective's statement.
+ */
+export type OutlineRow = { kind: SheetRowModel["kind"]; level: number; firstOfObjective?: boolean };
+
+/**
  * Steps in from the margin.
  *
- * A Level 1 Goal sits at the margin. A Control Item sits one step in from the
- * Objective that carries it, which puts it level with any Objective deployed
- * from that same Objective — where it belongs, since both are its children.
+ * A Level 1 Goal sits at the margin. A Control Item printed under a heading
+ * sits one step in from the Objective that carries it, which puts it level
+ * with any Objective deployed from that same Objective — where it belongs,
+ * since both are its children.
+ *
+ * An Objective with a single Control Item has no heading: the statement and
+ * the figures share one row. That row *is* the Objective, so it indents like
+ * one. Stepping it in as a Control Item would land every inline Level 2 on the
+ * same vertical as the Level 3 headings beneath it, and the vertical is the
+ * whole way the cascade is read.
  */
-export function indentSteps(row: Pick<SheetRowModel, "kind" | "level">): number {
-  return row.kind === "CONTROL_ITEM" ? row.level : row.level - 1;
+export function indentSteps(row: OutlineRow): number {
+  if (row.kind !== "CONTROL_ITEM") return row.level - 1;
+  return row.firstOfObjective ? row.level - 1 : row.level;
 }
 
-export function indentPx(
-  row: Pick<SheetRowModel, "kind" | "level">,
-  base = OUTLINE_BASE_PX,
-): number {
+export function indentPx(row: OutlineRow, base = OUTLINE_BASE_PX): number {
   return base + indentSteps(row) * INDENT_STEP_PX;
 }
 
@@ -84,15 +95,24 @@ export interface CascadeNode {
 
 export function buildCascadeTree(rows: readonly SheetRowModel[]): CascadeNode[] {
   // Two maps, because a row's id is not unique across kinds - see `rowKey`.
-  // Every row gets a node of its own, and only a group row may be a parent:
-  // a `path` entry names a Node, and the row standing for that Node is its
-  // heading, never a Control Item that happens to share the id.
+  // Every row gets a node of its own, and `byNodeId` answers what a `path`
+  // entry resolves to: the Node's heading, or the single Control Item row that
+  // stands in for it when the Objective renders inline.
   const byKey = new Map<string, CascadeNode>();
   const byNodeId = new Map<string, CascadeNode>();
   for (const row of rows) {
     const node: CascadeNode = { row, children: [] };
     byKey.set(rowKey(row), node);
-    if (row.kind !== "CONTROL_ITEM") byNodeId.set(row.id, node);
+    // An Objective held to one Control Item has no heading - that row *is* the
+    // Objective, so it is what a child's path resolves to. A heading wins
+    // where both exist, which is why it is written second.
+    if (row.kind === "CONTROL_ITEM" && row.firstOfObjective) {
+      byNodeId.set(row.objectiveId, node);
+    }
+  }
+  for (const row of rows) {
+    if (row.kind === "CONTROL_ITEM") continue;
+    byNodeId.set(row.id, byKey.get(rowKey(row))!);
   }
 
   const roots: CascadeNode[] = [];

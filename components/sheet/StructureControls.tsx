@@ -239,7 +239,7 @@ export function InlineAdd({
 
 /**
  * A new Level 4 branch: which org unit it belongs to, plus its statement.
- * This is the one form an OWNER can open on a company-wide Level 2 or 3
+ * This is the one form an OWNER can open on a company-wide Level 3
  * Objective - the org unit picker is what the server actually scopes, and
  * `dics` here has already been narrowed to what the signed-in user may choose.
  */

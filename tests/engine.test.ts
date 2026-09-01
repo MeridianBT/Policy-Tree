@@ -498,7 +498,8 @@ describe("rows are uniquely addressable even when a Node and a Control Item shar
 
   beforeAll(async () => {
     // An Objective, a Control Item carrying its statement's own id, and a
-    // Level 3 beneath it so the Objective renders a heading as well.
+    // second Control Item, because two of them is what makes the Objective
+    // print a heading of its own - which is the row that collides.
     const objective = await prisma.node.create({
       data: {
         id: SHARED,
@@ -525,13 +526,18 @@ describe("rows are uniquely addressable even when a Node and a Control Item shar
         sortOrder: 0,
       },
     });
-    await prisma.node.create({
+    await prisma.controlItem.create({
       data: {
-        kiId: fx.kiId,
-        parentId: objective.id,
-        level: 3,
-        kind: "OBJECTIVE",
-        statement: "Deployed from the shared one",
+        nodeId: objective.id,
+        code: `SECOND-${SHARED}`,
+        unit: "COUNT",
+        direction: "HIGHER_BETTER",
+        achievementMethod: "RATIO",
+        aggregation: "SUM",
+        decimalPlaces: 0,
+        dicOrgUnitId: fx.orgUnits.alpha,
+        businessUnitId: fx.businessUnits.AUTO,
+        sortOrder: 1,
       },
     });
   });
@@ -556,5 +562,101 @@ describe("rows are uniquely addressable even when a Node and a Control Item shar
 
     const keys = model.rows.map(rowKey);
     expect(new Set(keys).size).toBe(keys.length);
+  });
+});
+
+/**
+ * What decides whether an Objective prints as one row or as a heading with its
+ * measures beneath it.
+ *
+ * The rule is the Control Item count and nothing else. It used to be "an
+ * Objective that something is deployed from carries a header", which meant a
+ * single measure could be torn off its own statement just because a Level 3
+ * had been laddered underneath it - two rows where the plan reads as one.
+ */
+describe("how many Control Items an Objective has decides its shape", () => {
+  let soleId: string;
+  let pairId: string;
+  let emptyId: string;
+
+  const measure = (nodeId: string, code: string, sortOrder: number) =>
+    prisma.controlItem.create({
+      data: {
+        nodeId,
+        code,
+        unit: "COUNT",
+        direction: "HIGHER_BETTER",
+        achievementMethod: "RATIO",
+        aggregation: "SUM",
+        decimalPlaces: 0,
+        dicOrgUnitId: fx.orgUnits.alpha,
+        businessUnitId: fx.businessUnits.AUTO,
+        sortOrder,
+      },
+    });
+
+  const objective = async (statement: string, parentId: string, level: number) =>
+    (
+      await prisma.node.create({
+        data: { kiId: fx.kiId, parentId, level, kind: "OBJECTIVE", statement },
+      })
+    ).id;
+
+  beforeAll(async () => {
+    const suffix = Math.random().toString(36).slice(2, 8).toUpperCase();
+
+    // One measure, and a Level 3 laddered off it: the case that used to split.
+    soleId = await objective("Objective with one measure", fx.nodes.goal, 2);
+    await measure(soleId, `SOLE-${suffix}`, 0);
+    await objective("Deployed from the sole one", soleId, 3);
+
+    pairId = await objective("Objective with two measures", fx.nodes.goal, 2);
+    await measure(pairId, `PAIR-A-${suffix}`, 0);
+    await measure(pairId, `PAIR-B-${suffix}`, 1);
+
+    emptyId = await objective("Objective with nothing measured yet", fx.nodes.goal, 2);
+  });
+
+  afterAll(async () => {
+    await prisma.node.deleteMany({ where: { id: { in: [soleId, pairId, emptyId] } } });
+  });
+
+  const rowsFor = async (nodeId: string) => {
+    const model = await loadSheet({ kiId: fx.kiId, levels: [1, 2, 3, 4], targetVersionId: null });
+    return model.rows.filter(
+      (row) => row.id === nodeId || (row.kind === "CONTROL_ITEM" && row.objectiveId === nodeId),
+    );
+  };
+
+  it("prints a single measure on the statement's own row, children or not", async () => {
+    const rows = await rowsFor(soleId);
+    expect(rows).toHaveLength(1);
+    expect(rows[0].kind).toBe("CONTROL_ITEM");
+    // The statement travels with the figures rather than sitting above them.
+    expect((rows[0] as ControlItemRow).objectiveId).toBe(soleId);
+    expect((rows[0] as ControlItemRow).objectiveItemCount).toBe(1);
+  });
+
+  it("still shows what ladders off that single row", async () => {
+    const model = await loadSheet({ kiId: fx.kiId, levels: [1, 2, 3, 4], targetVersionId: null });
+    const deployed = model.rows.filter((row) => row.path[row.path.length - 1] === soleId);
+    expect(deployed).toHaveLength(1);
+    expect(deployed[0].kind).toBe("OBJECTIVE");
+    expect(deployed[0].kind === "OBJECTIVE" ? deployed[0].statement : null).toBe(
+      "Deployed from the sole one",
+    );
+  });
+
+  it("gives two measures a heading and a row each", async () => {
+    const rows = await rowsFor(pairId);
+    expect(rows.map((row) => row.kind)).toEqual(["OBJECTIVE", "CONTROL_ITEM", "CONTROL_ITEM"]);
+    expect(rows[0].kind === "OBJECTIVE" ? rows[0].statement : null).toBe(
+      "Objective with two measures",
+    );
+  });
+
+  it("leaves an Objective with nothing measured as a row on its own", async () => {
+    const rows = await rowsFor(emptyId);
+    expect(rows.map((row) => row.kind)).toEqual(["OBJECTIVE"]);
   });
 });

@@ -24,7 +24,7 @@ export interface Fixture {
   businessUnits: Record<string, string>;
   users: Record<string, AuthenticatedUser>;
   /** Level 1/2 nodes, for tests exercising the structure-edit actions. */
-  nodes: { goal: string; objective: string };
+  nodes: { goal: string; objective: string; deployment: string };
   cleanup: () => Promise<void>;
 }
 
@@ -116,6 +116,17 @@ export async function createFixture(): Promise<Fixture> {
   const objective = await prisma.node.create({
     data: { kiId: ki.id, parentId: goal.id, level: 2, kind: "OBJECTIVE", statement: "Test objective" },
   });
+  // A department branch ladders from a Level 3, so the fixture carries one for
+  // the OWNER-path tests to hang their branches off.
+  const deployment = await prisma.node.create({
+    data: {
+      kiId: ki.id,
+      parentId: objective.id,
+      level: 3,
+      kind: "OBJECTIVE",
+      statement: "Test deployment",
+    },
+  });
 
   const itemSpecs = [
     { key: "A", dic: alpha.id, responsible: users.alphaLead.id },
@@ -153,7 +164,7 @@ export async function createFixture(): Promise<Fixture> {
     orgUnits: { company: company.id, alpha: alpha.id, beta: beta.id, alphaDept: alphaDept.id },
     businessUnits: Object.fromEntries(allBusinessUnits.map((unit) => [unit.code, unit.id])),
     users,
-    nodes: { goal: goal.id, objective: objective.id },
+    nodes: { goal: goal.id, objective: objective.id, deployment: deployment.id },
     async cleanup() {
       await prisma.ki.delete({ where: { id: ki.id } });
       await prisma.appUser.deleteMany({ where: { id: { in: Object.values(users).map((u) => u.id) } } });

@@ -31,7 +31,7 @@ docker compose exec app npm run db:seed
 ```
 
 There is also a **UAT dataset** — a fictitious Australian automotive
-distributor with five Level 1 Goals, 54 Control Items across Levels 1 to 4 and
+distributor with five Level 1 Goals, 83 Control Items across Levels 2 to 4 and
 four months of actuals, with targets set against the real Australian market of
 mid-2026. It exists to demonstrate the platform to a leadership team rather
 than to test it. See [prisma/uat/README.md](prisma/uat/README.md).
@@ -122,32 +122,47 @@ Ki 103KI
     └── Objective (L2)            statement · control items · targets · actuals
         ├── Control Item          unit · direction · roll-up · DIC · owner
         ├── Control Item          another target against the same statement
-        ├── Objective (L3)        the company breakdown, deployed from above
-        │   └── Control Item
-        └── Objective (L4)        a department branch, carrying an org unit
-            └── Control Item
+        └── Objective (L3)        the company breakdown, deployed from above
+            ├── Control Item
+            └── Objective (L4)    a department branch, carrying an org unit
+                └── Control Item
 ```
+
+The ladder is strictly Goal → L2 → L3 → L4, one rung at a time. A department
+branch attaches to a Level 3 and only to a Level 3, so a division is always
+picking up a deployment the company has already written down rather than
+answering a company Objective in its own words.
 
 So Levels **2, 3 and 4 are all the same thing** — an Objective with figures
 against it — and only Level 1 is description-only. An Objective with no Control
 Items yet renders as a blank row, which is how a plan gets built from nothing
 and how a hole in the deployment stays visible.
 
-On the sheet an Objective is named exactly once. One carrying a single Control
-Item and nothing deployed from it is a **single row**, its statement beside its
-figures. One that anything hangs from — a second Control Item, or an Objective
-deployed from it — prints its statement as the header of that group, and the
-rows beneath it name only what each measures.
+On the sheet an Objective is named exactly once, and how many Control Items it
+carries — nothing else — decides its shape:
 
-The demo data is exactly that shape: 5 Goals with no measures at all, and 83
-Control Items across 81 Objectives — one Objective among them held to three of
-them — each with a target on every forecast version and an actual for every
-closed month.
+| Control Items | The sheet draws |
+|---|---|
+| exactly 1 | **one row**: the statement beside its own figures |
+| 2 or more | a heading carrying the statement, then a `└` row per Control Item |
+| none | a blank row |
+
+What is deployed *from* an Objective has no say in this. A Level 2 held to one
+Control Item with a whole Level 3 branch beneath it is still a single row; the
+branch simply indents under it, and the row grows a disclosure caret so it can
+be folded away.
+
+The demo data is exactly that shape: 5 Goals with no measures at all, 83
+Control Items across 74 of the 82 Objectives — seven of those Objectives hold
+two and one holds three — and eight Objectives with nothing measured against
+them yet. Every Control Item carries a target on every forecast version and an
+actual for every closed month.
 
 A Level 4 branch is the one that differs in kind rather than depth: it hangs off
-a Level 2 or 3 Objective, it must carry an org unit, and it is the only part of
-the tree a division or department lead can extend on their own. Level 4 is as
-deep as the model goes.
+a Level 3 Objective — never higher, so a department is always picking up a
+deployment the company has already made — it must carry an org unit, and it is
+the only part of the tree a division or department lead can extend on their own.
+Level 4 is as deep as the model goes.
 
 #### An Objective may be held to several Control Items
 
@@ -213,7 +228,7 @@ then delete:
 | ✏️ | edit this row |
 | **M+** | an Objective one level down, carrying its first measure |
 | **CI+** | another Control Item against *this* row |
-| **L4+** | a department branch (Level 4), which asks whose it is |
+| **L4+** | a department branch (Level 4), which asks whose it is — offered on Level 3 rows and nowhere else |
 | 🗑️ | delete |
 
 The trash can sits alone at the far end, away from the three that are reached
@@ -241,24 +256,22 @@ the negative numbers this allocates.
 
 ### The order an Objective's children read in
 
-An Objective's children are not all the same level: it can carry Level 3
-Objectives continuing the company tree *and* Level 4 department branches
-laddering into it, side by side. They are grouped rather than interleaved, and
-a block reads:
+Because the ladder moves one rung at a time, every Objective's children are of
+a single level: a Level 2 carries Level 3s, a Level 3 carries Level 4 branches,
+and nothing carries both. So `sort_order` alone decides the order, which is
+what dragging a row writes. A block reads:
 
 ```
 Objective                       the statement
   └ its own Control Items       what it is measured by
-  Level 4 department branches   who is deploying it, and their measures
-  Level 3 Objectives            the company's own breakdown, and theirs
+  the Objectives below it       one level down, in sort order
 ```
 
-Branches sit directly beneath the row they ladder onto because that is the row
-somebody was looking at when they added one, and where they look for it
-afterwards — ordering purely by `sort_order` put a new branch several rows
-down, past a Level 3 Objective and all of its measures. Within one level
-nothing changes: `sort_order` still decides, which is what dragging a row
-writes.
+There was once a level-first key here, sorting Level 4 branches ahead of Level
+3 Objectives so that a new branch did not land several rows down past a Level 3
+and all of its measures. Restricting branches to Level 3 parents removed the
+case it existed for — no parent has children of two levels any more — so the
+key went with it rather than sitting there unable to fire.
 
 ### Finding a row
 
@@ -883,16 +896,17 @@ department lead (`OWNER`, with their `org_unit_id` set to that division or
 department) may build their own corner of the deployment without an admin in
 the loop:
 
-- **"L4+"** appears on every Level 2 or 3 Objective, for ADMIN and OWNER alike
-  — the Objective itself is company-wide and owned by nobody, so anyone
-  permitted to add Level 4 work may open the form there. What the form
+- **"L4+"** appears on every Level 3 Objective and nowhere else, for ADMIN and
+  OWNER alike — the Objective itself is company-wide and owned by nobody, so
+  anyone permitted to add Level 4 work may open the form there. What the form
   actually restricts is *which* division or department the new branch is filed
   under: an OWNER's picker only ever offers their own org unit and whatever
   sits beneath it (`assignableDics()`, scoped server-side, never merely
-  hidden). "Against any of the L3 measures" is the point of this button — a
-  department lead ladders their own deployment from wherever it belongs in the
-  company structure, not only from rows that happen to already carry their
-  division's DIC.
+  hidden). Laddering from a Level 3 is the point of this button — a department
+  lead picks up the company's own deployment of a Goal, not the Goal's
+  Objective directly, and not another department's branch. The cost of that
+  line is a two-step act where the company has not deployed to Level 3 yet:
+  someone with company-wide rights has to make that Level 3 first.
 - Once a branch exists, its owning lead can extend it — add a Control Item to
   it, start a second branch off the same company Objective, rename or delete
   any of it — the same way an ADMIN can, but never outside their own org unit or a
@@ -909,7 +923,7 @@ the loop:
 
 The company sheet's **View** toggle folds Level 4 in on demand: "Company"
 shows Levels 1-3 exactly as before, "+ Departments" nests every Level 4 branch
-directly beneath the Level 1-3 Objective it ladders into — no separate page,
+directly beneath the Level 3 Objective it ladders into — no separate page,
 no second fetch to reconcile. Once departments are on the sheet, a **Division**
 selector narrows the **Department** filter to one division and everything beneath it in
 one click ("Departments in a Division"), and picking a specific department
@@ -986,7 +1000,7 @@ Structurally there is nothing new to fetch or compute — `buildCascadeTree` in
 `components/sheet/outline.ts` just re-nests the same flat `loadSheet({ levels:
 [1, 2, 3, 4] })` rows the "+ Departments" sheet view already uses, keyed off
 each row's existing `path` ancestry, so a Level 4 branch always renders
-exactly where it structurally attaches — under the Level 2 or 3 Objective it
+exactly where it structurally attaches — under the Level 3 Objective it
 ladders into — with no possibility of drifting from what the sheet itself
 would show.
 

@@ -242,23 +242,43 @@ async function main() {
       }
     }
 
+    /*
+     * A department branch hangs off a Level 3, never off the Level 2 itself:
+     * the ladder is Goal, Objective, Objective, department, and the Level 3 is
+     * the company's own deployment that a division then picks up.
+     *
+     * The plan file already holds both tiers. `branch.theme` names what the
+     * company is deploying ("Parts operations") and each branch objective its
+     * own statement ("Fill a parts order first time") - two fields that had
+     * gone unread when the tree was flattened, and are exactly the rows needed
+     * here.
+     */
     for (const [i, branch] of (objective.branches ?? []).entries()) {
       const orgUnitId = orgByCode.get(branch.orgUnit)!;
+      const deployment = await prisma.node.create({
+        data: {
+          kiId: ki.id,
+          parentId: first,
+          level: 3,
+          kind: "OBJECTIVE",
+          statement: branch.theme,
+          orgUnitId: company.id,
+          sortOrder: 1000 + i,
+        },
+      });
       for (const [j, o] of branch.objectives.entries()) {
-        for (const [k, item] of o.items.entries()) {
-          const node = await prisma.node.create({
-            data: {
-              kiId: ki.id,
-              parentId: first,
-              level: 4,
-              kind: "OBJECTIVE",
-              statement: item.name,
-              orgUnitId,
-              sortOrder: i * 100 + j * 10 + k,
-            },
-          });
-          await addControlItems(node.id, item);
-        }
+        const node = await prisma.node.create({
+          data: {
+            kiId: ki.id,
+            parentId: deployment.id,
+            level: 4,
+            kind: "OBJECTIVE",
+            statement: o.statement,
+            orgUnitId,
+            sortOrder: j,
+          },
+        });
+        for (const item of o.items) await addControlItems(node.id, item);
       }
     }
     return first;

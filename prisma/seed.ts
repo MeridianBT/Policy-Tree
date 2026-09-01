@@ -343,7 +343,17 @@ async function main() {
     }
   }
 
-  // ---- Level 4 division sheets -----------------------------------------
+  /*
+   * ---- Level 4 division sheets ------------------------------------------
+   *
+   * A department branch hangs off a Level 3, never off the Level 2 it
+   * ultimately serves: the ladder is Goal, Objective, Objective, department,
+   * and the Level 3 is the company's own deployment that a division picks up.
+   * `laddersToControlItem` still names the Level 2 measure it answers to, so
+   * one Level 3 is created under that measure per division block, named for
+   * what the block is deploying.
+   */
+  const deploymentByTarget = new Map<string, string>();
   for (const [divisionIndex, level4] of LEVEL_4.entries()) {
     // A branch belongs to its Department when one is named, otherwise to the
     // Division itself - both are valid places for Level 4 work to sit.
@@ -352,12 +362,30 @@ async function main() {
       const parentObjectiveId = objectiveNodeByControlItem.get(objective.laddersToControlItem);
       if (!parentObjectiveId) throw new Error(`Unknown ladder target ${objective.laddersToControlItem}`);
 
+      const key = `${parentObjectiveId}::${level4.theme}`;
+      let deploymentId = deploymentByTarget.get(key);
+      if (!deploymentId) {
+        const deployment = await prisma.node.create({
+          data: {
+            kiId: ki.id,
+            parentId: parentObjectiveId,
+            level: 3,
+            kind: "OBJECTIVE",
+            statement: level4.theme,
+            orgUnitId: company.id,
+            sortOrder: 1000 + divisionIndex,
+          },
+        });
+        deploymentId = deployment.id;
+        deploymentByTarget.set(key, deploymentId);
+      }
+
       for (const [index, spec] of objective.controlItems.entries()) {
         await createObjective(
-          parentObjectiveId,
+          deploymentId,
           4,
           spec,
-          divisionIndex * 100 + objectiveIndex * 10 + index,
+          objectiveIndex * 10 + index,
           orgUnitId,
           level4.department,
         );

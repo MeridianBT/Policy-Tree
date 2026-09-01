@@ -200,25 +200,29 @@ export async function loadSheet(options: LoadSheetOptions): Promise<SheetModel> 
     rows.push(group as SheetRowModel);
   }
 
-  /** Objectives with something deployed from them, so they need a header. */
-  const hasDeployment = new Set<string>();
-  for (const node of nodes) {
-    if (node.parentId && inScope.has(node.id)) hasDeployment.add(node.parentId);
-  }
+  /**
+   * An Objective held to exactly one Control Item reads as a single row: the
+   * statement and the figures together.
+   *
+   * How many Control Items it carries is the *only* input. Whether anything is
+   * deployed from it makes no difference - a Level 2 with one measure and a
+   * Level 3 beneath it is still one row, because the statement and its numbers
+   * belong on the same line whatever else ladders off it.
+   */
+  const rendersInline = (nodeId: string) => itemsByNode.get(nodeId)?.length === 1;
 
   /*
    * Walk the tree in structural order so groups nest correctly.
    *
-   * An Objective with Control Items and nothing deployed from it emits no row
-   * of its own: its statement is printed on the first of them, which also
-   * carries that item's figures. One Control Item therefore reads as a single
-   * row with the statement and the numbers together, which is what the sheet
-   * is for.
+   * One Objective, one appearance. It emits a group row unless it renders
+   * inline, and the ancestor loop below has to honour the same rule: walking a
+   * child re-emits the chain above it, and without the check an Objective
+   * already printed inline would gain a heading as well, from the other
+   * direction.
    *
-   * An Objective that *is* deployed from needs a header for what hangs beneath
-   * it, so it emits its group row and its own Control Items sit under it like
-   * any other child - printing what each measures rather than repeating the
-   * statement, which is already above them.
+   * An Objective held to several Control Items emits a heading, and each of
+   * them takes its own row printing what it measures - repeating the statement
+   * three times would say nothing the reader did not already know.
    *
    * An Objective with nothing under it at all *does* emit a row, blank across
    * every column. That is a real hole in the deployment and hiding it would be
@@ -235,11 +239,13 @@ export async function loadSheet(options: LoadSheetOptions): Promise<SheetModel> 
       emitGroup(node);
       continue;
     }
-    const carriesHeader = hasDeployment.has(node.id);
+    const carriesHeader = items.length > 1;
     const path = ancestors(node.id);
     for (const ancestor of path) {
       const ancestorNode = nodeById.get(ancestor);
-      if (ancestorNode && inScope.has(ancestor)) emitGroup(ancestorNode);
+      if (ancestorNode && inScope.has(ancestor) && !rendersInline(ancestor)) {
+        emitGroup(ancestorNode);
+      }
     }
     if (carriesHeader) emitGroup(node);
 
@@ -358,33 +364,23 @@ function defaultMeasuredAs(unit: string): string {
 
 /**
  * Depth-first structural order: a node follows its parent and its earlier
- * siblings, with a department's branches ahead of the company's own breakdown.
+ * siblings.
  *
- * An Objective's children are not all the same level. It can carry Level 3
- * Objectives continuing the company tree *and* Level 4 department branches
- * laddering into it, side by side. Ordering those purely by `sort_order`
- * interleaves them, and a branch somebody has just added lands wherever its
- * number happens to fall - which on a real plan meant several rows down, past
- * a Level 3 Objective and all of its measures.
- *
- * So siblings group by level before order, deepest first, and a branch sits
- * directly beneath the Objective it ladders onto. That is the row somebody was
- * looking at when they added it, and it is where they look for it afterwards.
- * Within one level nothing changes: `sort_order` still decides, which is what
- * `reorderWithinLevel` writes and what dragging a row means.
+ * Siblings are always one level now - a Goal carries Level 2s, a Level 2
+ * carries Level 3s, a Level 3 carries the department branches - so `sort_order`
+ * alone decides, which is what `reorderWithinLevel` writes and what dragging a
+ * row means. An earlier version grouped siblings by level first, from when a
+ * Level 2 could carry both a Level 3 and a Level 4; that key can no longer
+ * discriminate and is gone rather than left to look meaningful.
  */
 function compareNodes(
-  nodeById: Map<string, { id: string; parentId: string | null; level: number; sortOrder: number }>,
+  nodeById: Map<string, { id: string; parentId: string | null; sortOrder: number }>,
 ) {
   function sortPath(nodeId: string): number[] {
     const path: number[] = [];
     let current = nodeById.get(nodeId);
     while (current) {
-      // Two keys per step. The level is negated so that the deeper of two
-      // siblings sorts first, which is what puts a Level 4 branch above the
-      // Level 3 deployment beside it.
       path.unshift(current.sortOrder);
-      path.unshift(-current.level);
       current = current.parentId ? nodeById.get(current.parentId) : undefined;
     }
     return path;
@@ -403,8 +399,8 @@ function compareNodes(
     const pathB = pathOf(b.id);
     for (let i = 0; i < Math.max(pathA.length, pathB.length); i++) {
       // A shorter path is an ancestor and comes first. The sentinel has to
-      // beat every real key, and the level keys are negative, so -1 would be
-      // a Level 1 Goal rather than "nothing here".
+      // beat every real sort order, and `firstSortOrder` allocates negative
+      // ones, so -1 would be a real row rather than "nothing here".
       const left = pathA[i] ?? -Infinity;
       const right = pathB[i] ?? -Infinity;
       if (left !== right) return left - right;

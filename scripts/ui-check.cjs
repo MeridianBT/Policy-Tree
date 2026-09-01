@@ -379,12 +379,15 @@ async function addingAMeasureLandsAgainstItsRow(browser) {
     "and directly under that Goal",
     `Goal at row ${goalRow}, measure at row ${onGoal.at}`,
   );
-  check(onGoal.indent === 32, "at Level 2", `indent ${onGoal.indent}px`);
+  // 4px base + one 14px step. The new row carries a single Control Item, so it
+  // is the Objective's own row and sits on the Level 2 vertical - not a step
+  // further in, which is where the Level 3 headings beneath it go.
+  check(onGoal.indent === 18, "at Level 2", `indent ${onGoal.indent}px`);
 
   const childName = `UICHECK-L3-${stamp}`;
   const onObjective = await add(1, childName);
   check(onObjective.at !== -1, "a measure added to that Level 2 is on the screen");
-  check(onObjective.indent === 46, "and sits a level deeper, at Level 3", `indent ${onObjective.indent}px`);
+  check(onObjective.indent === 32, "and sits a level deeper, at Level 3", `indent ${onObjective.indent}px`);
   const parentAt = onObjective.all.findIndex((row) => row.text.includes(goalName));
   check(
     parentAt !== -1 && onObjective.at - parentAt <= 2,
@@ -394,6 +397,12 @@ async function addingAMeasureLandsAgainstItsRow(browser) {
 
   /*
    * Put the demo data back: delete the Level 2, which carries the Level 3.
+   *
+   * This is also the check on what the trash can means on a row that carries
+   * its Objective's statement. That row IS the Objective - one Control Item,
+   * no heading - so the trash has to take the Objective and everything under
+   * it, not just the measure, which would leave the statement behind as a
+   * blank row.
    *
    * Targeted from inside the page rather than with a CSS locator, because the
    * grid container carries --label-width as well and holds every row's trash
@@ -422,8 +431,13 @@ async function addingAMeasureLandsAgainstItsRow(browser) {
   const left = await rows();
   check(
     !left.some((row) => row.text.includes(goalName)),
-    "and the check tidies up after itself",
+    "the trash can takes the whole Objective, statement and all",
     left.some((row) => row.text.includes(goalName)) ? "still there" : "",
+  );
+  check(
+    !left.some((row) => row.text.includes(childName)),
+    "and the check tidies up after itself, Level 3 included",
+    left.some((row) => row.text.includes(childName)) ? "the Level 3 is still there" : "",
   );
   await page.close();
 }
@@ -528,7 +542,9 @@ async function collapsingSurvivesTheScopeToggle(browser) {
   await page.locator("button", { hasText: /Departments/ }).first().click();
   await page.waitForTimeout(3000);
   const departmentRows = async () =>
-    page.evaluate(() => document.body.innerText.includes("First-pick fill rate"));
+    // A Level 4 department branch: it appears only once Departments are asked
+    // for, and it ladders off the "Parts operations" Level 3.
+    page.evaluate(() => document.body.innerText.includes("Fill a parts order first time"));
   check(await departmentRows(), "+ Departments brings the Level 4 rows in");
 
   const caret = page.locator('button[aria-label^="Collapse"]').first();
@@ -597,12 +613,18 @@ async function theMeasuresColumnResizes(browser) {
 }
 
 /**
- * The order of the row's own buttons.
+ * The order of the row's own buttons, and which rows offer which.
  *
  * They are read left to right by somebody building a plan, so the order is the
  * order of the job: edit this row, add underneath it from the smallest step to
  * the largest, delete. The trash can sits alone at the far end, away from the
- * three that are reached for constantly.
+ * ones that are reached for constantly.
+ *
+ * No single row offers all of them any more, and that is the point of the
+ * second half: M+ deploys a Level 2 into a Level 3, L4+ hands a Level 3 to a
+ * department, and since a branch may only ladder off a Level 3 the two never
+ * appear together. What every row must still do is print whatever it does
+ * offer in the one order.
  */
 async function theRowButtonsAreInOrder(browser) {
   console.log("\nRow buttons read in the order of the job");
@@ -611,34 +633,85 @@ async function theRowButtonsAreInOrder(browser) {
   await page.locator('button[title="Add, rename and remove rows directly on the sheet"]').click();
   await page.waitForTimeout(1500);
 
-  // The row carrying a Level 2 Objective's statement offers all six.
-  const titles = await page.evaluate(() => {
-    const rows = [...document.querySelectorAll("span.flex.shrink-0.items-center")];
-    const richest = rows
-      .map((row) => [...row.querySelectorAll("button")].map((b) => b.title))
-      .sort((a, b) => b.length - a.length)[0];
-    return richest ?? [];
+  // Every row's indent and its buttons. The indent is how a row's level is
+  // read back: 4px at the margin for a Goal, then 14px per level.
+  const rows = await page.evaluate(() => {
+    return [...document.querySelectorAll('[style*="--label-width"]')]
+      .filter((cell) => /padding-left/.test(cell.getAttribute("style") || ""))
+      .map((cell) => ({
+        indent: Number(/padding-left:\s*([0-9.]+)px/.exec(cell.getAttribute("style"))[1]),
+        titles: [...cell.querySelectorAll("button")].map((b) => b.title),
+      }));
   });
+  check(rows.length > 0, "the sheet has rows to read", `${rows.length} rows`);
+
   const shorten = (title) =>
     /^Add measure/.test(title) ? "M+"
       : /^Add a Control Item/.test(title) ? "CI+"
       : /^Add department branch/.test(title) ? "L4+"
       : /^Edit|^Rename/.test(title) ? "pencil"
       : /^Delete/.test(title) ? "trash"
-      : title;
-  const order = titles.map(shorten);
+      : null;
+  const CANONICAL = ["pencil", "M+", "CI+", "L4+", "trash"];
+  const orders = rows.map((row) => ({
+    indent: row.indent,
+    order: row.titles.map(shorten).filter(Boolean),
+  }));
+
+  // A row may skip buttons it cannot offer, but never reorder the ones it has.
+  const outOfOrder = orders.filter(({ order }) => {
+    let at = -1;
+    return order.some((name) => {
+      const next = CANONICAL.indexOf(name, at + 1);
+      if (next === -1) return true;
+      at = next;
+      return false;
+    });
+  });
   check(
-    JSON.stringify(order) === JSON.stringify(["pencil", "M+", "CI+", "L4+", "trash"]),
-    "pencil, M+, CI+, L4+, then the trash can",
-    order.join(" ") || "no row offered all five",
+    outOfOrder.length === 0,
+    "every row reads pencil, M+, CI+, L4+, then the trash can",
+    outOfOrder.map((row) => `${row.indent}px: ${row.order.join(" ")}`).join(" | "),
   );
+
+  const offered = new Set(orders.flatMap((row) => row.order));
+  check(
+    CANONICAL.every((name) => offered.has(name)),
+    "and between them the rows offer all five",
+    CANONICAL.filter((name) => !offered.has(name)).join(", ") || [...offered].join(" "),
+  );
+
+  // L4+ belongs to Level 3 and nowhere else: a branch is a department picking
+  // up a deployment the company has already made, so there has to be one.
+  const withBranch = orders.filter((row) => row.order.includes("L4+"));
+  check(withBranch.length > 0, "some row offers a department branch", `${withBranch.length} rows`);
+  const strays = withBranch.filter((row) => row.indent !== 32);
+  check(
+    strays.length === 0,
+    "and only rows on the Level 3 vertical do",
+    strays.map((row) => `${row.indent}px`).join(", "),
+  );
+
+  const levelTwo = orders.filter((row) => row.indent === 18);
+  check(levelTwo.length > 0, "the sheet shows Level 2 rows", `${levelTwo.length} rows`);
+  check(
+    levelTwo.every((row) => !row.order.includes("L4+")),
+    "a Level 2 offers no department branch at all",
+    levelTwo.filter((row) => row.order.includes("L4+")).length + " did",
+  );
+  check(
+    levelTwo.some((row) => row.order.includes("M+")),
+    "it offers M+ instead - deploy it to Level 3 first",
+  );
+
   // The bare "Add objective" is gone: it made the same row M+ makes, minus the
   // figure, and telling the two apart was a distinction nobody should have to
   // learn. Its absence is the point, so it is asserted rather than assumed.
+  const bare = rows.flatMap((row) => row.titles).filter((title) => /^Add objective/.test(title));
   check(
-    !titles.some((title) => /^Add objective/.test(title)),
+    bare.length === 0,
     "and no separate button for an Objective without a measure",
-    titles.filter((title) => /^Add objective/.test(title)).join(", "),
+    bare.join(", "),
   );
   await page.close();
 }
@@ -832,18 +905,40 @@ async function anObjectiveReadsAsOneStatement(browser) {
       statement,
     );
 
-  // "New vehicle deliveries" carries a Control Item AND a Level 3 deployment,
-  // which is the case that used to print the name twice - once inline on its
-  // own figures and again as the header for what ladders from it.
+  /*
+   * "New vehicle deliveries" carries one Control Item AND four Level 3
+   * deployments. The count is what decides the shape and the children have no
+   * say in it, so this is one row: the statement beside its own figures, with
+   * the branch indented beneath it. It used to print twice - once inline and
+   * again as a header for what laddered from it.
+   */
   const deployedFrom = await printed("New vehicle deliveries");
   check(deployedFrom === 1, "an Objective that is deployed from names itself once", `${deployedFrom} found`);
 
-  // Its own Control Item still reaches its detail screen, even though the
-  // statement above it is the row carrying the name.
-  const continuation = await page.evaluate(
-    () => [...document.querySelectorAll('a[href^="/control-item/"]')].filter((a) => a.textContent.trim() === "└").length,
+  const inlineRow = await page.evaluate(() => {
+    const link = [...document.querySelectorAll("a")].find(
+      (a) => a.textContent.trim() === "New vehicle deliveries",
+    );
+    if (!link) return null;
+    const cell = link.closest('[style*="padding-left"]');
+    const row = link.closest("div.group");
+    return {
+      // Its own figures are on this row, not on a continuation below it.
+      href: link.getAttribute("href"),
+      measuredAs: row ? row.textContent.includes("Units") : null,
+      // 4px base + one 14px step: the Level 2 vertical, not a step further in.
+      indent: cell ? Number(/padding-left:\s*([0-9.]+)px/.exec(cell.getAttribute("style"))[1]) : null,
+      // Something ladders off it, so it carries the caret that folds it away.
+      caret: cell ? Boolean(cell.querySelector('button[aria-label^="Collapse"]')) : null,
+    };
+  });
+  check(
+    Boolean(inlineRow && /^\/control-item\//.test(inlineRow.href)),
+    "and the statement is the row that reaches its Control Item",
+    inlineRow && inlineRow.href,
   );
-  check(continuation > 0, "and its own figures still link to the Control Item", `${continuation} continuation rows`);
+  check(inlineRow && inlineRow.indent === 18, "sitting on the Level 2 vertical", inlineRow && `${inlineRow.indent}px`);
+  check(inlineRow && inlineRow.caret === true, "with the caret that folds its branch away");
 
   // An Objective with one Control Item and nothing under it is a single row:
   // the statement and the numbers together.
@@ -870,12 +965,17 @@ async function severalControlItemsUnderOneMeasure(browser) {
   await division.selectOption("OX");
   await page.waitForTimeout(3000);
 
+  /*
+   * "Service experience" carries three Control Items, and two or more is what
+   * makes an Objective print a heading: the statement once at the top, then a
+   * row per Control Item beneath it telling them apart by what each measures.
+   */
   const scroller = page.locator("div.overflow-auto").last();
   let found = false;
   for (let i = 0; i < 30 && !found; i++) {
     found = await page.evaluate(() => {
-      const el = [...document.querySelectorAll("a")].find(
-        (a) => a.textContent.trim() === "Service experience",
+      const el = [...document.querySelectorAll("a, span")].find(
+        (node) => node.textContent.trim() === "Service experience",
       );
       if (el) el.scrollIntoView({ block: "center" });
       return Boolean(el);
@@ -885,12 +985,47 @@ async function severalControlItemsUnderOneMeasure(browser) {
   }
   check(found, "the measure is on the sheet");
 
-  const named = await page.evaluate(
-    () =>
-      [...document.querySelectorAll("a")].filter((a) => a.textContent.trim() === "Service experience")
-        .length,
+  const shape = await page.evaluate(() => {
+    const nodes = [...document.querySelectorAll("a, span")].filter(
+      (node) => node.textContent.trim() === "Service experience",
+    );
+    const heading = nodes[0]?.closest('[style*="padding-left"]') ?? null;
+    const step = (cell) =>
+      cell ? Number(/padding-left:\s*([0-9.]+)px/.exec(cell.getAttribute("style"))[1]) : null;
+    // The rows under it: continuation rows carry the elbow and their own link.
+    const rows = [...document.querySelectorAll('[style*="padding-left"]')].filter((cell) =>
+      /padding-left/.test(cell.getAttribute("style") || ""),
+    );
+    const at = rows.indexOf(heading);
+    const following = at === -1 ? [] : rows.slice(at + 1, at + 4);
+    return {
+      named: nodes.length,
+      headingIsALink: nodes[0]?.tagName === "A",
+      headingIndent: step(heading),
+      elbows: following.filter((cell) => cell.textContent.includes("\u2514")).length,
+      elbowIndent: step(following[0]),
+      linked: following.filter((cell) =>
+        cell.querySelector('a[href^="/control-item/"]'),
+      ).length,
+    };
+  });
+  check(shape.named === 1, "its name is printed once, not once per Control Item", `${shape.named} found`);
+  check(
+    shape.headingIsALink === false,
+    "and prints as a heading rather than as one of the measures",
   );
-  check(named === 1, "its name is printed once, not once per Control Item", `${named} found`);
+  check(shape.elbows === 3, "with a row for each of its three Control Items", `${shape.elbows} found`);
+  check(
+    shape.linked === 3,
+    "each reaching its own Control Item",
+    `${shape.linked} of 3 linked`,
+  );
+  // 18px is the Level 2 vertical the heading sits on; its Control Items step in.
+  check(
+    shape.headingIndent === 18 && shape.elbowIndent === 32,
+    "and the Control Items indent under the statement",
+    `heading ${shape.headingIndent}px, items ${shape.elbowIndent}px`,
+  );
 
   // Away from the sheet there is no grouping to lean on, so the three lines
   // have to name themselves.
@@ -904,7 +1039,7 @@ async function severalControlItemsUnderOneMeasure(browser) {
     ),
   ]);
   check(
-    labels.length === 3 && labels.every((label) => label.includes(" — ")),
+    labels.length === 3 && labels.every((label) => label.includes(" \u2014 ")),
     "/my-entries tells the three apart",
     labels.join(" | "),
   );
@@ -912,14 +1047,6 @@ async function severalControlItemsUnderOneMeasure(browser) {
   await page.close();
 }
 
-/**
- * The toolbar's own two view controls.
- *
- * Both hide columns and neither may change a figure: the sheet's whole
- * contract is that the month is the only stored grain and everything else is
- * derived, so narrowing to one quarter must leave that quarter's own numbers
- * exactly as the full year drew them.
- */
 async function oneQuarterAtATime(browser) {
   console.log("\nOne quarter can be read on its own");
   const page = await browser.newPage({ viewport: { width: 1600, height: 900 } });

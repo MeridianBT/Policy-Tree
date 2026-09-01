@@ -133,27 +133,28 @@ describe("canEditStructureAt", () => {
 });
 
 describe("canAddDepartmentBranch", () => {
-  it("offers it on a Level 2 or 3 Objective, to every role but VIEWER", () => {
-    const objective2 = { kind: "OBJECTIVE", level: 2 };
+  it("offers it on a Level 3 Objective, to every role but VIEWER", () => {
     const objective3 = { kind: "OBJECTIVE", level: 3 };
-    expect(canAddDepartmentBranch({ id: "u1", role: "SUPER_ADMIN", orgUnitId: null }, objective2)).toBe(true);
-    expect(canAddDepartmentBranch({ id: "u1", role: "EXECUTIVE", orgUnitId: null }, objective2)).toBe(true);
+    expect(canAddDepartmentBranch({ id: "u1", role: "SUPER_ADMIN", orgUnitId: null }, objective3)).toBe(true);
+    expect(canAddDepartmentBranch({ id: "u1", role: "EXECUTIVE", orgUnitId: null }, objective3)).toBe(true);
     expect(canAddDepartmentBranch({ id: "u1", role: "OWNER", orgUnitId: "auto" }, objective3)).toBe(true);
-    expect(canAddDepartmentBranch({ id: "u1", role: "VIEWER", orgUnitId: "auto" }, objective2)).toBe(false);
+    expect(canAddDepartmentBranch({ id: "u1", role: "VIEWER", orgUnitId: "auto" }, objective3)).toBe(false);
   });
 
-  it("never offers it on a Goal or on a Level 4 Objective", () => {
-    // A Level 4 branch ladders into the company tree, so it hangs off a Level
-    // 2 or 3 Objective - never off the Goal above them, and never off another
-    // department's branch.
+  it("offers it nowhere else on the ladder", () => {
+    // The ladder is Goal, Objective, Objective, department, and a branch takes
+    // the last rung. Off a Level 2 it would skip the company's own deployment
+    // - the step that says what the division was asked to do - and off a Level
+    // 4 it would be laddering off another department's branch.
     const owner = { id: "u1", role: "OWNER" as const, orgUnitId: "auto" };
     expect(canAddDepartmentBranch(owner, { kind: "GOAL", level: 1 })).toBe(false);
+    expect(canAddDepartmentBranch(owner, { kind: "OBJECTIVE", level: 2 })).toBe(false);
     expect(canAddDepartmentBranch(owner, { kind: "OBJECTIVE", level: 4 })).toBe(false);
   });
 
   it("never offers it to VIEWER", () => {
     const viewer = { id: "u1", role: "VIEWER" as const, orgUnitId: "auto" };
-    expect(canAddDepartmentBranch(viewer, { kind: "OBJECTIVE", level: 2 })).toBe(false);
+    expect(canAddDepartmentBranch(viewer, { kind: "OBJECTIVE", level: 3 })).toBe(false);
   });
 });
 

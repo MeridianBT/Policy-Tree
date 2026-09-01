@@ -26,11 +26,11 @@ but this dataset, use `db:reset:uat`, which drops the database first.
 
 | | |
 |---|---|
-| **103KI** | Apr 2026 – Mar 2027, current. 82 Control Items, 2,296 figures |
+| **103KI** | Apr 2026 – Mar 2027, current. 83 Control Items, 2,324 figures |
 | **104KI** | Apr 2027 – Mar 2028, created empty so the multi-year workflow can be shown |
-| Structure | 5 Goals, 13 Level 2 Themes, 15 Level 2 Objectives, 2 Level 3 Themes, 3 Level 3 Objectives, 8 Level 4 department branches |
+| Structure | 5 Goals, 59 Level 2 Objectives, 15 Level 3 Objectives, 8 Level 4 department branches |
 | Org | 6 divisions, 38 departments — AUTO, PSP, BMD, OX, CS, FRC |
-| Business units | AUTO 54 measures · MC 16 · PP 10 · SHARED 2 |
+| Business units | AUTO 55 measures · MC 16 · PP 10 · SHARED 2 |
 | Data | PRB targets for all twelve months, OB targets a little under them, actuals keyed April–July |
 | People | 14 accounts, password `hoshin` — see below |
 

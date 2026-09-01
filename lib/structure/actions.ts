@@ -18,8 +18,8 @@
  * only a second call carrying that acknowledgement removes anything.
  *
  * The OWNER half is a separate, narrower path: a division or department lead
- * may start a Level 4 branch under any Level 2 or 3 Objective in the company -
- * "against any of the L3 measures" is the whole point of laddering - but only
+ * may start a Level 4 branch under any Level 3 Objective in the company -
+ * picking up a company deployment is the whole point of laddering - but only
  * ever scoped to their own org unit. They can never touch Levels 1-3, and
  * every call re-derives that scope from `dic_org_unit_id` / `org_unit_id`
  * rather than trusting anything the client sends.
@@ -186,16 +186,20 @@ export async function addNode(input: unknown): Promise<StructureResult> {
 
 const addDepartmentBranchSchema = z.object({
   kiId: z.string().min(1),
-  /** A Level 2 or 3 Objective - "any of the L3 measures" ladders from here. */
+  /** The Level 3 Objective this branch ladders from. */
   parentObjectiveId: z.string().min(1),
   orgUnitId: z.string().min(1, "Choose which division or department this belongs to."),
   statement: z.string().trim().min(1, "Give the row a statement.").max(300),
 });
 
 /**
- * Starts (or continues) a Level 4 branch under a Level 2 or 3 Objective. This
- * is the one structure edit an OWNER may perform on their own, always scoped
- * to their own org unit or a department beneath it.
+ * Starts (or continues) a Level 4 branch under a Level 3 Objective. This is the
+ * one structure edit an OWNER may perform on their own, always scoped to their
+ * own org unit or a department beneath it.
+ *
+ * Level 3 and no higher: the ladder is Goal, Objective, Objective, department.
+ * A branch hanging straight off a Level 2 skipped the company's own deployment
+ * of it, which is the step that says what the division was asked to do.
  */
 export async function addDepartmentBranch(input: unknown): Promise<StructureResult> {
   try {
@@ -214,10 +218,12 @@ export async function addDepartmentBranch(input: unknown): Promise<StructureResu
       where: { id: parentObjectiveId },
       select: { kind: true, level: true },
     });
-    if (!parent || parent.kind !== "OBJECTIVE" || parent.level >= 4) {
+    if (!parent || parent.kind !== "OBJECTIVE" || parent.level !== 3) {
       return {
         ok: false,
-        message: "A department branch ladders from a Level 2 or 3 Objective.",
+        message:
+          "A department branch ladders from a Level 3 Objective. Deploy the company " +
+          "Objective to Level 3 first, then a department can pick that up.",
       };
     }
 

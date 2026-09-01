@@ -14,10 +14,10 @@
  *               what every division ladders into.
  * VIEWER      - edits nothing.
  *
- * "Add department" is the one exception: it hangs off a Level 2 or 3
- * Objective, which is company-wide and owned by nobody in particular, so
- * anyone but a VIEWER may open the form there - what the form then restricts
- * is *which* org unit the new branch may be filed under.
+ * "Add department" is the one exception: it hangs off a Level 3 Objective,
+ * which is company-wide and owned by nobody in particular, so anyone but a
+ * VIEWER may open the form there - what the form then restricts is *which* org
+ * unit the new branch may be filed under.
  */
 
 import type { DicOption } from "./StructureControls";
@@ -61,7 +61,9 @@ export function canEditStructureAt(
 
 /** Whether the "Add department" affordance belongs on this Objective row. */
 export function canAddDepartmentBranch(user: EditingUser, row: { kind: string; level: number }): boolean {
-  return user.role !== "VIEWER" && row.kind === "OBJECTIVE" && row.level >= 2 && row.level <= 3;
+  // Level 3 only. A branch is a department picking up the company's own
+  // deployment, so there has to be one for it to pick up.
+  return user.role !== "VIEWER" && row.kind === "OBJECTIVE" && row.level === 3;
 }
 
 /**

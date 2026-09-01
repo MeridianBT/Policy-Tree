@@ -135,7 +135,7 @@ describe("addDepartmentBranch - the department-lead path", () => {
     asUser(fx.users.alphaLead);
     const result = await addDepartmentBranch({
       kiId: fx.kiId,
-      parentObjectiveId: fx.nodes.objective,
+      parentObjectiveId: fx.nodes.deployment,
       orgUnitId: fx.orgUnits.alpha,
       statement: "Alpha's own deployment",
     });
@@ -152,7 +152,7 @@ describe("addDepartmentBranch - the department-lead path", () => {
     asUser(fx.users.alphaLead);
     const result = await addDepartmentBranch({
       kiId: fx.kiId,
-      parentObjectiveId: fx.nodes.objective,
+      parentObjectiveId: fx.nodes.deployment,
       orgUnitId: fx.orgUnits.alphaDept,
       statement: "Alpha Dept's own deployment",
     });
@@ -163,7 +163,7 @@ describe("addDepartmentBranch - the department-lead path", () => {
     asUser(fx.users.alphaLead);
     const result = await addDepartmentBranch({
       kiId: fx.kiId,
-      parentObjectiveId: fx.nodes.objective,
+      parentObjectiveId: fx.nodes.deployment,
       orgUnitId: fx.orgUnits.beta,
       statement: "Should not be allowed",
     });
@@ -174,7 +174,7 @@ describe("addDepartmentBranch - the department-lead path", () => {
   it("lets an ADMIN file a branch under any division", async () => {
     const result = await addDepartmentBranch({
       kiId: fx.kiId,
-      parentObjectiveId: fx.nodes.objective,
+      parentObjectiveId: fx.nodes.deployment,
       orgUnitId: fx.orgUnits.beta,
       statement: "Admin filing for Beta",
     });
@@ -185,7 +185,7 @@ describe("addDepartmentBranch - the department-lead path", () => {
     asUser(fx.users.alphaLead);
     const branch = await addDepartmentBranch({
       kiId: fx.kiId,
-      parentObjectiveId: fx.nodes.objective,
+      parentObjectiveId: fx.nodes.deployment,
       orgUnitId: fx.orgUnits.alpha,
       statement: "For depth test",
     });
@@ -199,10 +199,8 @@ describe("addDepartmentBranch - the department-lead path", () => {
       orgUnitId: fx.orgUnits.alpha,
       statement: "Too deep",
     });
-    expect(tooDeep).toEqual({
-      ok: false,
-      message: "A department branch ladders from a Level 2 or 3 Objective.",
-    });
+    expect(tooDeep.ok).toBe(false);
+    if (!tooDeep.ok) expect(tooDeep.message).toMatch(/ladders from a Level 3 Objective/);
   });
 });
 
@@ -213,7 +211,7 @@ describe("editing an existing Level 4 branch", () => {
     asUser(fx.users.alphaLead);
     const branch = await addDepartmentBranch({
       kiId: fx.kiId,
-      parentObjectiveId: fx.nodes.objective,
+      parentObjectiveId: fx.nodes.deployment,
       orgUnitId: fx.orgUnits.alpha,
       statement: "Editable branch",
     });
@@ -226,7 +224,7 @@ describe("editing an existing Level 4 branch", () => {
     asUser(fx.users.alphaLead);
     const result = await addDepartmentBranch({
       kiId: fx.kiId,
-      parentObjectiveId: fx.nodes.objective,
+      parentObjectiveId: fx.nodes.deployment,
       orgUnitId: fx.orgUnits.alpha,
       statement: "A second objective",
     });
@@ -335,7 +333,7 @@ describe("deleting a Level 4 branch - two-step confirmation, scoped", () => {
     asUser(fx.users.alphaLead);
     const branch = await addDepartmentBranch({
       kiId: fx.kiId,
-      parentObjectiveId: fx.nodes.objective,
+      parentObjectiveId: fx.nodes.deployment,
       orgUnitId: fx.orgUnits.alpha,
       statement: "To be deleted",
     });
@@ -354,7 +352,7 @@ describe("deleting a Level 4 branch - two-step confirmation, scoped", () => {
     asUser(fx.users.alphaLead);
     const branch = await addDepartmentBranch({
       kiId: fx.kiId,
-      parentObjectiveId: fx.nodes.objective,
+      parentObjectiveId: fx.nodes.deployment,
       orgUnitId: fx.orgUnits.alpha,
       statement: "Branch with a child",
     });
@@ -390,7 +388,7 @@ describe("Control Item deletion, scoped the same way", () => {
     asUser(fx.users.alphaLead);
     const branch = await addDepartmentBranch({
       kiId: fx.kiId,
-      parentObjectiveId: fx.nodes.objective,
+      parentObjectiveId: fx.nodes.deployment,
       orgUnitId: fx.orgUnits.alpha,
       statement: "For item deletion",
     });
@@ -579,7 +577,7 @@ describe("an EXECUTIVE reaches Level 4 as well", () => {
     asUser(fx.users.alphaLead);
     const branch = await addDepartmentBranch({
       kiId: fx.kiId,
-      parentObjectiveId: fx.nodes.objective,
+      parentObjectiveId: fx.nodes.deployment,
       orgUnitId: fx.orgUnits.alpha,
       statement: "Alpha's own branch",
     });
@@ -610,7 +608,7 @@ describe("an EXECUTIVE reaches Level 4 as well", () => {
     asUser(fx.users.executive);
     const result = await addDepartmentBranch({
       kiId: fx.kiId,
-      parentObjectiveId: fx.nodes.objective,
+      parentObjectiveId: fx.nodes.deployment,
       orgUnitId: fx.orgUnits.beta,
       statement: "Executive's branch under Beta",
     });
@@ -698,6 +696,7 @@ describe("deleting a row takes what hangs off it", () => {
 
 describe("where a new row lands among its siblings", () => {
   let parentId: string;
+  let deploymentId: string;
 
   beforeEach(async () => {
     asUser(fx.users.admin);
@@ -708,14 +707,33 @@ describe("where a new row lands among its siblings", () => {
     });
     parentId = (parent as { id: string }).id;
     // Sparse on purpose: this is what the seeders and a reorder leave behind.
+    // Each test gets its own tree, so the Level 3 the branches hang from is
+    // re-read here rather than carried over from the last one.
+    deploymentId = "";
     for (const [index, sortOrder] of [0, 1, 100, 101].entries()) {
-      await prisma.node.create({
+      const node = await prisma.node.create({
         data: {
           kiId: fx.kiId,
           parentId,
           level: 3,
           kind: "OBJECTIVE",
           statement: `Deployed ${index}`,
+          sortOrder,
+        },
+      });
+      if (!deploymentId) deploymentId = node.id;
+    }
+    // Level 4 branches ladder from a Level 3, so the same gap is laid out one
+    // level down for them.
+    for (const sortOrder of [0, 1, 100, 101]) {
+      await prisma.node.create({
+        data: {
+          kiId: fx.kiId,
+          parentId: deploymentId,
+          level: 4,
+          kind: "OBJECTIVE",
+          statement: `Branch at ${sortOrder}`,
+          orgUnitId: fx.orgUnits.alpha,
           sortOrder,
         },
       });
@@ -726,9 +744,9 @@ describe("where a new row lands among its siblings", () => {
     await prisma.node.deleteMany({ where: { id: parentId } });
   });
 
-  const sortOrders = () =>
+  const sortOrders = (of: () => string) =>
     prisma.node.findMany({
-      where: { parentId },
+      where: { parentId: of() },
       orderBy: { sortOrder: "asc" },
       select: { sortOrder: true, level: true },
     });
@@ -737,61 +755,51 @@ describe("where a new row lands among its siblings", () => {
     asUser(fx.users.alphaLead);
     const branch = await addDepartmentBranch({
       kiId: fx.kiId,
-      parentObjectiveId: parentId,
+      parentObjectiveId: deploymentId,
       orgUnitId: fx.orgUnits.alpha,
       statement: "Alpha's deployment",
     });
     expect(branch.ok).toBe(true);
 
-    // The first branch under this Objective, so there is no Level 4 sibling to
-    // go ahead of; `compareNodes` already orders it above the Level 3 rows.
     const created = await prisma.node.findUniqueOrThrow({
       where: { id: (branch as { id: string }).id },
       select: { sortOrder: true },
     });
-    expect(created.sortOrder).toBe(0);
+    // Below the lowest sibling rather than counted into the gap at 4.
+    expect(created.sortOrder).toBe(-1);
+    const rows = await sortOrders(() => deploymentId);
+    expect(rows[0].sortOrder).toBe(created.sortOrder);
+    expect(rows.map((row) => row.sortOrder)).toEqual([-1, 0, 1, 100, 101]);
+  });
 
-    // A second one goes ahead of the first, which is what "beneath the row you
-    // clicked" means once a branch is already there.
-    const second = await addDepartmentBranch({
+  it("refuses a branch laddered straight off a Level 2", async () => {
+    // The ladder is Goal, Objective, Objective, department. A branch hanging
+    // off a Level 2 skipped the company's own deployment of it, which is the
+    // step that says what the division was asked to do.
+    asUser(fx.users.alphaLead);
+    const refused = await addDepartmentBranch({
       kiId: fx.kiId,
       parentObjectiveId: parentId,
       orgUnitId: fx.orgUnits.alpha,
-      statement: "Alpha's second deployment",
+      statement: "Straight off the Level 2",
     });
-    const secondRow = await prisma.node.findUniqueOrThrow({
-      where: { id: (second as { id: string }).id },
-      select: { sortOrder: true },
-    });
-    expect(secondRow.sortOrder).toBe(-1);
-
-    const level4 = (await sortOrders()).filter((row) => row.level === 4);
-    expect(level4.map((row) => row.sortOrder)).toEqual([-1, 0]);
+    expect(refused.ok).toBe(false);
+    if (!refused.ok) expect(refused.message).toMatch(/Level 3/);
   });
 
   it("shows the branch directly beneath the Objective it laddered onto", async () => {
-    /*
-     * Allocation decides the number; the sheet decides the row. An Objective
-     * carries its own figures, then any department branches laddering into it,
-     * then the company's own Level 3 breakdown - so a branch is where the
-     * person who just added it is still looking, rather than several rows down
-     * past a Level 3 Objective and all of its measures.
-     */
     asUser(fx.users.alphaLead);
     const branch = await addDepartmentBranch({
       kiId: fx.kiId,
-      parentObjectiveId: parentId,
+      parentObjectiveId: deploymentId,
       orgUnitId: fx.orgUnits.alpha,
       statement: "Alpha's deployment",
     });
     const branchId = (branch as { id: string }).id;
 
     const model = await loadSheet({ kiId: fx.kiId, levels: [1, 2, 3, 4], targetVersionId: null });
-    const children = model.rows.filter(
-      (row) => row.path[row.path.length - 1] === parentId,
-    );
+    const children = model.rows.filter((row) => row.path[row.path.length - 1] === deploymentId);
     expect(children[0].id).toBe(branchId);
-    expect(children.slice(1).every((row) => row.level === 3)).toBe(true);
   });
 
   it("does the same for a plain Objective added the ordinary way", async () => {
@@ -805,7 +813,7 @@ describe("where a new row lands among its siblings", () => {
       select: { sortOrder: true },
     });
     expect(created.sortOrder).toBe(-1);
-    const rows = await sortOrders();
+    const rows = await sortOrders(() => parentId);
     expect(rows[0].sortOrder).toBe(created.sortOrder);
   });
 
@@ -931,7 +939,7 @@ describe("reordering rows", () => {
     const l3ThemeA = await addNode({ kiId: fx.kiId, parentId: fx.nodes.objective, statement: "L3 A" });
     const branch = await addDepartmentBranch({
       kiId: fx.kiId,
-      parentObjectiveId: fx.nodes.objective,
+      parentObjectiveId: fx.nodes.deployment,
       orgUnitId: fx.orgUnits.alpha,
       statement: "Alpha branch between the themes",
     });
@@ -1006,7 +1014,7 @@ describe("editing a Control Item", () => {
     asUser(fx.users.admin);
     const branch = await addDepartmentBranch({
       kiId: fx.kiId,
-      parentObjectiveId: fx.nodes.objective,
+      parentObjectiveId: fx.nodes.deployment,
       orgUnitId: fx.orgUnits.alpha,
       statement: "Alpha branch for edit tests",
     });
@@ -1233,7 +1241,7 @@ describe("who may be made responsible", () => {
     // The measure is theirs to edit; the person is not theirs to assign. The
     // picker would not offer them, and the server does not rely on that.
     const branch = await addDepartmentBranch({
-      kiId: fx.kiId, parentObjectiveId: fx.nodes.objective,
+      kiId: fx.kiId, parentObjectiveId: fx.nodes.deployment,
       orgUnitId: fx.orgUnits.alpha, statement: "Alpha branch for responsible tests",
     });
     const measure = await addControlItemToObjective({
