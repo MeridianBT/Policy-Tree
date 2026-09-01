@@ -8,14 +8,22 @@
  * courtesy and not a control.
  *
  * Nothing here asks for a level or a kind: the server derives both from the
- * parent, so a Goal and a Level 2 Objective each offer "Add objective" and
- * "Add measure", and any Objective offers "Add Control Item" - a figure kept
- * against the statement on that very row. That is the whole point of the
- * screen — the admin structure builder could already do this, tediously.
+ * parent, so a Goal and a Level 2 Objective each offer "Add measure" - an
+ * Objective one level down, with the first thing measuring it - and any
+ * Objective offers "Add Control Item", a figure kept against the statement on
+ * that very row. That is the whole point of the screen — the admin structure
+ * builder could already do this, tediously.
+ *
+ * There is no button for an Objective *without* a measure. There was, beside
+ * this one, and the pair was a distinction nobody should have to learn: both
+ * made an Objective a level down, and one of them left a blank row that was
+ * useless until a figure was added anyway. An Objective still survives losing
+ * its last Control Item, so a blank one is a delete away, and the admin
+ * structure builder still makes bare rows for anyone who wants one.
  */
 
 import { useMemo, useState, useTransition } from "react";
-import { Check, GripVertical, Pencil, Plus, Trash2, X } from "lucide-react";
+import { Check, GripVertical, Pencil, Trash2, X } from "lucide-react";
 import type { DeletionImpact, StructureResult } from "@/lib/structure/actions";
 import { shortDicCode } from "./dic-label";
 
@@ -31,23 +39,18 @@ const ICON_BUTTON =
   "flex size-5 shrink-0 items-center justify-center rounded-sm text-ink-faint hover:bg-rule hover:text-ink";
 
 export function RowActions({
-  canAddChild,
-  childLabel,
   canAddDepartment,
   canAddMeasure,
   canAddControlItem,
   canRename,
   renameLabel = "Rename",
   canDelete,
-  onAddChild,
   onAddDepartment,
   onAddMeasure,
   onAddControlItem,
   onRename,
   onDelete,
 }: {
-  canAddChild: boolean;
-  childLabel: string;
   /** Level 2/3 Objective rows only: start a Level 4 branch here. */
   canAddDepartment?: boolean;
   canAddMeasure: boolean;
@@ -57,7 +60,6 @@ export function RowActions({
   /** A group row is renamed; a measure opens its whole form. */
   renameLabel?: string;
   canDelete: boolean;
-  onAddChild: () => void;
   onAddDepartment?: () => void;
   onAddMeasure: () => void;
   onAddControlItem?: () => void;
@@ -65,7 +67,6 @@ export function RowActions({
   onDelete: () => void;
 }) {
   if (
-    !canAddChild &&
     !canAddDepartment &&
     !canAddMeasure &&
     !canAddControlItem &&
@@ -78,20 +79,14 @@ export function RowActions({
     <span className="flex shrink-0 items-center gap-0.5">
       {/*
        * Left to right: edit this row, then everything that can be added
-       * beneath it from the smallest step to the largest - a bare
-       * Objective, one already carrying a measure, another Control Item
-       * against this row, a whole department branch - then delete. The
-       * destructive one sits alone at the far end, away from the four
-       * that are reached for constantly.
+       * beneath it from the smallest step to the largest - an Objective with
+       * the first measure of it, another Control Item against this row, a
+       * whole department branch - then delete, alone at the far end and away
+       * from the three that are reached for constantly.
        */}
       {canRename && (
         <button type="button" className={ICON_BUTTON} onClick={onRename} title={renameLabel}>
           <Pencil size={11} />
-        </button>
-      )}
-      {canAddChild && (
-        <button type="button" className={ICON_BUTTON} onClick={onAddChild} title={`Add ${childLabel.toLowerCase()}`}>
-          <Plus size={12} />
         </button>
       )}
       {canAddMeasure && (
@@ -99,7 +94,7 @@ export function RowActions({
           type="button"
           className={`${ICON_BUTTON} text-[9px] font-medium`}
           onClick={onAddMeasure}
-          title="Add measure"
+          title="Add measure — a new Objective one level down, with its first Control Item"
         >
           M+
         </button>

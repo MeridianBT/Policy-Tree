@@ -174,7 +174,6 @@ export interface EditingHandlers {
    * of the Ki before this.
    */
   onEditControlItem: (row: ControlItemRow) => void;
-  onAddChild: (parentId: string) => void;
   onAddDepartment: (parentObjectiveId: string) => void;
   onAddMeasure: (nodeId: string) => void;
   /** Another Control Item under a Measure that already exists. */
@@ -797,7 +796,6 @@ function GroupRowView({
           // separately below because it carries an org unit. Continuation of
           // the company-wide tree belongs to a SUPER_ADMIN or an EXECUTIVE.
           const childContinues = row.kind === "GOAL" || row.level === 2;
-          const canAddChild = companyWide && childContinues;
           // Moving a row is the same authority as renaming it: it changes how
           // the plan reads, not what it records.
           const canReorder = row.level < 4 ? companyWide : owns;
@@ -811,8 +809,6 @@ function GroupRowView({
               />
             )}
             <RowActions
-              canAddChild={canAddChild}
-              childLabel="objective"
               canAddDepartment={canAddDepartmentBranch(editing.user, row)}
               // M+ adds a child Objective already carrying one Control Item,
               // which is what "add a measure here" has always meant.
@@ -823,7 +819,6 @@ function GroupRowView({
               canAddControlItem={row.kind === "OBJECTIVE" && (row.level < 4 ? companyWide : owns)}
               canRename={row.level < 4 ? companyWide : owns}
               canDelete={row.level < 4 ? companyWide : owns}
-              onAddChild={() => editing.onAddChild(row.id)}
               onAddDepartment={() => editing.onAddDepartment(row.id)}
               onAddMeasure={() => editing.onAddMeasure(row.id)}
               onAddControlItem={() =>
@@ -956,8 +951,6 @@ function ControlItemRowView({
               // The enclosing guard has already established that a row below
               // Level 4 is only editable here by a SUPER_ADMIN or an EXECUTIVE,
               // which is exactly the authority the company tree needs.
-              canAddChild={row.firstOfObjective && row.level === 2}
-              childLabel="objective"
               canAddMeasure={row.firstOfObjective && row.level === 2}
               canAddDepartment={
                 row.firstOfObjective &&
@@ -969,7 +962,6 @@ function ControlItemRowView({
               canRename
               renameLabel={row.objectiveItemCount > 1 ? "Edit Control Item" : "Edit measure"}
               canDelete
-              onAddChild={() => editing.onAddChild(row.objectiveId)}
               onAddMeasure={() => editing.onAddMeasure(row.objectiveId)}
               onAddDepartment={() => editing.onAddDepartment(row.objectiveId)}
               onAddControlItem={() =>

@@ -485,17 +485,6 @@ export function SheetScreen({
                 responsibleUserId: row.responsibleUserId,
               },
             }),
-          onAddChild: (parentId) => {
-            // One kind of child at every level now: an Objective. A Level 4
-            // one carries an org unit, so it goes through the L4+ button
-            // instead, which asks whose it is.
-            setAdding({
-              kind: "NODE",
-              parentId,
-              label: "objective",
-              under: labelFor(parentId),
-            });
-          },
           onAddControlItem: (target) => setAdding({ kind: "CONTROL_ITEM", ...target }),
           onAddDepartment: (parentObjectiveId) =>
             setAdding({

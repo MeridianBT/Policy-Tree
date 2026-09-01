@@ -7,8 +7,10 @@
  *
  * The kind and level of a new node are *derived*, never asked for, for a plain
  * continuation of the tree: a child of a Goal is a Level 2 Objective; a child
- * of a Level 2 Objective is a Level 3 one. So "Add objective" appears wherever
- * it is valid and never presents a level picker.
+ * of a Level 2 Objective is a Level 3 one. So "Add measure" appears wherever it
+ * is valid and never presents a level picker. `addNode` keeps making a bare
+ * Objective for the toolbar's "Add goal" and for the workbook upload, which
+ * names the rows it creates rather than clicking them into place.
  *
  * Deleting is destructive and says so. A node carries its descendants, their
  * Control Items and every figure ever keyed against them. Delete therefore

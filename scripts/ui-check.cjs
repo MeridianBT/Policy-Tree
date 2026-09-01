@@ -352,7 +352,7 @@ async function addingAMeasureLandsAgainstItsRow(browser) {
         .filter((row) => row.text && row.indent !== null));
 
   const add = async (buttonIndex, name) => {
-    await page.locator('button[title="Add measure"]').nth(buttonIndex).click();
+    await page.locator('button[title^="Add measure"]').nth(buttonIndex).click();
     await page.waitForTimeout(900);
     await page
       .locator('.bg-paper-sunken input[type="text"], .bg-paper-sunken input:not([type])')
@@ -602,7 +602,7 @@ async function theMeasuresColumnResizes(browser) {
  * They are read left to right by somebody building a plan, so the order is the
  * order of the job: edit this row, add underneath it from the smallest step to
  * the largest, delete. The trash can sits alone at the far end, away from the
- * four that are reached for constantly.
+ * three that are reached for constantly.
  */
 async function theRowButtonsAreInOrder(browser) {
   console.log("\nRow buttons read in the order of the job");
@@ -620,8 +620,7 @@ async function theRowButtonsAreInOrder(browser) {
     return richest ?? [];
   });
   const shorten = (title) =>
-    /^Add objective/.test(title) ? "+"
-      : /^Add measure/.test(title) ? "M+"
+    /^Add measure/.test(title) ? "M+"
       : /^Add a Control Item/.test(title) ? "CI+"
       : /^Add department branch/.test(title) ? "L4+"
       : /^Edit|^Rename/.test(title) ? "pencil"
@@ -629,9 +628,17 @@ async function theRowButtonsAreInOrder(browser) {
       : title;
   const order = titles.map(shorten);
   check(
-    JSON.stringify(order) === JSON.stringify(["pencil", "+", "M+", "CI+", "L4+", "trash"]),
-    "pencil, +, M+, CI+, L4+, then the trash can",
-    order.join(" ") || "no row offered all six",
+    JSON.stringify(order) === JSON.stringify(["pencil", "M+", "CI+", "L4+", "trash"]),
+    "pencil, M+, CI+, L4+, then the trash can",
+    order.join(" ") || "no row offered all five",
+  );
+  // The bare "Add objective" is gone: it made the same row M+ makes, minus the
+  // figure, and telling the two apart was a distinction nobody should have to
+  // learn. Its absence is the point, so it is asserted rather than assumed.
+  check(
+    !titles.some((title) => /^Add objective/.test(title)),
+    "and no separate button for an Objective without a measure",
+    titles.filter((title) => /^Add objective/.test(title)).join(", "),
   );
   await page.close();
 }

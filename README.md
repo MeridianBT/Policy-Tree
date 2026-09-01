@@ -211,20 +211,33 @@ then delete:
 | | |
 |---|---|
 | ✏️ | edit this row |
-| **+** | a bare Objective under it |
-| **M+** | an Objective already carrying its first measure |
+| **M+** | an Objective one level down, carrying its first measure |
 | **CI+** | another Control Item against *this* row |
 | **L4+** | a department branch (Level 4), which asks whose it is |
 | 🗑️ | delete |
 
-The trash can sits alone at the far end, away from the four that are reached
+The trash can sits alone at the far end, away from the three that are reached
 for constantly.
 
-A new row always takes a number **after every sibling it already has**. Sort
-orders are not dense — the seeders allocate them in blocks and a reorder
-renumbers only the rows it touches — so the next number is taken from the last
-sibling rather than by counting them. Counting put a new row into a gap
-partway down its own siblings.
+There is deliberately **no button for an Objective without a measure**. There
+was, beside **M+**, and the pair was a distinction nobody should have to learn:
+both made an Objective one level down, and the bare one left a blank row that
+was useless until a figure was added to it anyway. An Objective survives losing
+its last Control Item, so a blank one is a delete away, and the admin structure
+builder still makes bare rows for anyone who wants one.
+
+A new row lands **ahead of the siblings at its own level**, so it appears
+against the row it was added from. Appending is the obvious thing and it reads
+as nothing having happened: a Goal on the demo plan carries thirty-one
+Objectives, so a new one at the end arrived some sixty rows below the heading
+that had just been clicked, off the screen entirely. Sort orders are not dense —
+the seeders allocate them in blocks and a reorder renumbers only the rows it
+touches — so the number is taken from the lowest sibling rather than by counting
+them, which would land in a gap partway down.
+
+The cost is that rows added to one parent accumulate newest-first. Reading order
+is what dragging a row is for, and a drag renumbers densely, which also clears
+the negative numbers this allocates.
 
 ### The order an Objective's children read in
 
@@ -887,10 +900,10 @@ the loop:
   client-side to decide which pencils and trash cans to draw; every action
   re-derives the real answer from the database regardless of what the toolbar
   showed.
-- A plain continuation from a Level 3 Objective is refused outright, even for
-  an ADMIN — the next step from Level 3 is always a Level 4 branch, and that
-  must carry an org unit. An Objective created by the generic "add child" path
-  would belong to nobody.
+- Adding a measure to a Level 3 Objective is refused outright, even for an
+  ADMIN — the next step from Level 3 is always a Level 4 branch, and that must
+  carry an org unit, which is why **L4+** asks whose it is. An Objective made by
+  a generic "add anything" path would belong to nobody.
 
 #### The Division/Department view
 
