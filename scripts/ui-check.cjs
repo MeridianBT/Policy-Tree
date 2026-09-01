@@ -298,6 +298,71 @@ async function departmentChipsDoNotRepeatTheDivision(browser) {
  * *statement* brings its whole branch, because "show me this Objective" is
  * what was meant.
  */
+/**
+ * The print route renders one document, and flows.
+ *
+ * Its layout used to render its own `<html>` and `<body>`. Only a root layout
+ * may do that, and this one is nested, so the server sent an `<html>` inside a
+ * `<body>`. Nothing looked wrong, which is exactly why it survived for so
+ * long: the page rendered, and only the console said so.
+ *
+ * Two things this has to get right to be worth having. The nested tag is
+ * checked in the **served HTML** rather than in the DOM, because an HTML
+ * parser silently drops a second `<html>` while parsing - which is the whole
+ * reason the client tree stopped matching the server's, and why looking for it
+ * in `document` finds nothing either way. And a hydration mismatch arrives as
+ * a console error rather than an uncaught exception, so listening only for
+ * page errors would have watched the wrong channel.
+ *
+ * Escaping the app shell is what those tags were really for, so the last check
+ * is that the escape still works: a print page has to grow past the viewport,
+ * where the shell pins the body to the window and hides the overflow.
+ */
+async function thePrintPageIsOneDocument(browser) {
+  console.log("\nThe print route is one document, and flows");
+  const page = await browser.newPage({ viewport: { width: 1500, height: 900 } });
+  await signIn(page);
+
+  const hydration = [];
+  page.on("console", (message) => {
+    const text = message.text();
+    if (
+      message.type() === "error" &&
+      /hydrat|didn't match|did not match|cannot be a child|nested/i.test(text)
+    ) {
+      hydration.push(text.split("\n")[0].slice(0, 120));
+    }
+  });
+
+  for (const path of ["/print/company", "/print/company?columns=quarters"]) {
+    hydration.length = 0;
+    await page.goto(`${BASE}${path}`, { waitUntil: "networkidle" });
+    await page.waitForTimeout(2000);
+
+    // The document as the server wrote it, before a parser tidied it up.
+    const served = await page.request.get(`${BASE}${path}`);
+    const html = await served.text();
+    const openings = (html.match(/<html[\s>]/g) ?? []).length;
+    check(openings === 1, `${path} sends exactly one <html>`, `${openings} found`);
+
+    const seen = await page.evaluate(() => ({
+      sheet: Boolean(document.querySelector(".print-sheet")),
+      overflow: getComputedStyle(document.body).overflowY,
+      scrolls: document.body.scrollHeight > window.innerHeight,
+    }));
+    check(seen.sheet, `${path} renders the sheet`);
+    check(seen.overflow !== "hidden" && seen.scrolls, `${path} lets the page flow`, `overflow ${seen.overflow}`);
+    check(hydration.length === 0, `${path} hydrates without complaint`, hydration.join(" ;; "));
+  }
+
+  // And the shell it escapes is still the shell everywhere else.
+  await page.goto(`${BASE}/sheet`, { waitUntil: "networkidle" });
+  await page.waitForTimeout(1500);
+  const shell = await page.evaluate(() => getComputedStyle(document.body).overflowY);
+  check(shell === "hidden", "and /sheet keeps its fixed-height frame", `overflow ${shell}`);
+  await page.close();
+}
+
 async function theToolbarFinds(browser) {
   console.log("\nSearch finds a row on a full sheet");
   const page = await browser.newPage({ viewport: { width: 1500, height: 900 } });
@@ -842,6 +907,7 @@ async function theUatWording(browser) {
     await myEntriesOnAPhone(browser);
     await theUatWording(browser);
     await oneQuarterAtATime(browser);
+    await thePrintPageIsOneDocument(browser);
     await theToolbarFinds(browser);
     await collapsingSurvivesTheScopeToggle(browser);
     await theMeasuresColumnResizes(browser);

@@ -11,6 +11,28 @@
   margin: 8mm;
 }
 
+/*
+ * The print route is not the app shell.
+ *
+ * It lives under the same root layout as every other page, so it inherits a
+ * body sized to the viewport with its own scrolling panes - right for a dense
+ * grid on screen, and wrong for a sheet that has to flow down the page and
+ * onto paper. At `sm` and above that body is `height: 100vh; overflow: hidden`,
+ * which would clip an eighty-six row sheet to one screen with no way to scroll
+ * it.
+ *
+ * Undoing it here rather than in a layout is what keeps the print route from
+ * needing its own `<html>` and `<body>`, which is illegal in a nested layout
+ * and was breaking hydration on every print page. `:has` carries the
+ * specificity of its argument, so this beats the shell's utility classes
+ * whichever order the stylesheets load in.
+ */
+body:has(.print-sheet) {
+  height: auto;
+  overflow: visible;
+  background: #fff;
+}
+
 .print-sheet {
   /* A3 landscape minus the page margins. */
   width: 404mm;
