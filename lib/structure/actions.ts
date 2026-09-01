@@ -97,6 +97,26 @@ export async function childOptions(
 
 // -------------------------------------------------------------------- Nodes
 
+/**
+ * The sort order a new child should take: after every sibling it already has.
+ *
+ * Counting the siblings is the obvious thing and it is wrong. Sort orders are
+ * not dense - the seeders allocate them in blocks, and `reorderWithinLevel`
+ * renumbers only the rows it touches - so an Objective whose four children are
+ * numbered 0, 1, 100, 101 would hand a fifth child the number 4, which sorts
+ * it into the middle of its own siblings. That is what put a new Level 4
+ * department branch halfway down the company deployment it had just been
+ * laddered onto, rather than at the end of it.
+ */
+async function nextSortOrder(kiId: string, parentId: string | null): Promise<number> {
+  const last = await prisma.node.findFirst({
+    where: { kiId, parentId },
+    orderBy: { sortOrder: "desc" },
+    select: { sortOrder: true },
+  });
+  return last ? last.sortOrder + 1 : 0;
+}
+
 const addNodeSchema = z.object({
   kiId: z.string().min(1),
   parentId: z.string().nullable(),
@@ -126,7 +146,7 @@ export async function addNode(input: unknown): Promise<StructureResult> {
       ? await prisma.node.findUnique({ where: { id: parentId }, select: { orgUnitId: true } })
       : null;
 
-    const siblings = await prisma.node.count({ where: { kiId, parentId } });
+    const sortOrder = await nextSortOrder(kiId, parentId);
     const created = await prisma.node.create({
       data: {
         kiId,
@@ -138,7 +158,7 @@ export async function addNode(input: unknown): Promise<StructureResult> {
         // company-wide Levels 1-3), so it stays consistent if a Level 4 branch
         // is later added beneath it.
         orgUnitId: parentNode?.orgUnitId ?? null,
-        sortOrder: siblings,
+        sortOrder,
       },
     });
 
@@ -186,7 +206,7 @@ export async function addDepartmentBranch(input: unknown): Promise<StructureResu
       };
     }
 
-    const siblings = await prisma.node.count({ where: { kiId, parentId: parentObjectiveId } });
+    const sortOrder = await nextSortOrder(kiId, parentObjectiveId);
     const created = await prisma.node.create({
       data: {
         kiId,
@@ -195,7 +215,7 @@ export async function addDepartmentBranch(input: unknown): Promise<StructureResu
         level: 4,
         statement,
         orgUnitId,
-        sortOrder: siblings,
+        sortOrder,
       },
     });
 
@@ -826,7 +846,7 @@ export async function addControlItem(input: unknown): Promise<StructureResult> {
     // A new Objective and its first Control Item, created together. Adding a
     // "measure" from the sheet means exactly this now: a statement with one
     // thing measuring it.
-    const siblings = await prisma.node.count({ where: { kiId: node.kiId, parentId: data.nodeId } });
+    const sortOrder = await nextSortOrder(node.kiId, data.nodeId);
     const objective = await prisma.node.create({
       data: {
         kiId: node.kiId,
@@ -835,7 +855,7 @@ export async function addControlItem(input: unknown): Promise<StructureResult> {
         level: goingTo,
         statement: data.name,
         orgUnitId: node.orgUnitId,
-        sortOrder: siblings,
+        sortOrder,
       },
     });
     const created = await prisma.controlItem.create({

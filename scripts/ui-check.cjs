@@ -288,6 +288,96 @@ async function departmentChipsDoNotRepeatTheDivision(browser) {
  * dragged to nothing - a column resized to 20px is a sheet somebody has to
  * clear their site data to recover from.
  */
+/**
+ * Finding one row on a sheet of eighty-three.
+ *
+ * The pickers answer "which rows are these"; search answers "where is that
+ * row", which is a different question and the one somebody arrives with when
+ * a name has come up in a meeting. The case worth holding is the asymmetry:
+ * matching a measure keeps that row and the chain above it, but matching a
+ * *statement* brings its whole branch, because "show me this Objective" is
+ * what was meant.
+ */
+async function theToolbarFinds(browser) {
+  console.log("\nSearch finds a row on a full sheet");
+  const page = await browser.newPage({ viewport: { width: 1500, height: 900 } });
+  await signIn(page);
+  const box = page.locator('input[type="search"]');
+  check((await box.count()) === 1, "the toolbar has a search box");
+
+  const body = () => page.locator("body").innerText();
+  await box.fill("medium suv");
+  await page.waitForTimeout(700);
+  let text = await body();
+  check(
+    text.includes("Medium SUV") && !text.includes("Market share"),
+    "a measure name narrows the sheet to it",
+  );
+
+  await box.fill("AU-VOL");
+  await page.waitForTimeout(600);
+  check((await body()).includes("New vehicle deliveries"), "a code finds its measure");
+
+  await box.fill("Profit and Growth");
+  await page.waitForTimeout(600);
+  text = await body();
+  check(
+    text.includes("Medium SUV") && text.includes("Market share"),
+    "a matched Goal brings its whole branch, not just the heading",
+  );
+
+  await box.fill("nothing on this sheet says this");
+  await page.waitForTimeout(600);
+  check(!(await body()).includes("Medium SUV"), "a search that matches nothing shows nothing");
+
+  await page.keyboard.press("Escape");
+  await page.waitForTimeout(600);
+  check((await body()).includes("Gross profit"), "Escape clears it and the sheet comes back");
+  await page.close();
+}
+
+/**
+ * Folding a branch away, and what happens when the scope changes underneath it.
+ *
+ * Collapsing an Objective hides everything laddering off it, Level 4 branches
+ * included. The case that used to look broken is the second one: switching to
+ * "+ Departments" loads the department rows, and a heading somebody had
+ * collapsed earlier would swallow every one of them, so the button appeared to
+ * do nothing at all.
+ */
+async function collapsingSurvivesTheScopeToggle(browser) {
+  console.log("\nCollapse folds a branch, and changing scope reopens it");
+  const page = await browser.newPage({ viewport: { width: 1500, height: 900 } });
+  await signIn(page);
+
+  await page.locator("button", { hasText: /Departments/ }).first().click();
+  await page.waitForTimeout(3000);
+  const departmentRows = async () =>
+    page.evaluate(() => document.body.innerText.includes("First-pick fill rate"));
+  check(await departmentRows(), "+ Departments brings the Level 4 rows in");
+
+  const caret = page.locator('button[aria-label^="Collapse"]').first();
+  const label = await caret.getAttribute("aria-label");
+  await caret.click();
+  await page.waitForTimeout(700);
+  check(
+    (await page.locator('button[aria-label^="Expand"]').count()) > 0,
+    "a heading folds its branch away",
+    label,
+  );
+
+  await page.locator("button", { hasText: /^Company$/ }).first().click();
+  await page.waitForTimeout(2500);
+  await page.locator("button", { hasText: /Departments/ }).first().click();
+  await page.waitForTimeout(3000);
+  check(
+    (await page.locator('button[aria-label^="Expand"]').count()) === 0,
+    "and asking for Departments again reopens everything",
+  );
+  check(await departmentRows(), "so the Level 4 rows are actually on screen");
+  await page.close();
+}
+
 async function theMeasuresColumnResizes(browser) {
   console.log("\nThe Measures column can be widened");
   const page = await browser.newPage({ viewport: { width: 1500, height: 900 } });
@@ -752,6 +842,8 @@ async function theUatWording(browser) {
     await myEntriesOnAPhone(browser);
     await theUatWording(browser);
     await oneQuarterAtATime(browser);
+    await theToolbarFinds(browser);
+    await collapsingSurvivesTheScopeToggle(browser);
     await theMeasuresColumnResizes(browser);
     await theRowButtonsAreInOrder(browser);
     await theFormFollowsThePencil(browser);

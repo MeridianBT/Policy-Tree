@@ -220,6 +220,37 @@ then delete:
 The trash can sits alone at the far end, away from the four that are reached
 for constantly.
 
+A new row always lands **after every sibling it already has**. Sort orders are
+not dense — the seeders allocate them in blocks and a reorder renumbers only
+the rows it touches — so the next number is taken from the last sibling rather
+than by counting them. Counting put a new Level 4 department branch into a gap
+halfway down the company deployment it had just been laddered onto.
+
+### Finding a row
+
+**Find** in the toolbar filters by free text, intersecting with the pickers and
+Below target rather than replacing them. It matches a statement, a measure's
+name, what it is measured as, its code and its department, ignoring case and
+looking past emphasis markers — so `**Retail** volume` is found by typing
+"retail volume", and `AU-VOL` pasted from a report finds its measure.
+
+Matching a **measure** keeps that row and the chain above it, so it can be read
+in context. Matching a **statement** keeps its whole branch, because somebody
+typing a Goal or an Objective is asking to see what is under it. Escape clears
+the box, and "Clear filters" clears it with everything else.
+
+### Folding a branch away
+
+Every heading has a disclosure caret, and collapsing one hides everything
+laddering off it — the Level 3 deployment and the Level 4 department branches
+alike, since both carry it in their ancestor chain.
+
+Switching between **Company** and **+ Departments** forgets what was collapsed.
+The point of asking for the department branches is to see them, and an
+Objective somebody had collapsed earlier would otherwise swallow every Level 4
+row the toggle had just loaded, leaving the button looking like it had done
+nothing.
+
 ### Widening the Measures column
 
 A statement is a sentence somebody wrote, and the ones that matter are the long

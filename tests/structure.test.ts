@@ -638,6 +638,92 @@ describe("an EXECUTIVE reaches Level 4 as well", () => {
   });
 });
 
+/**
+ * Where a new child lands among siblings that are not densely numbered.
+ *
+ * Sort orders arrive in blocks - the seeders allocate them that way, and
+ * `reorderWithinLevel` renumbers only the rows it touches - so counting the
+ * siblings to get the next number is wrong the moment there is a gap. An
+ * Objective whose children are numbered 0, 1, 100, 101 would hand a fifth
+ * child the number 4, sorting it into the middle of its own siblings. That is
+ * what put a new Level 4 department branch halfway down the company
+ * deployment it had just been laddered onto.
+ */
+describe("a new row lands after the siblings it already has", () => {
+  let parentId: string;
+
+  beforeEach(async () => {
+    asUser(fx.users.admin);
+    const parent = await addNode({
+      kiId: fx.kiId,
+      parentId: fx.nodes.goal,
+      statement: "Objective with gappy children",
+    });
+    parentId = (parent as { id: string }).id;
+    // Sparse on purpose: this is what the seeders and a reorder leave behind.
+    for (const [index, sortOrder] of [0, 1, 100, 101].entries()) {
+      await prisma.node.create({
+        data: {
+          kiId: fx.kiId,
+          parentId,
+          level: 3,
+          kind: "OBJECTIVE",
+          statement: `Deployed ${index}`,
+          sortOrder,
+        },
+      });
+    }
+  });
+
+  afterEach(async () => {
+    await prisma.node.deleteMany({ where: { id: parentId } });
+  });
+
+  const sortOrders = () =>
+    prisma.node.findMany({
+      where: { parentId },
+      orderBy: { sortOrder: "asc" },
+      select: { sortOrder: true, level: true },
+    });
+
+  it("puts a Level 4 branch after every sibling, not into a gap between them", async () => {
+    asUser(fx.users.alphaLead);
+    const branch = await addDepartmentBranch({
+      kiId: fx.kiId,
+      parentObjectiveId: parentId,
+      orgUnitId: fx.orgUnits.alpha,
+      statement: "Alpha's deployment",
+    });
+    expect(branch.ok).toBe(true);
+
+    const rows = await sortOrders();
+    const created = await prisma.node.findUniqueOrThrow({
+      where: { id: (branch as { id: string }).id },
+      select: { sortOrder: true },
+    });
+    expect(created.sortOrder).toBe(102);
+    // Last in the list, which is what "underneath the Objective it laddered
+    // onto" means once that Objective's own deployment is on screen too.
+    expect(rows[rows.length - 1].sortOrder).toBe(created.sortOrder);
+    expect(rows.map((row) => row.sortOrder)).toEqual([0, 1, 100, 101, 102]);
+  });
+
+  it("does the same for a plain Objective added the ordinary way", async () => {
+    // addNode allocates from the same helper, so the gap catches it too.
+    asUser(fx.users.admin);
+    const objective = await addNode({ kiId: fx.kiId, parentId, statement: "Another deployment" });
+    expect(objective.ok).toBe(true);
+
+    const created = await prisma.node.findUniqueOrThrow({
+      where: { id: (objective as { id: string }).id },
+      select: { sortOrder: true },
+    });
+    expect(created.sortOrder).toBe(102);
+    const rows = await sortOrders();
+    expect(rows[rows.length - 1].sortOrder).toBe(created.sortOrder);
+  });
+});
+
 describe("reordering rows", () => {
   /** Control Item ids under the fixture Objective, in the order the sheet shows them. */
   async function measureOrder(): Promise<string[]> {

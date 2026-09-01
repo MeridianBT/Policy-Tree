@@ -7,7 +7,7 @@
  */
 
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { Check, ChevronDown } from "lucide-react";
+import { Check, ChevronDown, X } from "lucide-react";
 
 export function Segmented<T extends string>({
   value,
@@ -68,6 +68,60 @@ export function Select({
           </option>
         ))}
       </select>
+    </label>
+  );
+}
+
+/**
+ * A search box that can be cleared without reaching for the keyboard.
+ *
+ * `type="search"` rather than `type="text"`: it gets the browser's own clear
+ * affordance and, on the iPad the sheet is read on, a keyboard with a Search
+ * key instead of a Return key. Escape clears it too, because a filter nobody
+ * can see the end of is a filter people think is a bug.
+ */
+export function SearchBox({
+  value,
+  onChange,
+  label,
+  placeholder,
+  title,
+}: {
+  value: string;
+  onChange: (value: string) => void;
+  label: string;
+  placeholder?: string;
+  title?: string;
+}) {
+  return (
+    <label className="flex items-center gap-1.5 text-[11px] text-ink-muted" title={title}>
+      {label}
+      <span className="relative flex items-center">
+        <input
+          type="search"
+          value={value}
+          placeholder={placeholder}
+          onChange={(event) => onChange(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key === "Escape") {
+              event.preventDefault();
+              onChange("");
+            }
+          }}
+          className="w-40 rounded-sm border border-rule bg-paper px-1.5 py-1 text-[11px] text-ink placeholder:text-ink-faint"
+        />
+        {value && (
+          <button
+            type="button"
+            onClick={() => onChange("")}
+            title="Clear the search"
+            aria-label="Clear the search"
+            className="absolute right-1 flex size-4 items-center justify-center rounded-sm text-ink-faint hover:bg-rule hover:text-ink"
+          >
+            <X size={11} />
+          </button>
+        )}
+      </span>
     </label>
   );
 }

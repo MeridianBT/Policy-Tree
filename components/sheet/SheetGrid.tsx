@@ -251,6 +251,25 @@ export function SheetGrid({
     return map;
   }, [compareModel]);
 
+  /*
+   * Which levels the loaded sheet covers - "1,2,3" on the company view,
+   * "1,2,3,4" once Departments are folded in.
+   *
+   * Switching that scope forgets what was collapsed, because the whole point
+   * of asking for the department branches is to see them: a Level 2 Objective
+   * somebody had collapsed earlier would otherwise swallow every Level 4 row
+   * the toggle just loaded, and the button would look like it had done
+   * nothing. Derived from what actually arrived rather than passed down, so it
+   * cannot disagree with the rows on screen.
+   */
+  const levelScope = useMemo(
+    () => [...new Set(model.rows.map((row) => row.level))].sort().join(","),
+    [model.rows],
+  );
+  useEffect(() => {
+    setCollapsed(new Set());
+  }, [levelScope]);
+
   /** Filtering removes Control Items, then any group left with nothing under it. */
   const filtered = useMemo(() => matchRows(model.rows, filters), [model.rows, filters]);
 

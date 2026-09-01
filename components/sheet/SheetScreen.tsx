@@ -13,7 +13,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { Download, Pencil, Printer } from "lucide-react";
 import type { SheetModel } from "@/lib/sheet/types";
-import { Button, MultiSelect, Segmented, Select } from "@/components/ui/primitives";
+import { Button, MultiSelect, SearchBox, Segmented, Select } from "@/components/ui/primitives";
 import {
   SheetGrid,
   EMPTY_FILTERS,
@@ -673,6 +673,17 @@ export function SheetScreen({
           onChange={(dics) => setFilters((previous) => ({ ...previous, dics }))}
         />
 
+        {/* Last of the filters, because it is the one reached for when the
+            other four have not narrowed things enough - and the one that
+            answers "where is that row" rather than "which rows are these". */}
+        <SearchBox
+          label="Find"
+          value={filters.search}
+          placeholder="statement, measure, code"
+          title="Matches a statement, a measure's name, what it measures, its code or its department. A matched statement brings its whole branch."
+          onChange={(search) => setFilters((previous) => ({ ...previous, search }))}
+        />
+
         {/* A preset, not a fourth picker: one click for the question people
             actually arrive with. It filters through matchRows with the rest,
             so "Clear filters" clears it too. */}
@@ -740,6 +751,7 @@ export function SheetScreen({
         {(filters.businessUnits.length > 0 ||
           filters.dics.length > 0 ||
           filters.belowTarget ||
+          filters.search.trim() !== "" ||
           divisionScope !== "") && (
           <Button
             variant="quiet"
