@@ -724,6 +724,33 @@ with **Columns** too — Quarters plus a single quarter leaves that one quarter
 figure and the year. Export and the print view are unaffected; both always
 carry the whole year.
 
+#### Comparing one version against another
+
+**Compare with** in the toolbar puts a second plan version beside the one being
+read, so "what moved between OB and 1QFC" is answered in the cell rather than
+by exporting twice. A compared cell is three lines:
+
+```
+4,560       the target on the version being read
+OB 4,378    the target on the version being compared, labelled
+4,310       the actual
+```
+
+Three, not eight, and the reasons are worth keeping. It used to render the
+whole cell twice, one block above the other — target, actual, achievement and
+symbol, then all four again — and that was wrong three ways over. The row was
+given exactly twice a cell's height while the content was twice a cell *plus* a
+separator, so it spilled roughly 23px past the row's top and bottom edges and
+collided with the rows either side. The actual appeared in both halves,
+identical, because an actual is keyed against the actual version and does not
+vary by plan version — a comparison printing a number twice to say it has not
+changed. And achievement is measured against *a* target, so beside two of them
+it is ambiguous by construction.
+
+So a comparison shows figures and no evaluation: no percentage, no symbol,
+whichever display mode is selected. The mode still governs a sheet that is not
+comparing.
+
 #### Pasting a block of figures
 
 Copy a range out of a spreadsheet, click the cell it should start at, and

@@ -33,6 +33,7 @@ export function SheetCellView({
   mode,
   decimalPlaces,
   hideTarget,
+  comparison,
 }: {
   cell: SheetCell;
   mode: DisplayMode;
@@ -43,6 +44,15 @@ export function SheetCellView({
    * other two modes ignore this.
    */
   hideTarget?: boolean;
+  /**
+   * The same cell on another plan version, when one is being compared against.
+   *
+   * Only the target travels. An actual is keyed against the actual version and
+   * is the same figure whichever plan version is being read, so the comparison
+   * used to print it twice - and printing a number twice to say it has not
+   * changed is the opposite of what a comparison is for.
+   */
+  comparison?: { target: number | null; versionCode: string } | null;
 }) {
   if (cell.error) {
     return (
@@ -54,6 +64,37 @@ export function SheetCellView({
 
   const target = formatValue(cell.target, decimalPlaces);
   const actual = formatValue(cell.actual, decimalPlaces);
+
+  /*
+   * A comparison is about what moved between two plan versions, so it reads
+   * the same way in every display mode: the two targets adjacent, with the
+   * actual beneath them, and no achievement or symbol at all.
+   *
+   * Dropping those is not only decluttering. Achievement is measured against
+   * *a* target, so beside two targets it is ambiguous by construction - and it
+   * was the line that pushed the block past the row it sits in.
+   */
+  if (comparison) {
+    return (
+      <span className="flex flex-col items-end leading-tight">
+        {!hideTarget && (
+          <span className="num text-[10px] text-ink-muted" title="Target on the version being read">
+            {target}
+          </span>
+        )}
+        <span
+          className="num flex items-baseline justify-end gap-1 text-[10px] text-ink-faint"
+          title={`Target on ${comparison.versionCode}`}
+        >
+          <span className="text-[8px] uppercase tracking-wide">{comparison.versionCode}</span>
+          {formatValue(comparison.target, decimalPlaces)}
+        </span>
+        <span className="num" title="Actual">
+          {actual}
+        </span>
+      </span>
+    );
+  }
 
   switch (mode) {
     case "ACHIEVEMENT":
@@ -105,11 +146,20 @@ export function SheetCellView({
   }
 }
 
-/** Row height needed for a display mode, in pixels. */
-export function rowHeightFor(mode: DisplayMode, entryMode?: boolean): number {
-  const base = mode === "FULL" ? 46 : mode === "TARGET_ACTUAL" ? 32 : 26;
+/**
+ * Row height needed for a display mode, in pixels.
+ *
+ * A comparison renders three lines whatever the mode - target, the compared
+ * target, actual - so it is measured as FULL is. It used to be given twice the
+ * mode's own height on the assumption that the compare block was a second copy
+ * of the cell; it was, plus a separator, which is exactly why the content
+ * spilled over the row's top and bottom edges.
+ */
+export function rowHeightFor(mode: DisplayMode, entryMode?: boolean, comparing?: boolean): number {
+  const effective: DisplayMode = comparing ? "FULL" : mode;
+  const base = effective === "FULL" ? 46 : effective === "TARGET_ACTUAL" ? 32 : 26;
   if (!entryMode) return base;
   // The box replaces the target line in the two modes that had one and is
   // added on top in the two that did not, so the extra height differs.
-  return base + (mode === "FULL" || mode === "TARGET_ACTUAL" ? 8 : 20);
+  return base + (effective === "FULL" || effective === "TARGET_ACTUAL" ? 8 : 20);
 }

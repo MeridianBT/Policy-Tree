@@ -278,7 +278,7 @@ export function SheetGrid({
   );
 
   const controlItemHeight =
-    rowHeightFor(displayMode, Boolean(entry)) * (compareById ? 2 : 1);
+    rowHeightFor(displayMode, Boolean(entry), Boolean(compareById));
 
   // React Compiler cannot memoize a component using this hook: TanStack
   // Virtual returns functions whose identity changes, and memoizing them would
@@ -1091,6 +1091,11 @@ function ControlItemRowView({
       {columns.map((column) => {
         const cell = cellByKey.get(column.key);
         const compareCell = compareByKey?.get(column.key);
+        // Only the target travels from the compared version; see SheetCellView.
+        const comparison =
+          compareCell && compareVersionCode
+            ? { target: compareCell.target, versionCode: compareVersionCode }
+            : null;
         return (
           <div
             key={column.key}
@@ -1108,6 +1113,7 @@ function ControlItemRowView({
                 columnKey={column.key}
                 displayMode={displayMode}
                 entry={entry}
+                comparison={comparison}
                 registerInput={registerInput}
                 onEnterKey={onEnterKey}
                 onPasteFrom={onPasteFrom}
@@ -1118,17 +1124,9 @@ function ControlItemRowView({
                   cell={cell}
                   mode={displayMode}
                   decimalPlaces={row.decimalPlaces}
+                  comparison={comparison}
                 />
               )
-            )}
-            {compareCell && (
-              <div className="mt-0.5 border-t border-dashed border-rule pt-0.5" title={compareVersionCode ?? undefined}>
-                <SheetCellView
-                  cell={compareCell}
-                  mode={displayMode}
-                  decimalPlaces={row.decimalPlaces}
-                />
-              </div>
             )}
           </div>
         );
@@ -1155,6 +1153,7 @@ function MonthEntryCell({
   columnKey,
   displayMode,
   entry,
+  comparison,
   registerInput,
   onEnterKey,
   onPasteFrom,
@@ -1165,6 +1164,8 @@ function MonthEntryCell({
   columnKey: string;
   displayMode: DisplayMode;
   entry: EntryHandlers;
+  /** The compared version's target, when one is being compared against. */
+  comparison?: { target: number | null; versionCode: string } | null;
   registerInput: (key: string, element: HTMLInputElement | null) => void;
   onEnterKey: (fromRowId: string, columnKey: string) => void;
   onPasteFrom: (rowId: string, period: string, text: string) => boolean;
@@ -1203,7 +1204,13 @@ function MonthEntryCell({
           }
         />
       )}
-      <SheetCellView cell={cell} mode={displayMode} decimalPlaces={row.decimalPlaces} hideTarget />
+      <SheetCellView
+        cell={cell}
+        mode={displayMode}
+        decimalPlaces={row.decimalPlaces}
+        comparison={comparison}
+        hideTarget
+      />
     </span>
   );
 }

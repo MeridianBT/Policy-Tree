@@ -613,6 +613,105 @@ async function theMeasuresColumnResizes(browser) {
 }
 
 /**
+ * Comparing one plan version against another.
+ *
+ * It used to render the cell twice, one block above the other with a dashed
+ * rule between - target, actual, achievement and symbol, then the same four
+ * again. Three things were wrong with that. The row was given exactly twice a
+ * cell's height while the content was twice a cell plus the separator, so it
+ * spilled about 23px past the row's top and bottom edges and collided with the
+ * rows either side. The actual appeared in both halves, identical, because an
+ * actual is keyed against the actual version and does not vary by plan
+ * version - a comparison printing a number twice to say it has not changed.
+ * And achievement, measured against a target, is ambiguous beside two of them.
+ *
+ * So a comparison now reads: this version's target, the compared version's
+ * target beneath it and labelled, then the actual. Three lines, one row, no
+ * symbol.
+ */
+async function comparingVersionsFitsItsRow(browser) {
+  console.log("\nComparing two versions fits inside the row");
+  const page = await browser.newPage({ viewport: { width: 1600, height: 950 } });
+  await signIn(page);
+
+  // The furthest any cell's content escapes the row that holds it.
+  const layout = () =>
+    page.evaluate(() => {
+      const rows = [...document.querySelectorAll("div.group.flex.w-full")];
+      let worst = 0;
+      for (const row of rows) {
+        const bounds = row.getBoundingClientRect();
+        if (bounds.height === 0) continue;
+        for (const cell of row.querySelectorAll("span.flex.flex-col")) {
+          const cellBounds = cell.getBoundingClientRect();
+          worst = Math.max(worst, bounds.top - cellBounds.top, cellBounds.bottom - bounds.bottom);
+        }
+      }
+      /*
+       * One entry per printed line, taken from the stack's own children -
+       * innerText would split "OB 4,378" in two, because a flex row blockifies
+       * the spans inside it.
+       */
+      const figures = rows
+        .flatMap((row) => [...row.querySelectorAll("span.flex.flex-col")])
+        .map((stack) => [...stack.children].map((line) => line.textContent.trim()).filter(Boolean))
+        .find((lines) => lines.some((line) => /\d/.test(line)));
+      return { overflow: Math.round(worst * 10) / 10, figures: figures ?? [] };
+    });
+
+  const before = await layout();
+  check(before.overflow === 0, "a plain sheet keeps its cells inside their rows", `${before.overflow}px`);
+
+  await page.locator("label", { hasText: "Compare with" }).first().locator("select").selectOption({ label: "OB" });
+  await page.waitForTimeout(5000);
+
+  const after = await layout();
+  check(after.overflow === 0, "and so does a compared one", `${after.overflow}px over`);
+  check(
+    after.figures.length === 3,
+    "a compared cell is three lines, not eight",
+    after.figures.join(" / "),
+  );
+  check(
+    after.figures.filter((line) => line.startsWith("OB")).length === 1,
+    "exactly one line says which version it came from",
+    after.figures.join(" / "),
+  );
+  check(
+    !after.figures.some((line) => /%/.test(line)),
+    "with no achievement percentage beside two targets",
+    after.figures.join(" / "),
+  );
+  check(
+    !after.figures.some((line) => /[\u25a1\u25ce\u3007\u25b2\u25a0]/.test(line)),
+    "and no evaluation symbol",
+    after.figures.join(" / "),
+  );
+  // The actual is keyed against the actual version, so it belongs once.
+  const repeated = after.figures.filter((line, index) => after.figures.indexOf(line) !== index);
+  check(repeated.length === 0, "and nothing printed twice", repeated.join(" / "));
+
+  // Every display mode, since the comparison overrides all three.
+  for (const label of ["Target / Actual", "Achievement", "Full"]) {
+    await page.evaluate((wanted) => {
+      const group = [...document.querySelectorAll('[role="radiogroup"]')].find(
+        (candidate) => candidate.getAttribute("aria-label") === "Display mode",
+      );
+      [...(group?.querySelectorAll("button") ?? [])]
+        .find((button) => button.textContent.trim() === wanted)
+        ?.click();
+    }, label);
+    await page.waitForTimeout(1200);
+    const inMode = await layout();
+    check(inMode.overflow === 0, `${label} comparing stays inside its row`, `${inMode.overflow}px`);
+  }
+
+  await page.locator("label", { hasText: "Compare with" }).first().locator("select").selectOption({ label: "Off" });
+  await page.waitForTimeout(4000);
+  await page.close();
+}
+
+/**
  * The year switcher, and the two ways it used to do nothing.
  *
  * It sets a cookie every page reads during a server render. Setting it was
@@ -1459,6 +1558,7 @@ async function theUatWording(browser) {
     await theToolbarFinds(browser);
     await collapsingSurvivesTheScopeToggle(browser);
     await theMeasuresColumnResizes(browser);
+    await comparingVersionsFitsItsRow(browser);
     await theYearSwitcherChangesTheYear(browser);
     await theCascadeCanBeNarrowed(browser);
     await aRowCanBeAddedBeforeItIsMeasured(browser);
