@@ -1,4 +1,7 @@
+import { revalidatePath } from "next/cache";
+import { redirect } from "next/navigation";
 import { activeKiId, selectableKis, setActiveKi } from "@/lib/ki/active";
+import { CurrentPathField } from "./CurrentPathField";
 
 /**
  * Lets a SUPER_ADMIN or an EXECUTIVE point themselves at a year that is not
@@ -29,11 +32,34 @@ export async function KiSwitcher() {
   async function choose(formData: FormData) {
     "use server";
     const id = String(formData.get("kiId") ?? "");
+    const path = String(formData.get("path") ?? "/sheet");
     await setActiveKi(id === "current" ? null : id);
+
+    /*
+     * Setting the cookie is not enough on its own, and the way it failed was
+     * the confusing kind. This control lives in the layout, so the layout
+     * re-rendered and the DRAFT YEAR badge duly appeared - while the page
+     * underneath went on showing the live year, and a reload "fixed" it.
+     *
+     * Revalidating alone does not do it either. The re-render Next performs as
+     * part of the action's own response reads the cookies that arrived with
+     * the request, and the new one only reaches the browser with that
+     * response - so the page rendered one choice behind, every time.
+     *
+     * A redirect is what breaks that: it sends the browser back to the page it
+     * was on in a fresh request, which carries the cookie just set. The
+     * revalidate stays because the redirect's target must not be answered from
+     * the router cache.
+     */
+    revalidatePath("/", "layout");
+    // Same-origin paths only. `path` comes from the form, and a form field is
+    // whatever the client says it is.
+    redirect(path.startsWith("/") && !path.startsWith("//") ? path : "/sheet");
   }
 
   return (
     <form action={choose} className="flex items-center gap-1.5">
+      <CurrentPathField />
       {drafting && (
         <span
           className="rounded-sm border px-1.5 py-0.5 text-[10px] font-medium"

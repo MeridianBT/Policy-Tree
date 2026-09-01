@@ -470,6 +470,20 @@ export function SheetGrid({
           />
           <ContextBar context={context} />
 
+          {/*
+            A grid with no rows in it looks broken, and the two ways of getting
+            there need different answers. A Ki nobody has planned yet is the
+            ordinary state of next year, reached by the year switcher, and
+            saying so is the difference between "empty" and "nothing loaded".
+          */}
+          {visible.length === 0 && (
+            <p className="px-3 py-6 text-[12px] text-ink-faint">
+              {model.rows.length === 0
+                ? `${model.kiCode} has no plan yet. Add a Goal to start one — Edit, then Add goal.`
+                : "No rows match the filters. Clear them to see the plan again."}
+            </p>
+          )}
+
           <div style={{ height: virtualizer.getTotalSize(), position: "relative" }}>
             {dropTarget && (
               <div

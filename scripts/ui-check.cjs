@@ -613,6 +613,104 @@ async function theMeasuresColumnResizes(browser) {
 }
 
 /**
+ * The year switcher, and the two ways it used to do nothing.
+ *
+ * It sets a cookie every page reads during a server render. Setting it was
+ * never the problem: the page under the layout went on showing the live year
+ * until something forced a fresh request, so the control looked inert and a
+ * reload "fixed" it. Then, once on the draft year, any client-side refetch -
+ * a version change, folding Level 4 in - fell back to whichever Ki is marked
+ * current and pulled the live year's rows back under a DRAFT YEAR badge.
+ *
+ * Both are checked here because both were invisible: the badge appeared on
+ * time in the first case, and the second only shows on a year whose contents
+ * differ from the live one.
+ */
+async function theYearSwitcherChangesTheYear(browser) {
+  console.log("\nThe year switcher changes the year");
+  const page = await browser.newPage({ viewport: { width: 1500, height: 950 } });
+  await signIn(page);
+
+  const state = async () => {
+    const info = await page.evaluate(() => {
+      const heading = document.querySelector("header h1");
+      const line = heading?.parentElement?.querySelector("p");
+      const rows = [...document.querySelectorAll('[style*="--label-width"]')].filter((cell) =>
+        /padding-left/.test(cell.getAttribute("style") || ""),
+      );
+      return { ki: line?.textContent.trim().split(" \u00b7")[0] ?? "?", rows: rows.length };
+    });
+    return { ...info, draft: await page.locator("text=DRAFT YEAR").count() };
+  };
+
+  const switcher = page.locator('select[aria-label="Which year to work on"]');
+  if ((await switcher.count()) === 0) {
+    check(false, "the signed-in user can switch year at all");
+    await page.close();
+    return;
+  }
+
+  const live = await state();
+  check(live.rows > 0 && live.draft === 0, "the live year opens with a plan on it", `${live.ki}, ${live.rows} rows`);
+
+  await switcher.selectOption({ label: "104KI" });
+  await page.locator("button", { hasText: /^Go$/ }).click();
+  await page.waitForTimeout(4000);
+  const draft = await state();
+  check(draft.ki === "104KI", "choosing a year switches to it there and then", `${live.ki} -> ${draft.ki}`);
+  check(draft.draft === 1, "and says plainly that this is not the live year");
+  // The draft year has no plan yet, and a grid of nothing has to say so.
+  check(
+    (await page.evaluate(() => document.body.innerText)).includes("has no plan yet"),
+    "an empty year explains itself rather than rendering a blank grid",
+  );
+
+  // A client-side refetch must not quietly fall back to the live year.
+  await page.locator("button", { hasText: /Departments/ }).first().click();
+  await page.waitForTimeout(4000);
+  const afterToggle = await state();
+  check(
+    afterToggle.ki === "104KI" && afterToggle.rows === 0,
+    "folding Level 4 in keeps the draft year",
+    `${afterToggle.ki}, ${afterToggle.rows} rows`,
+  );
+
+  await page.locator("label", { hasText: "Target" }).first().locator("select").selectOption({ label: "OB" });
+  await page.waitForTimeout(4000);
+  const afterVersion = await state();
+  check(
+    afterVersion.ki === "104KI" && afterVersion.rows === 0,
+    "and so does pinning a version",
+    `${afterVersion.ki}, ${afterVersion.rows} rows`,
+  );
+
+  // The switcher returns the reader to the page they were on, not to the sheet.
+  await page.goto(`${BASE}/cascade`);
+  await page.waitForTimeout(3000);
+  await page.locator("button", { hasText: /^Go$/ }).click();
+  await page.waitForTimeout(4000);
+  check(
+    new URL(page.url()).pathname === "/cascade",
+    "and leaves you on the page you used it from",
+    new URL(page.url()).pathname,
+  );
+
+  // Put the session back on the live year for whatever runs next.
+  await page.goto(`${BASE}/sheet`);
+  await page.waitForTimeout(2500);
+  await switcher.selectOption({ index: 0 });
+  await page.locator("button", { hasText: /^Go$/ }).click();
+  await page.waitForTimeout(4000);
+  const back = await state();
+  check(
+    back.ki === live.ki && back.draft === 0,
+    "and goes back to the live year when asked",
+    `${back.ki}, ${back.rows} rows`,
+  );
+  await page.close();
+}
+
+/**
  * The cascade's scope controls.
  *
  * A wall chart of eighty rows is only readable one division at a time, so the
@@ -1361,6 +1459,7 @@ async function theUatWording(browser) {
     await theToolbarFinds(browser);
     await collapsingSurvivesTheScopeToggle(browser);
     await theMeasuresColumnResizes(browser);
+    await theYearSwitcherChangesTheYear(browser);
     await theCascadeCanBeNarrowed(browser);
     await aRowCanBeAddedBeforeItIsMeasured(browser);
     await theRowButtonsAreInOrder(browser);
