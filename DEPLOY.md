@@ -151,6 +151,52 @@ DATABASE_URL='<DATABASE_PUBLIC_URL>' SEED_PASSWORD='…' npm run db:seed:uat
 
 The full account list is in [prisma/uat/README.md](prisma/uat/README.md).
 
+## Upgrading a deployment that is already running
+
+Redeploy and the entrypoint applies any pending migrations before the app
+listens, so most upgrades need nothing from you. One of them changes data
+rather than schema and is worth knowing about.
+
+**`20260901090000_relink_level_4_under_level_3`.** A Level 4 department branch
+ladders from a Level 3 and only from a Level 3. Plans created before that rule
+was enforced have Level 4 rows hanging straight off a Level 2, which leaves
+them awkward in two visible ways: **L4+** is offered on Level 3 rows only, so a
+department cannot add a sibling branch where it already has one; and siblings
+order by `sort_order` alone now, so a Level 2 holding rows of two levels
+interleaves them and a new branch looks like it landed somewhere down the list.
+
+The migration inserts the missing Level 3 under each affected Level 2 and moves
+that Level 2's branches onto it. **Nothing is deleted** - every node, Control
+Item, figure and owner survives, and each branch keeps its place in the reading
+order. It is a no-op on any plan that is already legal, so a fresh deployment
+never notices it.
+
+The new Level 3 repeats its Level 2's statement, because the company's wording
+for a deployment it never wrote down is not in the database and inventing one
+would put words into the plan that nobody chose. Rename it on the sheet to
+whatever the team would rather it said.
+
+To confirm afterwards - this should return no rows:
+
+```sql
+SELECT c.level AS child, p.level AS parent, count(*)
+FROM node c JOIN node p ON p.id = c.parent_id
+WHERE c.level <> p.level + 1 OR (c.level = 4 AND p.level <> 3)
+GROUP BY 1, 2;
+```
+
+Reseeding instead of migrating is the other way, and it is destructive: the
+seed deletes and recreates its Ki, so every figure keyed against 103KI and
+104KI goes. Accounts, org units and business units survive. If you do reseed,
+set `SEED_PASSWORD` on the command - the seeder writes it to every account and
+falls back to `hoshin` when it is unset, which on a public URL undoes the whole
+of the lock:
+
+```bash
+railway ssh
+SEED_PASSWORD='…' npm run db:seed:uat
+```
+
 ## Before you send the link to anyone
 
 **The URL is public and the password is shared.** There is no IP restriction,
