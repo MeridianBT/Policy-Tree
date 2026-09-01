@@ -613,6 +613,100 @@ async function theMeasuresColumnResizes(browser) {
 }
 
 /**
+ * The cascade's scope controls.
+ *
+ * A wall chart of eighty rows is only readable one division at a time, so the
+ * page carries the sheet's own View toggle and its business unit and division
+ * pickers - and, because it reuses `matchRows`, a selection has to mean the
+ * same thing here as it does there. What is checked is that each control
+ * actually changes what is on the page, that a division brings its departments
+ * with it, and that the page comes back.
+ */
+async function theCascadeCanBeNarrowed(browser) {
+  console.log("\nThe cascade can be narrowed");
+  const page = await browser.newPage({ viewport: { width: 1500, height: 950 } });
+  await signIn(page);
+  await page.goto(`${BASE}/cascade`);
+  await page.waitForTimeout(3000);
+
+  const body = () => page.evaluate(() => document.body.innerText);
+  // Every measure line carries the badge naming who is in charge of it, so
+  // counting those counts measures without reaching into styling.
+  const dics = () =>
+    page.evaluate(() =>
+      [...document.querySelectorAll('[title^="In charge:"]')].map((el) => el.textContent.trim()),
+    );
+  const measures = async () => (await dics()).length;
+
+  const all = await measures();
+  check(all > 0, "the cascade renders measures to begin with", `${all} measures`);
+  check(
+    (await body()).includes("Fill a parts order first time"),
+    "and opens on the whole cascade, departments included",
+  );
+
+  // View: Company folds the department branches away.
+  await page.locator("button", { hasText: /^Company$/ }).first().click();
+  await page.waitForTimeout(3000);
+  const company = await measures();
+  check(
+    !(await body()).includes("Fill a parts order first time"),
+    "Company drops the Level 4 branches",
+  );
+  check(company > 0 && company < all, "and so shows fewer measures", `${all} -> ${company}`);
+
+  await page.locator("button", { hasText: /Departments/ }).first().click();
+  await page.waitForTimeout(3000);
+  check((await measures()) === all, "+ Departments brings them back", `${await measures()}`);
+
+  // Division: one division's work, the departments beneath it included.
+  const division = page.locator("label", { hasText: "Division" }).locator("select");
+  check((await division.count()) === 1, "the toolbar has a Division picker");
+  await division.selectOption("OX");
+  await page.waitForTimeout(2500);
+  const inOx = await dics();
+  check(
+    inOx.length > 0 && inOx.length < all,
+    "choosing a division narrows the page",
+    `${all} -> ${inOx.length}`,
+  );
+  check(
+    inOx.every((code) => code === "OX" || code.startsWith("OX-")),
+    "to that division and nothing else",
+    [...new Set(inOx)].join(" "),
+  );
+  // The part a plain code-equality filter would get wrong: a department inside
+  // the division survives, because a division means its whole subtree.
+  check(
+    inOx.some((code) => code.startsWith("OX-")),
+    "and it keeps the departments beneath it",
+    [...new Set(inOx)].join(" "),
+  );
+
+  // Business unit intersects with the division rather than replacing it.
+  const businessUnit = page.locator("button", { hasText: /Business unit/ }).first();
+  if (await businessUnit.count()) {
+    await businessUnit.click();
+    await page.waitForTimeout(600);
+    await page.locator('[role="option"]', { hasText: "MC" }).first().click();
+    await page.waitForTimeout(2500);
+    const both = await measures();
+    check(both <= inOx.length, "a business unit narrows what the division left", `${inOx.length} -> ${both}`);
+    await page.keyboard.press("Escape");
+    await page.waitForTimeout(400);
+  }
+
+  await page.locator("button", { hasText: /^Clear filters$/ }).click();
+  await page.waitForTimeout(2500);
+  check(
+    (await measures()) === all,
+    "Clear filters puts the whole cascade back",
+    `${await measures()}`,
+  );
+  await page.close();
+}
+
+/**
  * Adding a row before anybody has decided what measures it.
  *
  * The policy is usually agreed before the metric is, and an Objective with
@@ -1267,6 +1361,7 @@ async function theUatWording(browser) {
     await theToolbarFinds(browser);
     await collapsingSurvivesTheScopeToggle(browser);
     await theMeasuresColumnResizes(browser);
+    await theCascadeCanBeNarrowed(browser);
     await aRowCanBeAddedBeforeItIsMeasured(browser);
     await theRowButtonsAreInOrder(browser);
     await theFormFollowsThePencil(browser);

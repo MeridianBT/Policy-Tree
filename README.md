@@ -599,7 +599,7 @@ shared mailbox does not fill with hundreds of copies nobody reads.
 |---|---|
 | `/sheet` | The company sheet — Levels 1–3 by default, with a View toggle folding every Level 4 branch in under its Objective. Virtualised, with version selector, compare mode, three display densities, condensable quarter columns, a single-quarter view, three filters — Business unit, then Division, then Department — read outside-in, and a one-click **Below target** preset. Rows can be dragged into a new order among their own siblings, and month cells become keyable when a specific unlocked version is pinned ADMIN and OWNER (division/department leads) can edit the structure directly here |
 | `/division/[code]` | The same Level 4 sheet, pre-scoped to one division and its departments — a narrower, single-division view of what "+ Departments" on the company sheet shows for everyone. Reached by URL; not linked from the nav, where it duplicated the sheet's own filters |
-| `/cascade` | A read-only, one-page alignment map from every Company Goal down to the Department work laddering into it — see below |
+| `/cascade` | A read-only, one-page alignment map from every Company Goal down to the Department work laddering into it, narrowable by view, business unit and division — see below |
 | `/insights` | The month-end review, anchored on one month: how much of it has reported and who owes the rest, what is below target ranked by direction of travel, and the biggest movers either way — see below |
 | `/my-entries` | Keyboard-driven monthly entry for everything the signed-in user owns, with an outstanding count |
 | `/control-item/[id]` | Trend chart with every version overlaid, stored cells including formulas as typed, and the full audit trail |
@@ -1012,6 +1012,28 @@ them, the page says so plainly — "— nothing yet ladders in here —". A blan
 cascade is exactly as visible as a full one, which is the actual point of
 building it: the absence of alignment is the thing a slide deck hides and
 this page cannot.
+
+#### Narrowing it
+
+A wall chart of ninety measures is only readable a division at a time, so the
+page carries the sheet's own scope controls: the **Company / + Departments**
+toggle, a **Business unit** picker and a **Division** picker. They are the
+sheet's in the literal sense — the same `matchRows`, so a selection means here
+exactly what it means there rather than nearly.
+
+Division behaves a little differently than it does on the sheet, where it only
+narrows the Department picker beside it. There is no Department picker here, so
+choosing a division *filters*, and it means the whole subtree: AUTO keeps AUTO's
+own measures and every AUTO-* department's too. That is done by expanding the
+division into its own code plus its departments' and handing the result to the
+same filter, rather than by writing a second rule that could drift from the
+first.
+
+Worth knowing before you lean on it: `matchRows` keeps a heading only when
+something under it survived, so a filtered cascade hides the Objectives that
+division has not deployed into. Unfiltered — how the page opens — every gap is
+still there. Narrowed, the page answers "what is this division doing", not
+"where has this division not shown up".
 
 Structurally there is nothing new to fetch or compute — `buildCascadeTree` in
 `components/sheet/outline.ts` just re-nests the same flat `loadSheet({ levels:

@@ -1,12 +1,26 @@
+"use client";
+
 /**
  * The alignment map: every Company Goal down to the Department work laddering
  * into it, on one page, with a continuous line the eye can follow.
  *
- * This is deliberately not the sheet. There is no editing surface, no target
- * version picker, no filter bar - it renders once and is meant to be read,
- * the same way a wall chart is read. A gap in the cascade (an Objective with
- * nothing yet laddering in under it) is shown exactly as plainly as a filled
- * one; that gap is the thing this page exists to surface.
+ * This is deliberately not the sheet. There is no editing surface and no
+ * target version picker - it is meant to be read, the way a wall chart is
+ * read. A gap in the cascade (an Objective with nothing yet laddering in
+ * under it) is shown exactly as plainly as a filled one; that gap is the
+ * thing this page exists to surface.
+ *
+ * What it does share with the sheet is the scope controls, because a wall
+ * chart of eighty rows is only readable one division at a time. They are the
+ * sheet's own: the same Company / + Departments toggle, the same business unit
+ * and division pickers, and - importantly - the same `matchRows`, so a
+ * selection means here exactly what it means there rather than nearly.
+ *
+ * One consequence worth knowing. `matchRows` keeps a heading only when
+ * something under it survived, so filtering to a division hides the Objectives
+ * that division has not deployed into. Unfiltered, this page still shows every
+ * gap; narrowed, it answers the narrower question - what this division is
+ * doing - and not "where has this division not shown up".
  *
  * Each measure carries its four quarters on the right. One figure per quarter,
  * chosen by the calendar rather than by the reader: the actual once the quarter
@@ -15,7 +29,12 @@
  * left margin only, so however deep a branch runs every row still ends on the
  * same right edge and the quarter columns line up down the page.
  */
+import { useCallback, useMemo, useState, useTransition } from "react";
 import { EvaluationSymbol } from "@/components/sheet/EvaluationSymbol";
+import { Segmented, Select, MultiSelect } from "@/components/ui/primitives";
+import { dicOptionLabel } from "@/components/sheet/dic-label";
+import { matchRows, EMPTY_FILTERS, type SheetFilters } from "@/components/sheet/filters";
+import { fetchSheet } from "@/lib/sheet/actions";
 import { buildCascadeTree, groupOrdinalPrefix, hasDepartmentWork, indentPx, type CascadeNode } from "@/components/sheet/outline";
 import { RichText } from "@/components/ui/RichText";
 import { quarterFigures, type QuarterFigure } from "@/components/sheet/quarter-figures";
@@ -27,8 +46,63 @@ import { QUARTERS } from "@/lib/domain/period";
 const QUARTER_COL_PX = 76;
 const KI_COL_PX = 56;
 
-export function CascadeView({ model }: { model: SheetModel }) {
-  const roots = buildCascadeTree(model.rows);
+const COMPANY_LEVELS = [1, 2, 3];
+const EXPANDED_LEVELS = [1, 2, 3, 4];
+
+export function CascadeView({ model: initialModel }: { model: SheetModel }) {
+  const [model, setModel] = useState(initialModel);
+  const [filters, setFilters] = useState<SheetFilters>(EMPTY_FILTERS);
+  const [divisionCode, setDivisionCode] = useState("");
+  // The page opens on the whole cascade, departments and all, because that is
+  // what it is for. "Company" narrows to the Levels 1-3 spine.
+  const [expanded, setExpanded] = useState(true);
+  const [pending, startTransition] = useTransition();
+
+  /*
+   * The org chart, not the rows: `loadSheet` returns every Division and
+   * Department whatever levels were asked for, so these options do not shift
+   * under the reader when the View toggle reloads the page.
+   */
+  const divisionOptions = useMemo(
+    () => initialModel.dics.filter((dic) => dic.type === "DIVISION"),
+    [initialModel.dics],
+  );
+
+  const toggleExpanded = useCallback(
+    (next: boolean) => {
+      if (next === expanded) return;
+      setExpanded(next);
+      startTransition(async () => {
+        setModel(
+          await fetchSheet({ levels: next ? EXPANDED_LEVELS : COMPANY_LEVELS, kiId: model.kiId }),
+        );
+      });
+    },
+    [expanded, model.kiId],
+  );
+
+  /*
+   * A division here filters, rather than merely narrowing a department list
+   * the way it does on the sheet - this page has no department picker beside
+   * it to narrow. Choosing AUTO means AUTO's work, so the division expands to
+   * itself plus every department beneath it and goes through `matchRows`
+   * unchanged. One filtering rule, not two that can drift.
+   */
+  const chooseDivision = useCallback(
+    (code: string) => {
+      setDivisionCode(code);
+      const dics = code
+        ? initialModel.dics
+            .filter((dic) => dic.code === code || dic.parentCode === code)
+            .map((dic) => dic.code)
+        : [];
+      setFilters((previous) => ({ ...previous, dics }));
+    },
+    [initialModel.dics],
+  );
+
+  const rows = useMemo(() => matchRows(model.rows, filters), [model.rows, filters]);
+  const roots = buildCascadeTree(rows);
   const dicsById = new Map(model.dics.map((dic) => [dic.id, dic]));
   // One clock for the whole page, so two measures cannot disagree about which
   // quarter has closed because the render crossed a month boundary.
@@ -48,6 +122,66 @@ export function CascadeView({ model }: { model: SheetModel }) {
           </p>
         </header>
 
+        <div className="mb-3 flex flex-wrap items-center gap-2 border border-rule bg-paper px-2 py-1.5">
+          <Segmented
+            label="View"
+            value={expanded ? "L4" : "L3"}
+            onChange={(value) => toggleExpanded(value === "L4")}
+            options={[
+              { value: "L3", label: "Company", hint: "Levels 1 to 3, the company spine on its own" },
+              {
+                value: "L4",
+                label: "+ Departments",
+                hint: "Every Level 4 branch, under the Objective it ladders into",
+              },
+            ]}
+          />
+
+          <span className="mx-1 h-4 w-px bg-rule" aria-hidden />
+
+          {initialModel.businessUnits.length > 1 && (
+            <MultiSelect
+              label="Business unit"
+              selected={filters.businessUnits}
+              options={initialModel.businessUnits.map((unit) => ({
+                value: unit.code,
+                label: `${unit.code} — ${unit.name}`,
+              }))}
+              onChange={(businessUnits) =>
+                setFilters((previous) => ({ ...previous, businessUnits }))
+              }
+            />
+          )}
+          {divisionOptions.length > 1 && (
+            <Select
+              label="Division"
+              value={divisionCode}
+              options={[
+                { value: "", label: "All divisions" },
+                ...divisionOptions.map((dic) => ({
+                  value: dic.code,
+                  label: dicOptionLabel(dic, null),
+                })),
+              ]}
+              onChange={chooseDivision}
+            />
+          )}
+
+          {(filters.businessUnits.length > 0 || divisionCode) && (
+            <button
+              type="button"
+              onClick={() => {
+                setDivisionCode("");
+                setFilters(EMPTY_FILTERS);
+              }}
+              className="rounded-sm border border-rule px-2 py-1 text-[11px] text-ink-muted hover:bg-paper-sunken"
+            >
+              Clear filters
+            </button>
+          )}
+          {pending && <span className="text-[11px] text-ink-faint">Loading…</span>}
+        </div>
+
         <div className="flex items-baseline border-b border-rule-strong pb-1 text-[10px] uppercase tracking-wide text-ink-faint">
           <span className="min-w-0 flex-1">Measure</span>
           {QUARTERS.map((quarter) => (
@@ -59,6 +193,13 @@ export function CascadeView({ model }: { model: SheetModel }) {
             Ki
           </span>
         </div>
+
+        {roots.length === 0 && (
+          <p className="py-6 text-[12px] text-ink-faint">
+            Nothing matches these filters. Nobody is deploying work here yet — or the pickers
+            above have narrowed the page past what the plan holds.
+          </p>
+        )}
 
         <div className="divide-y divide-rule">
           {roots.map((root) => (
