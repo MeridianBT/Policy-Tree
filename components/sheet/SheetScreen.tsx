@@ -1033,6 +1033,16 @@ export function SheetScreen({
                 afterChange,
               )
             }
+            /* The same button, without the measure. addNode takes the level
+               from the parent exactly as addControlItem does, so the row
+               lands in the same place - it simply has nothing against it
+               yet, and CI+ is how it stops being blank. */
+            onCommitStatementOnly={(statement) =>
+              run(
+                () => addNode({ kiId: model.kiId, parentId: adding.parentId, statement }),
+                afterChange,
+              )
+            }
             onCancel={() => setAdding(null)}
           />
           )}

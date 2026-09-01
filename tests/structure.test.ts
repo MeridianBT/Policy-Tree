@@ -1452,3 +1452,72 @@ describe("an Objective with several Control Items", () => {
     expect(after.sortOrder).toBe(before.sortOrder);
   });
 });
+
+/**
+ * Writing the policy down and choosing the metric are not always the same
+ * afternoon.
+ *
+ * The Admin structure builder used to be the only way to make an Objective
+ * with nothing measuring it; it is gone, so M+ carries that case now - the
+ * same button, with "nothing measures this yet" ticked. What the sheet then
+ * shows is the point: a blank row, which is how a hole in the deployment
+ * stays visible, and CI+ is how it stops being blank.
+ */
+describe("a statement now, its measure later", () => {
+  it("adds an Objective with nothing against it, one level down", async () => {
+    asUser(fx.users.admin);
+    const created = await addNode({
+      kiId: fx.kiId,
+      parentId: fx.nodes.goal,
+      statement: "Policy written, metric to follow",
+    });
+    expect(created.ok).toBe(true);
+    const id = (created as { id: string }).id;
+
+    const node = await prisma.node.findUniqueOrThrow({
+      where: { id },
+      select: { level: true, parentId: true, _count: { select: { controlItems: true } } },
+    });
+    expect(node.level).toBe(2);
+    expect(node.parentId).toBe(fx.nodes.goal);
+    expect(node._count.controlItems).toBe(0);
+
+    // On the sheet it is a group row: a statement, no figures beside it.
+    const model = await loadSheet({ kiId: fx.kiId, levels: [1, 2, 3, 4], targetVersionId: null });
+    const rows = model.rows.filter((row) => row.id === id);
+    expect(rows).toHaveLength(1);
+    expect(rows[0].kind).toBe("OBJECTIVE");
+
+    // And CI+ is what fills it in. One Control Item, so the statement and the
+    // figures come back as a single row.
+    const measured = await addControlItemToObjective({
+      objectiveId: id,
+      name: "Deliveries",
+      measuredAs: "Units",
+      unit: "COUNT",
+      direction: "HIGHER_BETTER",
+      aggregation: "SUM",
+      decimalPlaces: 0,
+      dicOrgUnitId: fx.orgUnits.alpha,
+      businessUnitId: fx.businessUnits.AUTO,
+    });
+    expect(measured.ok).toBe(true);
+
+    const after = await loadSheet({ kiId: fx.kiId, levels: [1, 2, 3, 4], targetVersionId: null });
+    const filled = after.rows.filter(
+      (row) => row.id === id || (row.kind === "CONTROL_ITEM" && row.objectiveId === id),
+    );
+    expect(filled).toHaveLength(1);
+    expect(filled[0].kind).toBe("CONTROL_ITEM");
+  });
+
+  it("still refuses everyone the company tree is not theirs to extend", async () => {
+    // The route changed; the authority did not.
+    asUser(fx.users.alphaLead);
+    const owner = await addNode({ kiId: fx.kiId, parentId: fx.nodes.goal, statement: "Not yours" });
+    expect(owner.ok).toBe(false);
+    asUser(fx.users.viewer);
+    const viewer = await addNode({ kiId: fx.kiId, parentId: fx.nodes.goal, statement: "Nor yours" });
+    expect(viewer.ok).toBe(false);
+  });
+});

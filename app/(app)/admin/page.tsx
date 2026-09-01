@@ -37,12 +37,6 @@ export default async function AdminPage({
     }),
   ]);
 
-  const nodes = await prisma.node.findMany({
-    where: { kiId: kis.find((ki) => ki.isCurrent)?.id ?? kis[0]?.id },
-    orderBy: [{ level: "asc" }, { sortOrder: "asc" }],
-    select: { id: true, level: true, kind: true, statement: true, parentId: true },
-  });
-
   return (
     <AdminScreen
       section={active}
@@ -89,7 +83,6 @@ export default async function AdminPage({
         colorHex: band.colorHex,
         sortOrder: band.sortOrder,
       }))}
-      nodes={nodes}
     />
   );
 }

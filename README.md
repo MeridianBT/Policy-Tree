@@ -605,7 +605,7 @@ shared mailbox does not fill with hundreds of copies nobody reads.
 | `/control-item/[id]` | Trend chart with every version overlaid, stored cells including formulas as typed, and the full audit trail |
 | `/print/company` | A3 landscape, print-only |
 | `/print/division/[code]` | The same, pre-scoped to one division |
-| `/admin` | Five sections, one at a time and addressable (`?section=people`): **Year** (Ki setup, version locking, emptying a year, copy-from-previous-Ki), **Structure** (structure builder, workbook upload), **Organisation** (divisions, departments, business units), **People**, **Evaluation** (the band scale) |
+| `/admin` | Five sections, one at a time and addressable (`?section=people`): **Year** (Ki setup, version locking, emptying a year, copy-from-previous-Ki), **Structure** (workbook upload), **Organisation** (divisions, departments, business units), **People**, **Evaluation** (the band scale) |
 | `/symbols` | Symbol rendering check for a platform you are deploying to |
 | `/api/export` | Excel download of the current sheet (`?division=CODE` for a Level 4 sheet, `?version=ID` to pin the target basis) |
 | `/api/reminders` | Month-end reminder trigger, called by a scheduler with a shared secret — see below |
@@ -768,12 +768,29 @@ different times, against different versions.
 ### Editing the structure from the sheet
 
 An ADMIN can add, rename and remove Goals, Objectives and Control Items
-directly on the company sheet — **Edit**, the pencil in the toolbar, reveals a
-`+` / rename / delete on every row, without leaving the sheet or opening the
-admin structure builder. Nothing asks for a level or a kind for a plain
+directly on the company sheet — **Edit**, the pencil in the toolbar, reveals the
+row buttons described above. Nothing asks for a level or a kind for a plain
 continuation: the server derives both from the parent (a Goal takes a Level 2
 Objective, a Level 2 Objective takes a Level 3), so the only decision left is
 what to call the new row.
+
+The sheet is now the **only** place the structure is edited by hand. Admin used
+to carry a "structure builder" — a form with Kind, Level and a parent dropdown —
+and it is gone. It asked for three things the sheet derives, its own Control
+Item form had been broken for some time (it never sent a business unit, so every
+submission was refused), and its ladder check was a looser rule than the sheet's:
+it would happily create a Level 4 under a Level 2, a Level 2 under a Level 2, or
+a Level 4 under a Level 4 — the shapes the sheet refuses and
+`20260901090000_relink_level_4_under_level_3` exists to clean up. One way in
+means one rule.
+
+The one thing it could do that the sheet could not is now on **M+**: tick
+**"nothing measures this yet"** and the form adds the Objective alone, statement
+and no figures. That is a real step in building a plan — the policy is agreed
+before the metric is — and it is how a blank row, the visible hole in a
+deployment, gets made by hand. **CI+** on that row is how it stops being blank.
+Uploading a workbook is the other way structure arrives, and it writes through
+the same `addNode` / `addControlItem` the sheet uses.
 
 Deletion is destructive — a Goal carries every Objective, Control Item
 and stored figure beneath it — so it runs in two steps. The first click reports

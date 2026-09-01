@@ -613,6 +613,115 @@ async function theMeasuresColumnResizes(browser) {
 }
 
 /**
+ * Adding a row before anybody has decided what measures it.
+ *
+ * The policy is usually agreed before the metric is, and an Objective with
+ * nothing against it is how a hole in the deployment stays visible. The Admin
+ * structure builder used to be the only way to make one; M+ carries it now,
+ * behind a checkbox, and the fields that would file a Control Item disappear
+ * because there is no Control Item to file.
+ */
+async function aRowCanBeAddedBeforeItIsMeasured(browser) {
+  console.log("\nA row can be added before anything measures it");
+  const page = await browser.newPage({ viewport: { width: 1700, height: 950 } });
+  await signIn(page);
+  await page.locator('button[title="Add, rename and remove rows directly on the sheet"]').click();
+  await page.waitForTimeout(1500);
+
+  const rows = () =>
+    page.evaluate(() =>
+      [...document.querySelectorAll('[style*="--label-width"]')]
+        .filter((cell) => /padding-left/.test(cell.getAttribute("style") || ""))
+        .map((cell) => ({
+          indent: Number(/padding-left:\s*([0-9.]+)px/.exec(cell.getAttribute("style"))[1]),
+          text: [...cell.childNodes].map((node) => node.textContent).join("").trim(),
+        }))
+        .filter((row) => row.text));
+
+  // M+ on the first Goal.
+  await page.locator('button[title^="Add measure"]').first().click();
+  await page.waitForTimeout(1000);
+
+  const box = page.locator('.bg-paper-sunken input[type="checkbox"]');
+  check((await box.count()) === 1, "M+ offers to add the row unmeasured");
+
+  const fieldCount = () =>
+    page.locator(".bg-paper-sunken select, .bg-paper-sunken input").count();
+  const withMeasure = await fieldCount();
+  await box.check();
+  await page.waitForTimeout(400);
+  const without = await fieldCount();
+  check(
+    without < withMeasure,
+    "ticking it takes the Control Item's own fields away",
+    `${withMeasure} fields -> ${without}`,
+  );
+
+  const stamp = Date.now().toString().slice(-5);
+  const name = `UICHECK-BARE-${stamp}`;
+  await page
+    .locator('.bg-paper-sunken input[type="text"], .bg-paper-sunken input:not([type])')
+    .first()
+    .fill(name);
+  await page.waitForTimeout(300);
+  const submit = page.locator("button", { hasText: /^Add row$/ });
+  check((await submit.count()) > 0, "and the button says what it will do now");
+  await submit.last().click();
+  await page.waitForTimeout(4000);
+
+  const after = await rows();
+  const at = after.findIndex((row) => row.text.includes(name));
+  check(at !== -1, "the row is on the sheet");
+  // A statement at Level 2, and nothing beside it: no measured-as, no figures.
+  check(at !== -1 && after[at].indent === 18, "at Level 2", at === -1 ? "" : `${after[at].indent}px`);
+  const blank = await page.evaluate((text) => {
+    const cell = [...document.querySelectorAll('[style*="--label-width"]')].find(
+      (candidate) =>
+        /padding-left/.test(candidate.getAttribute("style") || "") &&
+        candidate.textContent.includes(text),
+    );
+    if (!cell) return null;
+    const row = cell.closest("div");
+    return {
+      // A group row, so it carries no link to a Control Item of its own.
+      linked: Boolean(cell.querySelector('a[href^="/control-item/"]')),
+      offersCi: Boolean(cell.querySelector('button[title^="Add a Control Item"]')),
+      text: row ? row.textContent.trim() : "",
+    };
+  }, name);
+  check(blank && blank.linked === false, "with nothing measuring it yet");
+  check(blank && blank.offersCi === true, "and CI+ on it, which is how it stops being blank");
+
+  // Put the demo data back.
+  const clicked = await page.evaluate((text) => {
+    for (const cell of document.querySelectorAll('[style*="--label-width"]')) {
+      if (!/padding-left/.test(cell.getAttribute("style") || "")) continue;
+      if (!cell.textContent.includes(text)) continue;
+      const trash = cell.querySelector('button[title="Delete"]');
+      if (!trash) return false;
+      trash.click();
+      return true;
+    }
+    return false;
+  }, name);
+  if (clicked) {
+    await page.waitForTimeout(1500);
+    const confirm = page.locator("button", { hasText: "Delete anyway" });
+    if (await confirm.count()) {
+      await confirm.first().click();
+      await page.waitForTimeout(3000);
+    }
+  }
+  const left = await rows();
+  check(
+    !left.some((row) => row.text.includes(name)),
+    "and the check tidies up after itself",
+    left.some((row) => row.text.includes(name)) ? "still there" : "",
+  );
+  await page.close();
+}
+
+/**
  * The order of the row's own buttons, and which rows offer which.
  *
  * They are read left to right by somebody building a plan, so the order is the
@@ -794,7 +903,9 @@ async function adminIsInSections(browser) {
 
   const expected = {
     year: ["Ki and plan versions", "Copy structure from a previous Ki"],
-    structure: ["Structure builder", "Upload a workbook"],
+    // The structure builder is gone: the sheet is the only place structure is
+    // edited by hand, and its absence here is the assertion.
+    structure: ["Upload a workbook"],
     organisation: ["Divisions and departments", "Business units"],
     people: ["Users"],
     evaluation: ["Evaluation scale"],
@@ -1156,6 +1267,7 @@ async function theUatWording(browser) {
     await theToolbarFinds(browser);
     await collapsingSurvivesTheScopeToggle(browser);
     await theMeasuresColumnResizes(browser);
+    await aRowCanBeAddedBeforeItIsMeasured(browser);
     await theRowButtonsAreInOrder(browser);
     await theFormFollowsThePencil(browser);
     await departmentChipsDoNotRepeatTheDivision(browser);

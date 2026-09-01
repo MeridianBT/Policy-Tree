@@ -16,12 +16,10 @@ import { ImportPanel } from "./ImportPanel";
 import { ADMIN_SECTIONS, type AdminSection } from "./sections";
 import {
   copyStructure,
-  createControlItem,
   createBusinessUnit,
   createDepartment,
   createDivision,
   createKi,
-  createNode,
   createUser,
   deleteBusinessUnit,
   deleteDepartment,
@@ -60,7 +58,6 @@ interface UserRow {
   isActive: boolean;
   orgUnitCode: string | null;
 }
-interface NodeRow { id: string; level: number; kind: string; statement: string; parentId: string | null }
 
 export function AdminScreen({
   kis,
@@ -68,7 +65,6 @@ export function AdminScreen({
   businessUnits,
   users,
   bands,
-  nodes,
   section,
 }: {
   kis: KiRow[];
@@ -76,7 +72,6 @@ export function AdminScreen({
   businessUnits: Array<{ id: string; code: string; name: string; controlItemCount: number }>;
   users: UserRow[];
   bands: EvaluationBandSpec[];
-  nodes: NodeRow[];
   section: AdminSection;
 }) {
   const router = useRouter();
@@ -236,151 +231,6 @@ export function AdminScreen({
 
             {section === "structure" && (
               <>
-              <Panel title="Structure builder" hint="Levels 3 and 4 Objectives must ladder into an Objective above them; the server refuses anything else.">
-                <form
-                  className="grid gap-2 sm:grid-cols-2"
-                  action={(formData) =>
-                    run(() =>
-                      createNode({
-                        kiId: kis.find((ki) => ki.isCurrent)?.id ?? kis[0]?.id,
-                        parentId: (formData.get("parentId") as string) || null,
-                        level: Number(formData.get("level")),
-                        kind: formData.get("kind"),
-                        statement: String(formData.get("statement")),
-                        orgUnitId: (formData.get("orgUnitId") as string) || null,
-                      }),
-                    )
-                  }
-                >
-                  <Field label="Kind">
-                    <select name="kind" className={inputClass}>
-                      <option value="GOAL">Goal</option>
-                      <option value="OBJECTIVE">Objective</option>
-                    </select>
-                  </Field>
-                  <Field label="Level">
-                    <select name="level" className={inputClass} defaultValue="2">
-                      {[1, 2, 3, 4].map((level) => (
-                        <option key={level} value={level}>Level {level}</option>
-                      ))}
-                    </select>
-                  </Field>
-                  <Field label="Parent" span>
-                    <select name="parentId" className={inputClass}>
-                      <option value="">— none (Level 1 only) —</option>
-                      {nodes.map((node) => (
-                        <option key={node.id} value={node.id}>
-                          L{node.level} {node.kind[0]}{node.kind.slice(1).toLowerCase()} · {node.statement}
-                        </option>
-                      ))}
-                    </select>
-                  </Field>
-                  <Field label="Statement" span>
-                    <input name="statement" required className={inputClass} />
-                  </Field>
-                  <Field label="Org unit">
-                    <select name="orgUnitId" className={inputClass}>
-                      <option value="">— none —</option>
-                      {orgUnits.map((unit) => (
-                        <option key={unit.id} value={unit.id}>{unit.code} — {unit.name}</option>
-                      ))}
-                    </select>
-                  </Field>
-                  <div className="flex items-end">
-                    <Button type="submit" variant="primary">Add node</Button>
-                  </div>
-                </form>
-
-                <form
-                  className="mt-4 grid gap-2 border-t border-rule pt-3 sm:grid-cols-2"
-                  action={(formData) =>
-                    run(() =>
-                      createControlItem({
-                        nodeId: String(formData.get("nodeId")),
-                        code: String(formData.get("code")),
-                        name: String(formData.get("name")),
-                        measuredAs: (formData.get("measuredAs") as string)?.trim() || null,
-                        unit: formData.get("unit"),
-                        direction: formData.get("direction"),
-                        achievementMethod: formData.get("achievementMethod"),
-                        aggregation: formData.get("aggregation"),
-                        decimalPlaces: Number(formData.get("decimalPlaces")),
-                        dicOrgUnitId: String(formData.get("dicOrgUnitId")),
-                        responsibleUserId: (formData.get("responsibleUserId") as string) || null,
-                      }),
-                    )
-                  }
-                >
-                  <Field label="Objective" span>
-                    <select name="nodeId" className={inputClass}>
-                      {nodes
-                        .filter((node) => node.kind === "OBJECTIVE")
-                        .map((node) => (
-                          <option key={node.id} value={node.id}>L{node.level} · {node.statement}</option>
-                        ))}
-                    </select>
-                  </Field>
-                  <Field label="Code"><input name="code" required className={inputClass} placeholder="AUTO-VOL" /></Field>
-                  <Field label="Name"><input name="name" required className={inputClass} placeholder="Vehicle sales volume" /></Field>
-                  <Field label="Control Item" span>
-                    <input name="measuredAs" className={inputClass} placeholder="Units sold · % of sales · US$ 000" />
-                    <p className="mt-0.5 text-[10px] text-ink-faint">
-                      How the target and actual are measured — &ldquo;Units sold&rdquo;, &ldquo;% of sales&rdquo;.
-                      Left blank, the sheet shows the unit.
-                    </p>
-                  </Field>
-                  <Field label="Unit">
-                    <select name="unit" className={inputClass}>
-                      {["PERCENT", "CURRENCY", "COUNT", "RATIO", "DAYS", "INDEX"].map((unit) => (
-                        <option key={unit} value={unit}>{unit}</option>
-                      ))}
-                    </select>
-                  </Field>
-                  <Field label="Direction">
-                    <select name="direction" className={inputClass}>
-                      <option value="HIGHER_BETTER">Higher is better</option>
-                      <option value="LOWER_BETTER">Lower is better</option>
-                    </select>
-                  </Field>
-                  <Field label="Achievement method">
-                    <select name="achievementMethod" className={inputClass}>
-                      <option value="RATIO">RATIO</option>
-                      <option value="INVERSE">INVERSE (cost items)</option>
-                    </select>
-                  </Field>
-                  <Field label="Aggregation">
-                    <select name="aggregation" className={inputClass}>
-                      <option value="SUM">SUM</option>
-                      <option value="AVERAGE">AVERAGE</option>
-                      <option value="LATEST">LATEST</option>
-                    </select>
-                  </Field>
-                  <Field label="Decimal places">
-                    <input name="decimalPlaces" type="number" min={0} max={4} defaultValue={0} className={inputClass} />
-                  </Field>
-                  <Field label="Department (required)">
-                    <select name="dicOrgUnitId" className={inputClass}>
-                      {orgUnits
-                        .filter((unit) => unit.type !== "COMPANY")
-                        .map((unit) => (
-                          <option key={unit.id} value={unit.id}>{unit.code} — {unit.name}</option>
-                        ))}
-                    </select>
-                  </Field>
-                  <Field label="Responsible (optional)">
-                    <select name="responsibleUserId" className={inputClass}>
-                      <option value="">— not assigned —</option>
-                      {users.map((user) => (
-                        <option key={user.id} value={user.id}>{user.name}</option>
-                      ))}
-                    </select>
-                  </Field>
-                  <div className="flex items-end sm:col-span-2">
-                    <Button type="submit" variant="primary">Add Control Item</Button>
-                  </div>
-                </form>
-              </Panel>
-
               <Panel
                 title="Upload a workbook"
                 hint="Adds and updates. It never deletes, never renames a statement and never moves a measure between Objectives or departments - those stay on the sheet, where the guards that protect closed figures live."

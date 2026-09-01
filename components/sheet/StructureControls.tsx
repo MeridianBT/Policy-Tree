@@ -395,6 +395,7 @@ export function InlineMeasureForm({
   submitLabel = "Add measure",
   pendingLabel = "Adding…",
   onCommit,
+  onCommitStatementOnly,
   onCancel,
   pending,
 }: {
@@ -424,10 +425,22 @@ export function InlineMeasureForm({
   submitLabel?: string;
   pendingLabel?: string;
   onCommit: (values: MeasureValues) => void;
+  /**
+   * Add the row without measuring it, when the caller can express that.
+   *
+   * Writing the policy down and choosing the metric are not always the same
+   * afternoon, and an Objective with nothing against it is how a hole in the
+   * deployment stays visible. Passing this puts a checkbox on the form; leave
+   * it out - editing an existing measure, or adding a second Control Item -
+   * and the option is not offered at all, because neither of those can be
+   * satisfied by a statement.
+   */
+  onCommitStatementOnly?: (statement: string) => void;
   onCancel: () => void;
   pending: boolean;
 }) {
   const [name, setName] = useState(fixedMeasureName ?? initial?.name ?? "");
+  const [unmeasured, setUnmeasured] = useState(false);
   const [measuredAs, setMeasuredAs] = useState(initial?.measuredAs ?? "");
   const [unit, setUnit] = useState(initial?.unit ?? "COUNT");
   const [direction, setDirection] = useState(initial?.direction ?? "HIGHER_BETTER");
@@ -518,131 +531,155 @@ export function InlineMeasureForm({
           />
         )}
       </Labelled>
-      <Labelled label="Control Item">
-        <input
-          autoFocus={Boolean(fixedMeasureName)}
-          value={measuredAs}
-          onChange={(event) => setMeasuredAs(event.target.value)}
-          placeholder="Units sold"
-          className={`${field} w-44`}
-        />
-      </Labelled>
-      {/* Business unit, then Division, then Department: the cascade in the
-          order it is read on the sheet. */}
-      <Labelled label="Business unit">
-        <select
-          value={businessUnitId}
-          onChange={(e) => setBusinessUnit(e.target.value)}
-          className={field}
-        >
-          {businessUnits.map((businessUnit) => (
-            <option key={businessUnit.id} value={businessUnit.id}>
-              {businessUnit.code}
-            </option>
-          ))}
-        </select>
-      </Labelled>
-      <Labelled label="Division">
-        <select value={divisionCode} onChange={(e) => chooseDivision(e.target.value)} className={field}>
-          {keptDic && <option value={CURRENT}>current</option>}
-          {divisions.map((division) => (
-            <option key={division.code} value={division.code}>{division.code}</option>
-          ))}
-        </select>
-      </Labelled>
-      {/* Levels 1-3 are company measures, filed to a Division and to nothing
-          narrower, so the field is not asked for there at all. */}
-      {showDepartment && (
-        <Labelled label="Department">
+      {onCommitStatementOnly && (
+        <label className="flex h-[26px] items-center gap-1.5 self-end text-[11px] text-ink-muted">
+          <input
+            type="checkbox"
+            checked={unmeasured}
+            onChange={(event) => setUnmeasured(event.target.checked)}
+          />
+          Nothing measures this yet
+        </label>
+      )}
+      {/* Everything that makes this a Control Item. "Nothing measures this
+          yet" is a statement about the plan rather than about the form, so
+          the fields go rather than grey out. */}
+      {unmeasured ? null : (
+        <>
+        <Labelled label="Control Item">
+          <input
+            autoFocus={Boolean(fixedMeasureName)}
+            value={measuredAs}
+            onChange={(event) => setMeasuredAs(event.target.value)}
+            placeholder="Units sold"
+            className={`${field} w-44`}
+          />
+        </Labelled>
+        {/* Business unit, then Division, then Department: the cascade in the
+            order it is read on the sheet. */}
+        <Labelled label="Business unit">
           <select
-            value={departmentId}
-            onChange={(e) => setDepartment(e.target.value)}
+            value={businessUnitId}
+            onChange={(e) => setBusinessUnit(e.target.value)}
             className={field}
           >
-            {divisionIsFilable && <option value="">— division level —</option>}
-            {departments.map((department) => (
-              <option key={department.id} value={department.id}>
-                {shortDicCode(department.code, department.parentCode)}
+            {businessUnits.map((businessUnit) => (
+              <option key={businessUnit.id} value={businessUnit.id}>
+                {businessUnit.code}
               </option>
             ))}
           </select>
         </Labelled>
+        <Labelled label="Division">
+          <select value={divisionCode} onChange={(e) => chooseDivision(e.target.value)} className={field}>
+            {keptDic && <option value={CURRENT}>current</option>}
+            {divisions.map((division) => (
+              <option key={division.code} value={division.code}>{division.code}</option>
+            ))}
+          </select>
+        </Labelled>
+        {/* Levels 1-3 are company measures, filed to a Division and to nothing
+            narrower, so the field is not asked for there at all. */}
+        {showDepartment && (
+          <Labelled label="Department">
+            <select
+              value={departmentId}
+              onChange={(e) => setDepartment(e.target.value)}
+              className={field}
+            >
+              {divisionIsFilable && <option value="">— division level —</option>}
+              {departments.map((department) => (
+                <option key={department.id} value={department.id}>
+                  {shortDicCode(department.code, department.parentCode)}
+                </option>
+              ))}
+            </select>
+          </Labelled>
+        )}
+        <Labelled label="Responsible">
+          {/* Optional on purpose: the Department is the accountability, and
+              this names the individual inside it who keys the number. Naming
+              somebody narrows the month-end reminder to them. */}
+          <select
+            value={responsibleUserId}
+            onChange={(e) => setResponsible(e.target.value)}
+            className={`${field} w-40`}
+          >
+            <option value="">— nobody —</option>
+            {/* The current holder is listed even when outside this user's own
+                scope, so an edit can never silently unassign someone they
+                cannot see. */}
+            {initial?.responsibleUserId &&
+              !users.some((person) => person.id === initial.responsibleUserId) && (
+                <option value={initial.responsibleUserId}>current</option>
+              )}
+            {users.map((person) => (
+              <option key={person.id} value={person.id}>
+                {person.name}
+                {person.orgUnitCode ? ` · ${person.orgUnitCode}` : ""}
+              </option>
+            ))}
+          </select>
+        </Labelled>
+        <Labelled label="Unit">
+          <select value={unit} onChange={(e) => setUnit(e.target.value)} className={field}>
+            {["COUNT", "CURRENCY", "PERCENT", "RATIO", "DAYS", "INDEX"].map((option) => (
+              <option key={option} value={option}>{option.toLowerCase()}</option>
+            ))}
+          </select>
+        </Labelled>
+        <Labelled label="Roll-up">
+          <select value={aggregation} onChange={(e) => setAggregation(e.target.value)} className={field}>
+            <option value="SUM">sum</option>
+            <option value="AVERAGE">average</option>
+            <option value="LATEST">latest</option>
+          </select>
+        </Labelled>
+        <Labelled label="Better when">
+          <select value={direction} onChange={(e) => setDirection(e.target.value)} className={field}>
+            <option value="HIGHER_BETTER">higher</option>
+            <option value="LOWER_BETTER">lower</option>
+          </select>
+        </Labelled>
+        <Labelled label="Decimals">
+          <input
+            type="number"
+            min={0}
+            max={4}
+            value={decimalPlaces}
+            onChange={(event) => setDecimalPlaces(Number(event.target.value))}
+            className={`${field} w-14`}
+          />
+        </Labelled>
+        </>
       )}
-      <Labelled label="Responsible">
-        {/* Optional on purpose: the Department is the accountability, and
-            this names the individual inside it who keys the number. Naming
-            somebody narrows the month-end reminder to them. */}
-        <select
-          value={responsibleUserId}
-          onChange={(e) => setResponsible(e.target.value)}
-          className={`${field} w-40`}
-        >
-          <option value="">— nobody —</option>
-          {/* The current holder is listed even when outside this user's own
-              scope, so an edit can never silently unassign someone they
-              cannot see. */}
-          {initial?.responsibleUserId &&
-            !users.some((person) => person.id === initial.responsibleUserId) && (
-              <option value={initial.responsibleUserId}>current</option>
-            )}
-          {users.map((person) => (
-            <option key={person.id} value={person.id}>
-              {person.name}
-              {person.orgUnitCode ? ` · ${person.orgUnitCode}` : ""}
-            </option>
-          ))}
-        </select>
-      </Labelled>
-      <Labelled label="Unit">
-        <select value={unit} onChange={(e) => setUnit(e.target.value)} className={field}>
-          {["COUNT", "CURRENCY", "PERCENT", "RATIO", "DAYS", "INDEX"].map((option) => (
-            <option key={option} value={option}>{option.toLowerCase()}</option>
-          ))}
-        </select>
-      </Labelled>
-      <Labelled label="Roll-up">
-        <select value={aggregation} onChange={(e) => setAggregation(e.target.value)} className={field}>
-          <option value="SUM">sum</option>
-          <option value="AVERAGE">average</option>
-          <option value="LATEST">latest</option>
-        </select>
-      </Labelled>
-      <Labelled label="Better when">
-        <select value={direction} onChange={(e) => setDirection(e.target.value)} className={field}>
-          <option value="HIGHER_BETTER">higher</option>
-          <option value="LOWER_BETTER">lower</option>
-        </select>
-      </Labelled>
-      <Labelled label="Decimals">
-        <input
-          type="number"
-          min={0}
-          max={4}
-          value={decimalPlaces}
-          onChange={(event) => setDecimalPlaces(Number(event.target.value))}
-          className={`${field} w-14`}
-        />
-      </Labelled>
 
       <button
         type="button"
-        disabled={!name.trim() || !dicOrgUnitId || !businessUnitId || pending}
+        /* A row with nothing measuring it is filed nowhere and owned by
+           nobody, so the Department and business unit it would otherwise
+           need are not asked for and cannot hold the button down. */
+        disabled={
+          !name.trim() || pending || (!unmeasured && (!dicOrgUnitId || !businessUnitId))
+        }
         onClick={() =>
-          onCommit({
-            name: name.trim(),
-            measuredAs: measuredAs.trim(),
-            unit,
-            direction,
-            aggregation,
-            decimalPlaces,
-            dicOrgUnitId,
-            businessUnitId,
-            responsibleUserId: responsibleUserId || null,
-          })
+          unmeasured && onCommitStatementOnly
+            ? onCommitStatementOnly(name.trim())
+            : onCommit({
+                name: name.trim(),
+                measuredAs: measuredAs.trim(),
+                unit,
+                direction,
+                aggregation,
+                decimalPlaces,
+                dicOrgUnitId,
+                businessUnitId,
+                responsibleUserId: responsibleUserId || null,
+              })
         }
         className="rounded-sm bg-ink px-2.5 py-1 text-[11px] text-paper disabled:opacity-50"
       >
-        {pending ? pendingLabel : submitLabel}
+        {pending ? pendingLabel : unmeasured ? "Add row" : submitLabel}
       </button>
       <button type="button" onClick={onCancel} className="px-2 py-1 text-[11px] text-ink-muted underline">
         Cancel
