@@ -24,7 +24,8 @@
 :root {
   --row-height: 26px;
   /* The two frozen columns: the measure, and what it is measured as. */
-  --label-width: 246px;
+  /* The Measures column is resizable per browser; see SheetGrid. */
+  --label-width: 300px;
   --measure-width: 148px;
 }
 

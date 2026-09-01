@@ -278,6 +278,99 @@ async function departmentChipsDoNotRepeatTheDivision(browser) {
  * is worth keeping because nothing about the screen looks wrong when it
  * breaks. A save in that state would write one measure's values onto another.
  */
+/**
+ * The Measures column is the one a reader can widen.
+ *
+ * A statement is a sentence somebody wrote and the important ones are long, so
+ * a fixed width hides the useful half behind an ellipsis. What is worth
+ * holding here is not the pixel count but that the grip exists, that dragging
+ * it moves the column, that the width survives a reload, and that it cannot be
+ * dragged to nothing - a column resized to 20px is a sheet somebody has to
+ * clear their site data to recover from.
+ */
+async function theMeasuresColumnResizes(browser) {
+  console.log("\nThe Measures column can be widened");
+  const page = await browser.newPage({ viewport: { width: 1500, height: 900 } });
+  await signIn(page);
+
+  const grip = page.locator('[role="separator"][aria-label="Measures column width"]');
+  const width = async () => Number(await grip.getAttribute("aria-valuenow"));
+  check((await grip.count()) === 1, "the column has a grip on its edge");
+  const started = await width();
+
+  const box = await grip.boundingBox();
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(box.x + 120, box.y + box.height / 2, { steps: 10 });
+  await page.mouse.up();
+  await page.waitForTimeout(500);
+  const dragged = await width();
+  check(dragged > started + 60, "dragging it widens the column", `${started}px -> ${dragged}px`);
+
+  // The measure names really do get the room, not just the header.
+  const label = await page.evaluate(() => {
+    const link = [...document.querySelectorAll("a")].find((a) => a.textContent.trim() === "Market share");
+    return link ? link.getBoundingClientRect().width : 0;
+  });
+  check(label > 0, "and the names sit in it", `${Math.round(label)}px wide`);
+
+  await page.reload();
+  await page.waitForTimeout(2500);
+  check((await width()) === dragged, "the width survives a reload", `${await width()}px`);
+
+  await grip.focus();
+  for (let i = 0; i < 40; i++) await page.keyboard.press("ArrowLeft");
+  await page.waitForTimeout(400);
+  const floor = await width();
+  check(floor >= 180, "and cannot be dragged away to nothing", `stopped at ${floor}px`);
+
+  await grip.dblclick();
+  await page.waitForTimeout(400);
+  check((await width()) === 300, "double-clicking puts it back", `${await width()}px`);
+
+  await page.close();
+}
+
+/**
+ * The order of the row's own buttons.
+ *
+ * They are read left to right by somebody building a plan, so the order is the
+ * order of the job: edit this row, add underneath it from the smallest step to
+ * the largest, delete. The trash can sits alone at the far end, away from the
+ * four that are reached for constantly.
+ */
+async function theRowButtonsAreInOrder(browser) {
+  console.log("\nRow buttons read in the order of the job");
+  const page = await browser.newPage({ viewport: { width: 1600, height: 950 } });
+  await signIn(page);
+  await page.locator('button[title="Add, rename and remove rows directly on the sheet"]').click();
+  await page.waitForTimeout(1500);
+
+  // The row carrying a Level 2 Objective's statement offers all six.
+  const titles = await page.evaluate(() => {
+    const rows = [...document.querySelectorAll("span.flex.shrink-0.items-center")];
+    const richest = rows
+      .map((row) => [...row.querySelectorAll("button")].map((b) => b.title))
+      .sort((a, b) => b.length - a.length)[0];
+    return richest ?? [];
+  });
+  const shorten = (title) =>
+    /^Add objective/.test(title) ? "+"
+      : /^Add measure/.test(title) ? "M+"
+      : /^Add a Control Item/.test(title) ? "CI+"
+      : /^Add department branch/.test(title) ? "L4+"
+      : /^Edit|^Rename/.test(title) ? "pencil"
+      : /^Delete/.test(title) ? "trash"
+      : title;
+  const order = titles.map(shorten);
+  check(
+    JSON.stringify(order) === JSON.stringify(["pencil", "+", "M+", "CI+", "L4+", "trash"]),
+    "pencil, +, M+, CI+, L4+, then the trash can",
+    order.join(" ") || "no row offered all six",
+  );
+  await page.close();
+}
+
 async function theFormFollowsThePencil(browser) {
   console.log("\nThe edit form follows the pencil");
   const page = await browser.newPage({ viewport: { width: 1600, height: 950 } });
@@ -659,6 +752,8 @@ async function theUatWording(browser) {
     await myEntriesOnAPhone(browser);
     await theUatWording(browser);
     await oneQuarterAtATime(browser);
+    await theMeasuresColumnResizes(browser);
+    await theRowButtonsAreInOrder(browser);
     await theFormFollowsThePencil(browser);
     await departmentChipsDoNotRepeatTheDivision(browser);
   } finally {

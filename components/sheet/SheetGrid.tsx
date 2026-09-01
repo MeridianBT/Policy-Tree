@@ -13,7 +13,7 @@
  * Objectives the topmost visible row belongs to. See DESIGN.md.
  */
 
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import Link from "next/link";
 import { ChevronDown, ChevronRight } from "lucide-react";
@@ -38,6 +38,28 @@ import { isSingleCell, parseClipboardGrid, planPaste, type PasteCell } from "./p
 import { EvaluationSymbol } from "./EvaluationSymbol";
 
 const GROUP_ROW_HEIGHT = 28;
+
+/*
+ * The Measures column is the one column whose content nobody can shorten.
+ *
+ * A statement is a sentence a director wrote, and the ones that matter most
+ * tend to be the longest; at a fixed width the useful half is behind an
+ * ellipsis exactly when somebody is trying to read it. Every other column
+ * holds a figure of known size, so this is the only one worth making
+ * adjustable - and it is adjusted by dragging its edge, which is where anyone
+ * who has used a spreadsheet already reaches.
+ *
+ * The width is a view preference, kept per browser rather than per account:
+ * it depends on the screen in front of the reader, not on who they are.
+ */
+const LABEL_WIDTH_DEFAULT = 300;
+const LABEL_WIDTH_MIN = 180;
+const LABEL_WIDTH_MAX = 640;
+const LABEL_WIDTH_KEY = "sheet:label-width";
+
+function clampLabelWidth(width: number): number {
+  return Math.round(Math.min(LABEL_WIDTH_MAX, Math.max(LABEL_WIDTH_MIN, width)));
+}
 
 /**
  * A row picked up by its grip: enough to decide, for every other row on the
@@ -358,18 +380,62 @@ export function SheetGrid({
     [editing, beginDrag, endDrag],
   );
 
+  const [labelWidth, setLabelWidth] = useState(LABEL_WIDTH_DEFAULT);
+
+  /*
+   * Read the stored width after mount, never while rendering: the server has
+   * no localStorage, so seeding state from it would render one width on the
+   * server and another on the client - a hydration mismatch. A browser that
+   * refuses site data (private mode, blocked storage) throws on access rather
+   * than returning null, so both directions are guarded and the default
+   * simply stands.
+   */
+  useEffect(() => {
+    try {
+      const stored = Number(window.localStorage.getItem(LABEL_WIDTH_KEY));
+      if (Number.isFinite(stored) && stored > 0) setLabelWidth(clampLabelWidth(stored));
+    } catch {
+      // No stored preference to be had; the default is a fine answer.
+    }
+  }, []);
+
+  const resizeLabel = useCallback((width: number) => {
+    const next = clampLabelWidth(width);
+    setLabelWidth(next);
+    try {
+      window.localStorage.setItem(LABEL_WIDTH_KEY, String(next));
+    } catch {
+      // The column still resizes for this session; it just will not be
+      // remembered, which is not worth interrupting anybody over.
+    }
+  }, []);
+
+  const resetLabel = useCallback(() => resizeLabel(LABEL_WIDTH_DEFAULT), [resizeLabel]);
+
   const context = useMemo(() => contextFor(visible, topRowIndex), [visible, topRowIndex]);
   const itemCount = visible.filter((row) => row.kind === "CONTROL_ITEM").length;
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col border border-rule-strong bg-paper">
+    <div
+      className="flex min-h-0 flex-1 flex-col border border-rule-strong bg-paper"
+      // Overrides the :root default for this grid and everything inside it -
+      // the header, the frozen cells, the group rows and the total width all
+      // read the same variable.
+      style={{ "--label-width": `${labelWidth}px` } as React.CSSProperties}
+    >
       <div ref={scrollRef} className="min-h-0 flex-1 overflow-auto" tabIndex={0}>
         <div
           style={{
             width: `calc(var(--label-width) + var(--measure-width) + ${gridWidth}px)`,
           }}
         >
-          <ColumnHeader columns={columns} onToggleQuarter={onToggleQuarter} />
+          <ColumnHeader
+            columns={columns}
+            onToggleQuarter={onToggleQuarter}
+            labelWidth={labelWidth}
+            onResizeLabel={resizeLabel}
+            onResetLabel={resetLabel}
+          />
           <ContextBar context={context} />
 
           <div style={{ height: virtualizer.getTotalSize(), position: "relative" }}>
@@ -501,12 +567,82 @@ function contextFor(rows: SheetRowModel[], topIndex: number): string[] {
     .map((node) => plainText(node.statement));
 }
 
+/**
+ * The grip on the Measures column's right edge.
+ *
+ * Only that column is resizable: every other one holds a figure whose width is
+ * known, and a sheet where any column can move is a sheet whose columns no
+ * longer line up between two people reading the same plan.
+ *
+ * Pointer events rather than mouse events, so it works under a finger on the
+ * iPad the sheet gets read on, and the pointer is captured so a fast drag that
+ * leaves the 6px strip keeps resizing instead of stopping dead. Arrow keys do
+ * the same job for anyone not using a pointer, and a double-click puts it back.
+ */
+function LabelWidthHandle({
+  width,
+  onResize,
+  onReset,
+}: {
+  width: number;
+  onResize: (width: number) => void;
+  onReset: () => void;
+}) {
+  const drag = useRef<{ startX: number; startWidth: number } | null>(null);
+  return (
+    <div
+      role="separator"
+      aria-orientation="vertical"
+      aria-label="Measures column width"
+      aria-valuenow={width}
+      aria-valuemin={LABEL_WIDTH_MIN}
+      aria-valuemax={LABEL_WIDTH_MAX}
+      tabIndex={0}
+      title="Drag to resize the Measures column · double-click to reset"
+      className="absolute right-0 top-0 z-50 h-full w-1.5 cursor-col-resize touch-none hover:bg-ink-faint focus:bg-ink-faint focus:outline-none"
+      onPointerDown={(event) => {
+        drag.current = { startX: event.clientX, startWidth: width };
+        event.currentTarget.setPointerCapture(event.pointerId);
+      }}
+      onPointerMove={(event) => {
+        if (!drag.current) return;
+        onResize(drag.current.startWidth + (event.clientX - drag.current.startX));
+      }}
+      onPointerUp={(event) => {
+        drag.current = null;
+        event.currentTarget.releasePointerCapture(event.pointerId);
+      }}
+      onPointerCancel={() => {
+        drag.current = null;
+      }}
+      onDoubleClick={onReset}
+      onKeyDown={(event) => {
+        const step = event.shiftKey ? 32 : 8;
+        if (event.key === "ArrowLeft") {
+          event.preventDefault();
+          onResize(width - step);
+        }
+        if (event.key === "ArrowRight") {
+          event.preventDefault();
+          onResize(width + step);
+        }
+      }}
+    />
+  );
+}
+
 function ColumnHeader({
   columns,
   onToggleQuarter,
+  labelWidth,
+  onResizeLabel,
+  onResetLabel,
 }: {
   columns: ReturnType<typeof sheetColumns>;
   onToggleQuarter: (quarter: QuarterCode) => void;
+  labelWidth: number;
+  onResizeLabel: (width: number) => void;
+  onResetLabel: () => void;
 }) {
   return (
     <div className="sticky top-0 z-30 flex border-b border-rule-strong bg-paper-band-strong">
@@ -515,6 +651,7 @@ function ColumnHeader({
         style={{ width: "var(--label-width)" }}
       >
         Measures
+        <LabelWidthHandle width={labelWidth} onResize={onResizeLabel} onReset={onResetLabel} />
       </div>
       <div
         className="sticky z-40 flex shrink-0 items-end border-r border-rule-strong bg-paper-band-strong px-2 py-1 text-[11px] font-medium text-ink-muted"

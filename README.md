@@ -204,6 +204,37 @@ first Control Item measuring it together. **CI+** on any Objective adds another
 Control Item to *that* Objective, which is also how a blank row gets its first
 figure.
 
+A row's buttons run left to right in the order of the job — edit this row, then
+everything that can be added beneath it from the smallest step to the largest,
+then delete:
+
+| | |
+|---|---|
+| ✏️ | edit this row |
+| **+** | a bare Objective under it |
+| **M+** | an Objective already carrying its first measure |
+| **CI+** | another Control Item against *this* row |
+| **L4+** | a department branch (Level 4), which asks whose it is |
+| 🗑️ | delete |
+
+The trash can sits alone at the far end, away from the four that are reached
+for constantly.
+
+### Widening the Measures column
+
+A statement is a sentence somebody wrote, and the ones that matter are the long
+ones — at a fixed width the useful half is behind an ellipsis exactly when
+somebody is trying to read it. So the Measures column has a grip on its right
+edge: drag it, or focus it and use the arrow keys (Shift for bigger steps), and
+double-click to put it back. It is the only resizable column — every other one
+holds a figure of known width, and a sheet whose columns all move is one whose
+columns no longer line up between two people reading the same plan.
+
+The width is remembered per browser rather than per account, because it depends
+on the screen in front of the reader and not on who they are. It cannot be
+dragged below 180px or past 640px: a column resized to nothing is a sheet
+somebody would have to clear their site data to recover from.
+
 ## How it is put together
 
 ```

@@ -76,19 +76,22 @@ export function RowActions({
   }
   return (
     <span className="flex shrink-0 items-center gap-0.5">
+      {/*
+       * Left to right: edit this row, then everything that can be added
+       * beneath it from the smallest step to the largest - a bare
+       * Objective, one already carrying a measure, another Control Item
+       * against this row, a whole department branch - then delete. The
+       * destructive one sits alone at the far end, away from the four
+       * that are reached for constantly.
+       */}
+      {canRename && (
+        <button type="button" className={ICON_BUTTON} onClick={onRename} title={renameLabel}>
+          <Pencil size={11} />
+        </button>
+      )}
       {canAddChild && (
         <button type="button" className={ICON_BUTTON} onClick={onAddChild} title={`Add ${childLabel.toLowerCase()}`}>
           <Plus size={12} />
-        </button>
-      )}
-      {canAddDepartment && (
-        <button
-          type="button"
-          className={`${ICON_BUTTON} text-[8px] font-medium`}
-          onClick={onAddDepartment}
-          title="Add department branch (Level 4)"
-        >
-          L4+
         </button>
       )}
       {canAddMeasure && (
@@ -111,9 +114,14 @@ export function RowActions({
           CI+
         </button>
       )}
-      {canRename && (
-        <button type="button" className={ICON_BUTTON} onClick={onRename} title={renameLabel}>
-          <Pencil size={11} />
+      {canAddDepartment && (
+        <button
+          type="button"
+          className={`${ICON_BUTTON} text-[8px] font-medium`}
+          onClick={onAddDepartment}
+          title="Add department branch (Level 4)"
+        >
+          L4+
         </button>
       )}
       {canDelete && (
