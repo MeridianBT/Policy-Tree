@@ -16,6 +16,7 @@
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { codeOf, createFixture, prisma, setRaw, type Fixture } from "./fixture";
 import type { AuthenticatedUser } from "@/lib/auth/types";
+import { loadSheet } from "@/lib/sheet/query";
 
 let currentUser: AuthenticatedUser;
 
@@ -649,7 +650,7 @@ describe("an EXECUTIVE reaches Level 4 as well", () => {
  * what put a new Level 4 department branch halfway down the company
  * deployment it had just been laddered onto.
  */
-describe("a new row lands after the siblings it already has", () => {
+describe("where a new row lands among its siblings", () => {
   let parentId: string;
 
   beforeEach(async () => {
@@ -706,6 +707,31 @@ describe("a new row lands after the siblings it already has", () => {
     // onto" means once that Objective's own deployment is on screen too.
     expect(rows[rows.length - 1].sortOrder).toBe(created.sortOrder);
     expect(rows.map((row) => row.sortOrder)).toEqual([0, 1, 100, 101, 102]);
+  });
+
+  it("shows the branch directly beneath the Objective it laddered onto", async () => {
+    /*
+     * Allocation decides the number; the sheet decides the row. An Objective
+     * carries its own figures, then any department branches laddering into it,
+     * then the company's own Level 3 breakdown - so a branch is where the
+     * person who just added it is still looking, rather than several rows down
+     * past a Level 3 Objective and all of its measures.
+     */
+    asUser(fx.users.alphaLead);
+    const branch = await addDepartmentBranch({
+      kiId: fx.kiId,
+      parentObjectiveId: parentId,
+      orgUnitId: fx.orgUnits.alpha,
+      statement: "Alpha's deployment",
+    });
+    const branchId = (branch as { id: string }).id;
+
+    const model = await loadSheet({ kiId: fx.kiId, levels: [1, 2, 3, 4], targetVersionId: null });
+    const children = model.rows.filter(
+      (row) => row.path[row.path.length - 1] === parentId,
+    );
+    expect(children[0].id).toBe(branchId);
+    expect(children.slice(1).every((row) => row.level === 3)).toBe(true);
   });
 
   it("does the same for a plain Objective added the ordinary way", async () => {

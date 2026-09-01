@@ -356,13 +356,35 @@ function defaultMeasuredAs(unit: string): string {
   }
 }
 
-/** Depth-first structural order: a node follows its parent and its earlier siblings. */
-function compareNodes(nodeById: Map<string, { id: string; parentId: string | null; sortOrder: number }>) {
+/**
+ * Depth-first structural order: a node follows its parent and its earlier
+ * siblings, with a department's branches ahead of the company's own breakdown.
+ *
+ * An Objective's children are not all the same level. It can carry Level 3
+ * Objectives continuing the company tree *and* Level 4 department branches
+ * laddering into it, side by side. Ordering those purely by `sort_order`
+ * interleaves them, and a branch somebody has just added lands wherever its
+ * number happens to fall - which on a real plan meant several rows down, past
+ * a Level 3 Objective and all of its measures.
+ *
+ * So siblings group by level before order, deepest first, and a branch sits
+ * directly beneath the Objective it ladders onto. That is the row somebody was
+ * looking at when they added it, and it is where they look for it afterwards.
+ * Within one level nothing changes: `sort_order` still decides, which is what
+ * `reorderWithinLevel` writes and what dragging a row means.
+ */
+function compareNodes(
+  nodeById: Map<string, { id: string; parentId: string | null; level: number; sortOrder: number }>,
+) {
   function sortPath(nodeId: string): number[] {
     const path: number[] = [];
     let current = nodeById.get(nodeId);
     while (current) {
+      // Two keys per step. The level is negated so that the deeper of two
+      // siblings sorts first, which is what puts a Level 4 branch above the
+      // Level 3 deployment beside it.
       path.unshift(current.sortOrder);
+      path.unshift(-current.level);
       current = current.parentId ? nodeById.get(current.parentId) : undefined;
     }
     return path;
@@ -380,8 +402,11 @@ function compareNodes(nodeById: Map<string, { id: string; parentId: string | nul
     const pathA = pathOf(a.id);
     const pathB = pathOf(b.id);
     for (let i = 0; i < Math.max(pathA.length, pathB.length); i++) {
-      const left = pathA[i] ?? -1;
-      const right = pathB[i] ?? -1;
+      // A shorter path is an ancestor and comes first. The sentinel has to
+      // beat every real key, and the level keys are negative, so -1 would be
+      // a Level 1 Goal rather than "nothing here".
+      const left = pathA[i] ?? -Infinity;
+      const right = pathB[i] ?? -Infinity;
       if (left !== right) return left - right;
     }
     return 0;

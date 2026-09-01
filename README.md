@@ -220,11 +220,32 @@ then delete:
 The trash can sits alone at the far end, away from the four that are reached
 for constantly.
 
-A new row always lands **after every sibling it already has**. Sort orders are
-not dense — the seeders allocate them in blocks and a reorder renumbers only
-the rows it touches — so the next number is taken from the last sibling rather
-than by counting them. Counting put a new Level 4 department branch into a gap
-halfway down the company deployment it had just been laddered onto.
+A new row always takes a number **after every sibling it already has**. Sort
+orders are not dense — the seeders allocate them in blocks and a reorder
+renumbers only the rows it touches — so the next number is taken from the last
+sibling rather than by counting them. Counting put a new row into a gap
+partway down its own siblings.
+
+### The order an Objective's children read in
+
+An Objective's children are not all the same level: it can carry Level 3
+Objectives continuing the company tree *and* Level 4 department branches
+laddering into it, side by side. They are grouped rather than interleaved, and
+a block reads:
+
+```
+Objective                       the statement
+  └ its own Control Items       what it is measured by
+  Level 4 department branches   who is deploying it, and their measures
+  Level 3 Objectives            the company's own breakdown, and theirs
+```
+
+Branches sit directly beneath the row they ladder onto because that is the row
+somebody was looking at when they added one, and where they look for it
+afterwards — ordering purely by `sort_order` put a new branch several rows
+down, past a Level 3 Objective and all of its measures. Within one level
+nothing changes: `sort_order` still decides, which is what dragging a row
+writes.
 
 ### Finding a row
 
