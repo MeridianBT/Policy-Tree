@@ -213,6 +213,48 @@ railway ssh
 SEED_PASSWORD='…' npm run db:seed:uat
 ```
 
+## Patching
+
+Nothing is patched in place. The application is one stateless image and a
+database, so a patch is a rebuild and a redeploy. Three layers move
+independently:
+
+| Layer | What moves | Who |
+|---|---|---|
+| `node:22-bookworm-slim` | Debian and Node patch releases. Pinned **by tag, not digest**, so a rebuild picks them up — **a scheduled rebuild is the OS patching**. The trade is reproducibility: two builds of one commit are not byte-identical. | you, by rebuilding |
+| npm dependencies | Ranges over a committed `package-lock.json`. `npm ci` installs the lockfile exactly, so nothing moves until someone runs an update and commits it. | you, deliberately |
+| PostgreSQL | Minor and patch versions. | the managed service |
+
+What makes a bump safe is `npm run build` (linter and type-checker as well as
+the compiler) plus `npx vitest run`. Monthly rebuilds, out-of-band for anything
+critical.
+
+### Reading `npm audit` on this repository
+
+It currently reports nine advisories. Two of them cannot fire here at all:
+`mysql2` rides along inside Prisma's tree and this app is PostgreSQL, and
+`sharp` is Next's image optimiser, which is unused — `next/image` appears
+nowhere. Triage by reachability before severity, or a review spends its time on
+findings with no path to them.
+
+**Do not run `npm audit fix --force` here.** Every remedy it offers is flagged
+breaking and two are *downgrades*: it proposes Prisma 6.19.3 against the 7.9.1
+in use, and exceljs 3.4.0 against 4.4.0. It is picking a version whose tree
+lacks the advisory, not a patched one.
+
+`npm audit` cannot see the Debian layer. Image scanning — Trivy, or Defender for
+Containers — is the other half, and belongs in whatever pipeline builds this.
+
+### What the image contains
+
+The runtime layer does its own `npm ci --omit=dev`: 245 packages rather than the
+503 the build needs. It runs as the base image's `node` user, not root. The
+three packages the container itself runs — `prisma` for migrations on boot,
+`tsx` and `dotenv` for `SEED_ON_BOOT` and `npm run set-password` — are declared
+as dependencies rather than devDependencies, which is what makes the prune safe.
+Measured before that change: `tsx` vanished under `--omit=dev` while `prisma`
+and `dotenv` survived only by arriving under `@prisma/client`.
+
 ## Before you send the link to anyone
 
 **The URL is public and the password is shared.** There is no IP restriction,
