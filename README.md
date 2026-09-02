@@ -1226,11 +1226,47 @@ what the screens do and never a second way in: the permission check, the flat
 refusal on a locked version, the audit row and the formula recompute all still
 happen per cell, and a cell beginning `=` is still a formula.
 
-**The Data tab of an export is the template** — export, edit, upload back, with
-no new file format to document. A hand-made sheet with just `Code`, `Period`
-and `Target` works too, because columns are found by *name*: order does not
-matter and extra columns are ignored. Three details that bite in practice are
-handled rather than documented away:
+#### The template
+
+**Download template** in the panel gives a workbook for the Ki selected beside
+it — a real file, not a description of one. It carries the fifteen columns the
+importer reads and nothing else, and it comes back two ways depending on the
+year:
+
+- a year with a plan arrives **pre-filled** with its own measures, so "edit it
+  and send it back" is the round trip it always was;
+- a year nobody has typed into arrives **empty** — the headings, the dropdowns
+  and a Reference sheet.
+
+That second case is why this exists. The panel used to point at the export for
+a template, which cannot help the person with the most to upload: next year has
+nothing to export. Two smaller reasons follow. Seven of the export's twenty-two
+columns are results rather than inputs — Gap, Achievement, Evaluation,
+Evaluation label, Period type, Ki, Target basis — so handing it over invites
+somebody to fill in Achievement and wonder why nothing happened. And the
+template is reachable from the panel that uploads it, rather than from a button
+on another page mentioned in small text.
+
+The **Department**, **Business unit**, **Unit**, **Aggregation**, **Direction**
+and **Period** columns carry Excel dropdowns, pointed at a Reference sheet
+listing exactly what the parser accepts — the org chart and this Ki's own
+months, and the vocabulary imported from `lib/import/plan.ts` rather than
+retyped, so a template cannot offer a value the upload then refuses. Reference
+also says which columns a **new measure** needs as opposed to a figure update,
+and carries one worked row. Nothing is pre-filled on the Upload sheet of an
+empty year on purpose: an example left in place is a measure nobody meant to
+create.
+
+`tests/template.test.ts` sends the generated file straight back through
+`readWorkbook`, and fills a blank one in and runs it through `buildImportPlan`
+— the two modules that have to agree about column names live apart, so the
+round trip is the only thing that catches a heading changed on one side.
+
+**The Data tab of an export uploads too** — export, edit, upload back. A
+hand-made sheet with just `Code`, `Period` and `Target` works as well, because
+columns are found by *name*: order does not matter and extra columns are
+ignored. Three details that bite in practice are handled rather than documented
+away:
 
 - Only `Period type` = **Month** rows are read. Quarters and the Ki total are
   rolled up at read time and there is nothing behind them to write into.

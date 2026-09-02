@@ -105,6 +105,19 @@ export function ImportPanel({ kis }: { kis: KiOption[] }) {
         <label className="flex items-center gap-1 pb-1 text-[11px] text-ink-muted">
           <input name="allowCreate" type="checkbox" /> let this file add new rows to the plan
         </label>
+        {/*
+          Beside the Ki picker rather than in the help text, and carrying that
+          picker's own choice: a template for one year uploaded into another is
+          the mismatch the two-step preview exists to catch, and the shortest
+          way not to hand somebody the makings of it is to download the file
+          for the year they have already chosen.
+        */}
+        <a
+          href={`/api/template?ki=${encodeURIComponent(kiId)}`}
+          className="rounded-sm border border-rule bg-paper px-2 py-1 text-[11px] text-ink hover:bg-paper-sunken"
+        >
+          Download template
+        </a>
         <Button type="button" onClick={() => submit(previewImport, false)}>
           {pending ? "Reading…" : "Preview"}
         </Button>
@@ -119,9 +132,12 @@ export function ImportPanel({ kis }: { kis: KiOption[] }) {
       </div>
 
       <p className="text-[11px] text-ink-faint">
-        The Data tab of an <strong>Export to Excel</strong> is the template — edit it and upload it
-        back. The Actual column always writes to the actuals version. Empty cells are left alone,
-        never cleared.
+        <strong>Download template</strong> gives you a workbook for the Ki above, carrying only the
+        columns this reads — pre-filled with that year&rsquo;s measures when it has any, and empty
+        with the headings and dropdowns when it does not. Its Reference sheet says which columns a
+        new measure needs. The Data tab of an <strong>Export to Excel</strong> uploads too. The
+        Actual column always writes to the actuals version. Empty cells are left alone, never
+        cleared.
       </p>
 
       {outcome && (

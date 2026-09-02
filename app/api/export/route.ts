@@ -6,6 +6,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { getCurrentUser, orgUnitSubtree } from "@/lib/auth/session";
+import { activeKiId } from "@/lib/ki/active";
 import { loadSheet } from "@/lib/sheet/query";
 import { buildWorkbook } from "@/lib/export/workbook";
 
@@ -33,7 +34,20 @@ export async function GET(request: Request) {
     filename = `${orgUnit.code.toLowerCase()}-sheet`;
   }
 
-  const model = await loadSheet({ levels, orgUnitIds, targetVersionId: versionId });
+  /*
+   * The year the caller is working on, not whichever is marked current.
+   *
+   * This had the same fault fetchSheet did: with no Ki named it fell through to
+   * `isCurrent`, so somebody on next year's draft pressed Export and was handed
+   * the live year's workbook - under a screen still reading DRAFT YEAR. It is
+   * worse here than on the sheet, because a file leaves the building.
+   */
+  const model = await loadSheet({
+    levels,
+    orgUnitIds,
+    targetVersionId: versionId,
+    kiId: params.get("ki") ?? (await activeKiId()),
+  });
 
   const pinned = versionId ? model.versions.find((version) => version.id === versionId) : null;
   const basisLabel = pinned ? `Target: ${pinned.code}` : "Target: latest forecast";

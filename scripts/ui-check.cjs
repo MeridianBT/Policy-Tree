@@ -36,6 +36,45 @@ function check(ok, name, detail) {
   if (!ok) failures.push(name + (detail ? " — " + detail : ""));
 }
 
+/**
+ * Press through the delete confirmation, and wait for the row to go.
+ *
+ * Two things here were fixed sleeps standing in for waits, and each failed in
+ * its own direction.
+ *
+ * The confirm is one button in two states - "Deleting…" while the first,
+ * impact-reporting call is in flight, and "Delete anyway" once it lands. A
+ * check that sampled for the second text after a fixed pause found nothing
+ * whenever the machine was busy, skipped the confirmation, and then reported
+ * the row it had just created as undeletable. That failed on a full run and
+ * never in isolation, which is the signature of a sleep doing a wait's job.
+ *
+ * And a confirmation is not always asked for. A row with no Control Items and
+ * nothing beneath it has no impact to report, so it goes in one step - the
+ * point of reporting impact first rather than always. Waiting unconditionally
+ * for a button that will never appear is the same mistake pointing the other
+ * way.
+ */
+async function confirmDelete(page, goneText) {
+  const confirm = page.locator("button", { hasText: /^(Delete anyway|Deleting…)$/ }).first();
+  try {
+    await confirm.waitFor({ state: "visible", timeout: 8000 });
+    // Clicking auto-waits for the label to settle on the actionable one.
+    await page.locator("button", { hasText: "Delete anyway" }).first().click({ timeout: 20000 });
+    await confirm.waitFor({ state: "detached", timeout: 20000 });
+  } catch {
+    // Nothing was asked, so there is nothing to press.
+  }
+  if (goneText) {
+    // Let the sheet reload before anyone reads it. A timeout here is not
+    // swallowed - it just means the assertion that follows does the failing,
+    // with the row it can still see.
+    await page
+      .waitForFunction((text) => !document.body.innerText.includes(text), goneText, { timeout: 20000 })
+      .catch(() => {});
+  }
+}
+
 async function signIn(page) {
   await page.goto(`${BASE}/login`);
   await page.fill('input[name="email"]', EMAIL);
@@ -420,14 +459,7 @@ async function addingAMeasureLandsAgainstItsRow(browser) {
     }
     return false;
   }, goalName);
-  if (clicked) {
-    await page.waitForTimeout(1500);
-    const confirm = page.locator("button", { hasText: "Delete anyway" });
-    if (await confirm.count()) {
-      await confirm.first().click();
-      await page.waitForTimeout(3000);
-    }
-  }
+  if (clicked) await confirmDelete(page, goalName);
   const left = await rows();
   check(
     !left.some((row) => row.text.includes(goalName)),
@@ -995,14 +1027,7 @@ async function aRowCanBeAddedBeforeItIsMeasured(browser) {
     }
     return false;
   }, name);
-  if (clicked) {
-    await page.waitForTimeout(1500);
-    const confirm = page.locator("button", { hasText: "Delete anyway" });
-    if (await confirm.count()) {
-      await confirm.first().click();
-      await page.waitForTimeout(3000);
-    }
-  }
+  if (clicked) await confirmDelete(page, name);
   const left = await rows();
   check(
     !left.some((row) => row.text.includes(name)),
@@ -1234,6 +1259,80 @@ async function adminIsInSections(browser) {
  * sharpest version of it: every figure already matches, so a correct preview
  * reports no writes at all.
  */
+/**
+ * The upload template.
+ *
+ * The panel used to point at the export for a template, which works only for a
+ * year that already has a plan - and the year most in need of an upload is next
+ * year, which has nothing to export. So the button is checked on both: the live
+ * year, where the file comes back carrying that year's measures, and a year
+ * nobody has typed into, where it comes back with the headings alone.
+ */
+async function theTemplateDownloads(browser) {
+  console.log("\nThe upload panel hands out a template");
+  const page = await browser.newPage({ viewport: { width: 1400, height: 900 } });
+  await signIn(page);
+  await page.goto(`${BASE}/admin?section=structure`);
+  await page.waitForTimeout(2500);
+
+  const link = page.locator("a", { hasText: /^Download template$/ });
+  check((await link.count()) === 1, "the panel offers one");
+
+  /*
+   * It has to carry the Ki the panel is pointed at, or somebody downloads a
+   * template for one year and uploads it into another. Scoped by the file
+   * input beside it: the year switcher in the layout is also a select named
+   * kiId inside a form, so anything looser picks that one up instead.
+   */
+  const kiSelect = page.locator('form:has(input[name="file"]) select[name="kiId"]');
+  const kiValue = await kiSelect.inputValue();
+  const href = await link.getAttribute("href");
+  check(
+    Boolean(href && href.includes(encodeURIComponent(kiValue))),
+    "pointed at the Ki the panel is set to",
+    href,
+  );
+
+  const fetchTemplate = (url) =>
+    page.evaluate(async (target) => {
+      const response = await fetch(target);
+      const blob = await response.blob();
+      return { status: response.status, type: response.headers.get("content-type"), size: blob.size };
+    }, url);
+
+  const live = await fetchTemplate(href);
+  check(live.status === 200, "and it downloads", `HTTP ${live.status}`);
+  check(
+    Boolean(live.type && live.type.includes("spreadsheetml")),
+    "as a workbook",
+    live.type,
+  );
+  check(live.size > 5000, "carrying the live year's measures", `${Math.round(live.size / 1024)}kB`);
+
+  // The unplanned year: the case that had no template at all before.
+  const options = await kiSelect.locator("option").all();
+  let drafted = null;
+  for (const option of options) {
+    const label = (await option.innerText()).trim();
+    if (label === "104KI") drafted = await option.getAttribute("value");
+  }
+  check(Boolean(drafted), "the panel offers the unplanned year too");
+  if (drafted) {
+    const blank = await fetchTemplate(`/api/template?ki=${encodeURIComponent(drafted)}`);
+    check(blank.status === 200, "which also has a template", `HTTP ${blank.status}`);
+    check(
+      blank.size > 0 && blank.size < live.size,
+      "smaller, because it is the headings and nothing else",
+      `${Math.round(blank.size / 1024)}kB vs ${Math.round(live.size / 1024)}kB`,
+    );
+  }
+
+  const named = await fetchTemplate("/api/template");
+  check(named.status === 400, "and a template with no year named is refused", `HTTP ${named.status}`);
+
+  await page.close();
+}
+
 async function theUploadPreviewWritesNothing(browser) {
   console.log("\nUploading a workbook previews before it writes");
   const page = await browser.newPage({ viewport: { width: 1500, height: 950 } });
@@ -1548,6 +1647,7 @@ async function theUatWording(browser) {
     await anObjectiveReadsAsOneStatement(browser);
     await severalControlItemsUnderOneMeasure(browser);
     await adminIsInSections(browser);
+    await theTemplateDownloads(browser);
     await theUploadPreviewWritesNothing(browser);
     await pagesDoNotOverflow(browser);
     await myEntriesOnAPhone(browser);

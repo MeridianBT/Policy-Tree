@@ -167,8 +167,15 @@ type Unit = "PERCENT" | "CURRENCY" | "COUNT" | "RATIO" | "DAYS" | "INDEX";
 type Aggregation = "SUM" | "AVERAGE" | "LATEST";
 type Direction = "HIGHER_BETTER" | "LOWER_BETTER";
 
-const UNITS: Unit[] = ["PERCENT", "CURRENCY", "COUNT", "RATIO", "DAYS", "INDEX"];
-const AGGREGATIONS: Aggregation[] = ["SUM", "AVERAGE", "LATEST"];
+/*
+ * The vocabulary a file may use, exported because the downloadable template
+ * offers exactly these as dropdowns. Two lists would drift, and the way they
+ * would drift is a template offering a value the parser then refuses.
+ */
+export const UNITS: Unit[] = ["PERCENT", "CURRENCY", "COUNT", "RATIO", "DAYS", "INDEX"];
+export const AGGREGATIONS: Aggregation[] = ["SUM", "AVERAGE", "LATEST"];
+/** `readDirection` accepts any text containing "higher" or "lower"; these are the canonical two. */
+export const DIRECTIONS = ["Higher is better", "Lower is better"] as const;
 
 /**
  * The export writes these for people to read - "Higher is better", "count" -
