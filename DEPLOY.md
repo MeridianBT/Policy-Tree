@@ -248,12 +248,19 @@ Containers — is the other half, and belongs in whatever pipeline builds this.
 ### What the image contains
 
 The runtime layer does its own `npm ci --omit=dev`: 245 packages rather than the
-503 the build needs. It runs as the base image's `node` user, not root. The
-three packages the container itself runs — `prisma` for migrations on boot,
-`tsx` and `dotenv` for `SEED_ON_BOOT` and `npm run set-password` — are declared
-as dependencies rather than devDependencies, which is what makes the prune safe.
+503 the build needs. The three packages the container itself runs — `prisma`
+for migrations on boot, `tsx` and `dotenv` for `SEED_ON_BOOT` and
+`npm run set-password` — are declared as dependencies rather than
+devDependencies, which is what makes the prune safe.
 Measured before that change: `tsx` vanished under `--omit=dev` while `prisma`
 and `dotenv` survived only by arriving under `@prisma/client`.
+
+**It still runs as root, and should not.** The base image ships a `node` user
+at uid 1000 and the change is three lines, but it has not shipped because it
+could not be tested where it was written — and the way it fails is the container
+starting and then finding it cannot write somewhere, which surfaces on the first
+request rather than at build time. Worth doing from anywhere a `docker build`
+actually runs.
 
 ## Before you send the link to anyone
 
