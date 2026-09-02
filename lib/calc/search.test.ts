@@ -13,7 +13,14 @@
  */
 
 import { describe, expect, it } from "vitest";
-import { matchRows, EMPTY_FILTERS, type SheetFilters } from "@/components/sheet/filters";
+import {
+  matchRows,
+  paramsToView,
+  viewToParams,
+  EMPTY_FILTERS,
+  type SheetFilters,
+  type SheetView,
+} from "@/components/sheet/filters";
 import type { ControlItemRow, GroupRow, SheetRowModel } from "@/lib/sheet/types";
 
 function group(id: string, level: number, statement: string, path: string[]): SheetRowModel {
@@ -155,5 +162,61 @@ describe("searching the sheet", () => {
     // narrowed to motorcycles keeps only the heading chain - never the rows a
     // filter has already excluded.
     expect(ids(search("retail volume", { dics: ["OX"] }))).toEqual(["goal", "volume", "empty"]);
+  });
+});
+
+/**
+ * Carrying the filters out to a file or a printed page.
+ *
+ * Export and Print leave the screen, so what they carry has to survive a URL
+ * and come back meaning the same thing. The round trip is the test: a
+ * serialiser and a parser in one module still drift if only one of them is
+ * exercised, and the failure is silent - a link that looks right and a file
+ * that quietly holds everything.
+ */
+describe("carrying a view in a URL", () => {
+  const roundTrip = (view: Partial<SheetView>) =>
+    paramsToView(viewToParams({ ...EMPTY_FILTERS, ...view }));
+
+  it("writes nothing for an unfiltered sheet", () => {
+    // The common case stays a bare, shareable URL.
+    expect(viewToParams({ ...EMPTY_FILTERS }).toString()).toBe("");
+  });
+
+  it("brings every filter back unchanged", () => {
+    const view = {
+      businessUnits: ["AUTO", "MC"],
+      dics: ["OX", "OX-PTS"],
+      belowTarget: true,
+      search: "retail volume",
+    };
+    expect(roundTrip(view)).toEqual({ ...view, levels: [1, 2, 3] });
+  });
+
+  it("carries the Level 4 view, so + Departments prints what it shows", () => {
+    expect(roundTrip({ levels: [1, 2, 3, 4] }).levels).toEqual([1, 2, 3, 4]);
+    expect(roundTrip({ levels: [1, 2, 3] }).levels).toEqual([1, 2, 3]);
+  });
+
+  it("keeps a search with a comma in it in one piece", () => {
+    // Lists are comma-separated; free text is not a list.
+    expect(roundTrip({ search: "volume, retail" }).search).toBe("volume, retail");
+  });
+
+  it("survives a hand-edited query rather than refusing it", () => {
+    // Printing more than was asked beats refusing to print.
+    const view = paramsToView(new URLSearchParams("bu=,,AUTO,&dic=&below=yes&levels=9"));
+    expect(view.businessUnits).toEqual(["AUTO"]);
+    expect(view.dics).toEqual([]);
+    expect(view.belowTarget).toBe(false);
+    expect(view.levels).toEqual([1, 2, 3]);
+  });
+
+  it("filters the same rows a screen would", () => {
+    // The point of one serialiser and one matchRows: the file and the view
+    // cannot disagree, because the far end runs the near end's own rule.
+    const params = viewToParams({ ...EMPTY_FILTERS, dics: ["OX"] });
+    const onScreen = matchRows(ROWS, { ...EMPTY_FILTERS, dics: ["OX"] });
+    expect(ids(matchRows(ROWS, paramsToView(params)))).toEqual(ids(onScreen));
   });
 });

@@ -122,3 +122,53 @@ export function matchRows(rows: SheetRowModel[], filters: SheetFilters): SheetRo
   }
   return rows.filter((row) => kept.has(row.id));
 }
+
+/**
+ * The filters, carried in a URL.
+ *
+ * Export to Excel and Print view leave the screen and come back as a file or a
+ * page, and both used to arrive unfiltered - a reader who had narrowed the
+ * sheet to one division printed all ninety measures and had to narrow it again
+ * by hand, or worse, did not notice. So the toolbar's state travels with the
+ * link, and the far end applies it with `matchRows`: one filtering rule, the
+ * same one on screen, rather than a second implementation per destination.
+ *
+ * Only what is set is written, so an unfiltered sheet still links to a bare
+ * URL - which keeps the common case shareable and the query readable.
+ */
+export interface SheetView extends SheetFilters {
+  /** Levels on screen. Carried so "+ Departments" prints what it shows. */
+  levels?: number[];
+}
+
+export function viewToParams(view: SheetView, params = new URLSearchParams()): URLSearchParams {
+  if (view.businessUnits.length) params.set("bu", view.businessUnits.join(","));
+  if (view.dics.length) params.set("dic", view.dics.join(","));
+  if (view.belowTarget) params.set("below", "1");
+  if (view.search.trim()) params.set("q", view.search.trim());
+  if (view.levels?.includes(4)) params.set("levels", "1234");
+  return params;
+}
+
+/**
+ * The other direction, for a route handler or a print page.
+ *
+ * Deliberately forgiving: a hand-edited or truncated query narrows the output
+ * rather than refusing it, because the worst outcome of a bad parameter here is
+ * a sheet somebody has to filter again - and refusing to print at all is worse
+ * than printing more than was asked.
+ */
+export function paramsToView(params: URLSearchParams): SheetView {
+  const list = (key: string) =>
+    (params.get(key) ?? "")
+      .split(",")
+      .map((value) => value.trim())
+      .filter(Boolean);
+  return {
+    businessUnits: list("bu"),
+    dics: list("dic"),
+    belowTarget: params.get("below") === "1",
+    search: params.get("q") ?? "",
+    levels: params.get("levels") === "1234" ? [1, 2, 3, 4] : [1, 2, 3],
+  };
+}

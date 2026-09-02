@@ -82,6 +82,22 @@ it is running but the database is not reachable — check `DATABASE_URL`.
 Point Railway's health check at `/api/health` too (Settings → Deploy), so a
 broken deploy is caught rather than going green.
 
+### One check the health endpoint cannot make
+
+The five evaluation symbols — □ ◎ 〇 ▲ ■ — are CJK-adjacent, and several have
+emoji presentation forms. A font substitution on one platform turns the column
+that carries the whole plan's meaning into boxes or coloured pictures, and
+nothing errors: the page is up, the database is fine, and the sheet is nonsense.
+
+Open **`/symbols`** on each platform you deploy to and on the machines people
+will actually read this on. It renders every symbol through the application's
+own font stack and then through each candidate face alone, so a substitution is
+visible rather than assumed.
+
+It is deliberately **not on the menu** — nobody using the plan needs it — so
+type the path. `npm run check:symbols` performs the same check automatically
+against whatever browser is available.
+
 ## 6 · Load the demo data
 
 The database is empty until you seed it. Migrations create the tables; they

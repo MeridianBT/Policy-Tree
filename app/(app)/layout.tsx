@@ -19,7 +19,12 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     { href: "/insights", label: "Insights" },
     { href: "/my-entries", label: "My entries" },
     ...(user.role === "SUPER_ADMIN" ? [{ href: "/admin", label: "Admin" }] : []),
-    { href: "/symbols", label: "Symbols" },
+    // "/symbols" is deliberately absent. It renders each evaluation symbol
+    // through every candidate font so a substitution on a new platform is
+    // visible rather than assumed - a deployment check, not something a
+    // director has any use for. The route still loads when typed, the same way
+    // the Division view does, so IT can open it on a machine it is being rolled
+    // out to. See DEPLOY.md.
   ];
 
   async function endSession() {

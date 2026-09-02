@@ -21,6 +21,7 @@ import {
   type EntryHandlers,
   type SheetFilters,
 } from "./SheetGrid";
+import { viewToParams } from "./filters";
 import { cellKey, retireSaved, type CellEditState } from "./entry-state";
 import { canEnterFigures, type EditingUser } from "./permissions";
 import { saveEntriesAction, saveEntryAction } from "@/lib/entries/actions";
@@ -64,12 +65,10 @@ export const LATEST_FORECAST = "LATEST";
  * a state a single printed sheet can honestly title, so it prints everything
  * rather than implying a filter it cannot name.
  */
-function printUrl(base: string, condensed: boolean, businessUnits: string[]): string {
-  const params = new URLSearchParams();
-  if (condensed) params.set("columns", "quarters");
-  if (businessUnits.length === 1) params.set("bu", businessUnits[0]);
+function outputUrl(base: string, params: URLSearchParams): string {
   const query = params.toString();
-  return query ? `${base}?${query}` : base;
+  if (!query) return base;
+  return `${base}${base.includes("?") ? "&" : "?"}${query}`;
 }
 
 export function SheetScreen({
@@ -153,6 +152,38 @@ export function SheetScreen({
   const [onlyQuarter, setOnlyQuarter] = useState<QuarterCode | null>(null);
 
   const allCondensed = condensedQuarters.length === ALL_QUARTERS.length;
+
+  /*
+   * What Export and Print are handed.
+   *
+   * `effectiveFilters` rather than `filters`, so a Division chosen with no
+   * department chips ticked exports that division in full - which is what it
+   * shows on screen. The levels come from the rows themselves rather than a
+   * prop: whatever is on the sheet is what the file should carry, and reading
+   * it back is one fewer thing that can disagree with the view.
+   */
+  const outputParams = useMemo(() => {
+    const levels = model.rows.some((row) => row.level === 4) ? [1, 2, 3, 4] : [1, 2, 3];
+    const params = viewToParams({ ...effectiveFilters, levels });
+    if (targetVersionId !== LATEST_FORECAST) params.set("version", targetVersionId);
+    return params;
+  }, [effectiveFilters, model.rows, targetVersionId]);
+
+  const exportParams = outputParams;
+  const printParams = useMemo(() => {
+    const params = new URLSearchParams(outputParams);
+    if (allCondensed) params.set("columns", "quarters");
+    return params;
+  }, [outputParams, allCondensed]);
+
+  const narrowed =
+    effectiveFilters.businessUnits.length > 0 ||
+    effectiveFilters.dics.length > 0 ||
+    effectiveFilters.belowTarget ||
+    effectiveFilters.search.trim().length > 0;
+  const outputTitle = narrowed
+    ? "Carries the filters the sheet is showing"
+    : "The whole sheet — nothing is filtered";
 
   const canEditStructure = Boolean(currentUser && currentUser.role !== "VIEWER");
   const [editMode, setEditMode] = useState(false);
@@ -565,21 +596,19 @@ export function SheetScreen({
         <span className="mx-1 h-4 w-px bg-rule" aria-hidden />
         {exportHref && (
           <a
-            href={
-              targetVersionId === LATEST_FORECAST
-                ? exportHref
-                : `${exportHref}${exportHref.includes("?") ? "&" : "?"}version=${targetVersionId}`
-            }
+            href={outputUrl(exportHref, exportParams)}
             className="flex items-center gap-1 rounded-sm border border-rule bg-paper px-2 py-1 text-[11px] text-ink hover:bg-paper-sunken"
+            title={outputTitle}
           >
             <Download size={12} /> Export to Excel
           </a>
         )}
         {printHref && (
           <Link
-            href={printUrl(printHref, allCondensed, filters.businessUnits)}
+            href={outputUrl(printHref, printParams)}
             target="_blank"
             className="flex items-center gap-1 rounded-sm border border-rule bg-paper px-2 py-1 text-[11px] text-ink hover:bg-paper-sunken"
+            title={outputTitle}
           >
             <Printer size={12} /> Print view
           </Link>

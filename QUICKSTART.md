@@ -128,7 +128,10 @@ what is pointing at it, rather than silently orphaning Level 4 rows.
 
 Three tabs — the sheet as rendered, the same figures in long format for
 pivoting, and the evaluation bands in force. Numbers are written as numbers,
-never as pre-formatted strings.
+never as pre-formatted strings. Narrow the sheet first and the file comes out
+narrowed the same way: the filters travel with the link, and so do Print
+view's. To go the other way, **Admin › Structure › Upload a workbook** hands
+out a *Download template* for the year you are uploading into.
 
 ## Check it works
 

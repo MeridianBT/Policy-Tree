@@ -606,8 +606,9 @@ shared mailbox does not fill with hundreds of copies nobody reads.
 | `/print/company` | A3 landscape, print-only |
 | `/print/division/[code]` | The same, pre-scoped to one division |
 | `/admin` | Five sections, one at a time and addressable (`?section=people`): **Year** (Ki setup, version locking, emptying a year, copy-from-previous-Ki), **Structure** (workbook upload), **Organisation** (divisions, departments, business units), **People**, **Evaluation** (the band scale) |
-| `/symbols` | Symbol rendering check for a platform you are deploying to |
-| `/api/export` | Excel download of the current sheet (`?division=CODE` for a Level 4 sheet, `?version=ID` to pin the target basis) |
+| `/symbols` | Symbol rendering check for a platform you are deploying to. **Not on the menu** — a deployment check, not something a director needs. Reachable by typing it, like `/division/[code]` |
+| `/api/export` | Excel download of the sheet as filtered (`?division=CODE` for a Level 4 sheet, `?version=ID` to pin the target basis, plus the filter parameters below) |
+| `/api/template` | The upload template for a Ki (`?ki=ID`, required) |
 | `/api/reminders` | Month-end reminder trigger, called by a scheduler with a shared secret — see below |
 
 Entry is `Tab` to move and save, `Enter` to save and drop a row, `Escape` to
@@ -1143,10 +1144,11 @@ query: everything on it is derived from the same `loadSheet({ levels: [1, 2, 3,
 
 ### Exporting to Excel
 
-"Export to Excel" downloads the sheet currently on screen — same rows, same
-target basis, same filtering by business unit and Department are not applied to the export
-(it always contains everything you are allowed to see) but the pinned target
-version travels with it. The workbook has three tabs:
+**"Export to Excel" downloads the sheet as it is on screen** — the same rows,
+narrowed the same way. Business unit, Division, Department, Below target, Find
+and the Company / + Departments view all travel in the link, along with the
+pinned target version and the year being worked on. The workbook has three
+tabs:
 
 - **Sheet** mirrors the screen: target above actual above achievement, quarters
   and the Ki total tinted the same as on screen, the evaluation legend at the
@@ -1160,6 +1162,33 @@ as pre-formatted strings; an empty cell stays empty rather than becoming a
 zero, matching the em-dash rule on screen. `lib/export/workbook.ts` builds the
 workbook from the same `SheetModel` the grid renders — there is no second
 formatting path to drift from the first.
+
+#### The filters travel with the output
+
+Both **Export to Excel** and **Print view** carry the toolbar's state in their
+link, and the far end applies it with `matchRows` — the sheet's own filtering
+function, not a second implementation per destination. Neither used to: a
+reader who had narrowed to one division exported all ninety measures and had to
+narrow it again in Excel, or did not notice and circulated the wrong thing.
+
+| Parameter | Carries |
+|---|---|
+| `bu` | business unit codes, comma separated |
+| `dic` | Division and Department codes |
+| `below` | `1` for the Below target preset |
+| `q` | the Find text |
+| `levels` | `1234` when + Departments is on, so the print shows what the screen shows |
+| `version` | the pinned target version |
+| `columns` | `quarters` on the print link when the sheet is condensed |
+
+Only what is set is written, so an unfiltered sheet still links to a bare
+`/api/export` — the common case stays shareable and the query readable. The
+printed page names what it was narrowed to in its title, because an A3 on a
+wall showing three quarters of the plan with nothing admitting to it is worse
+than no A3. `viewToParams` / `paramsToView` in `components/sheet/filters.ts` are
+the two halves, and `lib/calc/search.test.ts` round-trips them: a serialiser and
+a parser drift silently otherwise, and the symptom would be a link that looks
+right and a file that quietly holds everything.
 
 ### Admin in five sections
 
@@ -1349,7 +1378,8 @@ npm run check:symbols     # rasterises each glyph and compares against a tofu bo
 ```
 
 Open `/symbols` in the browser for a visual check of the stack and each
-candidate face individually.
+candidate face individually. It is not linked from the menu — nobody using the
+plan needs it — so type the path.
 
 The check rasterises each glyph and compares it against a private-use codepoint
 that no font covers, so a missing glyph fails rather than silently drawing a

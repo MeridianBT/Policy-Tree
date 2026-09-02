@@ -8,6 +8,7 @@ import { prisma } from "@/lib/db";
 import { getCurrentUser, orgUnitSubtree } from "@/lib/auth/session";
 import { activeKiId } from "@/lib/ki/active";
 import { loadSheet } from "@/lib/sheet/query";
+import { matchRows, paramsToView } from "@/components/sheet/filters";
 import { buildWorkbook } from "@/lib/export/workbook";
 
 export const dynamic = "force-dynamic";
@@ -20,7 +21,8 @@ export async function GET(request: Request) {
   const division = params.get("division");
   const versionId = params.get("version");
 
-  let levels = [1, 2, 3];
+  const view = paramsToView(params);
+  let levels = view.levels ?? [1, 2, 3];
   let orgUnitIds: string[] | undefined;
   let title = "Company sheet — Levels 1 to 3";
   let filename = "company-sheet";
@@ -52,7 +54,24 @@ export async function GET(request: Request) {
   const pinned = versionId ? model.versions.find((version) => version.id === versionId) : null;
   const basisLabel = pinned ? `Target: ${pinned.code}` : "Target: latest forecast";
 
-  const workbook = await buildWorkbook({ model, title, basisLabel });
+  /*
+   * The file carries what the screen was showing.
+   *
+   * It used to carry everything regardless, so a reader who had narrowed the
+   * sheet to one division exported all ninety measures and had to narrow it
+   * again in Excel - or did not notice, and circulated the wrong thing. The
+   * filters arrive in the query and are applied with `matchRows`, the same
+   * function the sheet itself uses, so the file cannot disagree with the view
+   * it was taken from.
+   */
+  const filtered = { ...model, rows: matchRows(model.rows, view) };
+  const narrowed = filtered.rows.length !== model.rows.length;
+
+  const workbook = await buildWorkbook({
+    model: filtered,
+    title: narrowed ? `${title} · filtered` : title,
+    basisLabel,
+  });
 
   const stamp = new Date().toISOString().slice(0, 10);
   const safeKi = model.kiCode.replace(/\s+/g, "-").toLowerCase();

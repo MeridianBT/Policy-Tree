@@ -392,15 +392,28 @@ async function addingAMeasureLandsAgainstItsRow(browser) {
 
   const add = async (buttonIndex, name) => {
     await page.locator('button[title^="Add measure"]').nth(buttonIndex).click();
-    await page.waitForTimeout(900);
-    await page
+    const field = page
       .locator('.bg-paper-sunken input[type="text"], .bg-paper-sunken input:not([type])')
-      .first()
-      .fill(name);
-    await page.waitForTimeout(300);
+      .first();
+    await field.waitFor({ state: "visible", timeout: 20000 });
+    await field.fill(name);
     await page.locator("button", { hasText: /^Add measure$/ }).last().click();
-    await page.waitForTimeout(4000);
-    const all = await rows();
+    /*
+     * Wait for the row, by polling the very thing the assertions read.
+     *
+     * Two wrong waits came before this one. A fixed pause failed on a cold
+     * route, where the server action outlasts any pause worth writing. Then a
+     * text wait passed *instantly* and just as wrongly: the name is still in
+     * the form that was typed into, so "is it on the page" was true a beat
+     * before the row existed. Only "is it in a row cell" is the question, and
+     * that is what `rows()` answers.
+     */
+    const deadline = Date.now() + 25000;
+    let all = await rows();
+    while (!all.some((row) => row.text.includes(name)) && Date.now() < deadline) {
+      await page.waitForTimeout(400);
+      all = await rows();
+    }
     const at = all.findIndex((row) => row.text.includes(name));
     return { all, at, indent: at === -1 ? null : all[at].indent };
   };
@@ -1260,6 +1273,103 @@ async function adminIsInSections(browser) {
  * reports no writes at all.
  */
 /**
+ * Export and Print carry the filters the sheet is showing.
+ *
+ * Both used to leave them behind. A reader who had narrowed to one division
+ * exported all ninety measures and had to narrow it again in Excel - or did
+ * not notice, and circulated the wrong thing. The links are checked here
+ * rather than the files, because the link is where the filters are either
+ * carried or dropped, and the far end applies them with the sheet's own
+ * matchRows.
+ */
+async function outputsCarryTheFilters(browser) {
+  console.log("\nExport and Print carry the filters");
+  const page = await browser.newPage({ viewport: { width: 1600, height: 950 } });
+  await signIn(page);
+  await page.waitForTimeout(1500);
+
+  const links = () =>
+    page.evaluate(() => {
+      const find = (text) =>
+        [...document.querySelectorAll("a")].find((a) => a.textContent.trim().includes(text));
+      const href = (a) => (a ? a.getAttribute("href") : null);
+      return {
+        exportHref: href(find("Export to Excel")),
+        printHref: href(find("Print view")),
+      };
+    });
+
+  const plain = await links();
+  check(
+    plain.exportHref === "/api/export" && plain.printHref === "/print/company",
+    "an unfiltered sheet links to a bare URL",
+    `${plain.exportHref} · ${plain.printHref}`,
+  );
+
+  // Narrow it the way somebody preparing a division's review would.
+  await page.locator("label", { hasText: "Division" }).first().locator("select").selectOption("OX");
+  await page.waitForTimeout(2000);
+  const narrowed = await links();
+  check(
+    Boolean(narrowed.exportHref && /[?&]dic=OX/.test(narrowed.exportHref)),
+    "choosing a division puts it in the export link",
+    narrowed.exportHref,
+  );
+  check(
+    Boolean(narrowed.printHref && /[?&]dic=OX/.test(narrowed.printHref)),
+    "and in the print link",
+    narrowed.printHref,
+  );
+
+  // The printed page has to actually be narrower, not merely carry the query.
+  // Counted from the served HTML: the print page is a plain table, one
+  // "col-measure" cell per Control Item, and no links to count.
+  const measures = async (url) =>
+    page.evaluate(async (target) => {
+      const html = await (await fetch(target)).text();
+      return (html.match(/col-measure/g) || []).length;
+    }, url);
+  const wide = await measures("/print/company");
+  const narrow = await measures(narrowed.printHref);
+  check(
+    narrow > 0 && narrow < wide,
+    "and the printed page really is narrower",
+    `${wide} measures unfiltered, ${narrow} filtered`,
+  );
+
+  // Search travels too, and is the one that is not a list.
+  await page.locator("label", { hasText: "Division" }).first().locator("select").selectOption("");
+  await page.waitForTimeout(1500);
+  const search = page.locator('input[placeholder*="Find"], input[type="search"]').first();
+  if (await search.count()) {
+    await search.fill("market share");
+    await page.waitForTimeout(1800);
+    const searched = await links();
+    check(
+      Boolean(searched.exportHref && /[?&]q=market\+share/.test(searched.exportHref)),
+      "a search travels with the link",
+      searched.exportHref,
+    );
+    await search.fill("");
+    await page.waitForTimeout(1200);
+  }
+
+  // "+ Departments" is a filter too: print what is on screen, not Levels 1-3.
+  await page.locator("button", { hasText: /Departments/ }).first().click();
+  await page.waitForTimeout(4000);
+  const expanded = await links();
+  check(
+    Boolean(expanded.printHref && /levels=1234/.test(expanded.printHref)),
+    "and so does the Level 4 view",
+    expanded.printHref,
+  );
+  const withL4 = await measures(expanded.printHref);
+  check(withL4 > wide, "which prints more than the company page", `${wide} -> ${withL4}`);
+
+  await page.close();
+}
+
+/**
  * The upload template.
  *
  * The panel used to point at the export for a template, which works only for a
@@ -1615,6 +1725,20 @@ async function theUatWording(browser) {
   await page.waitForTimeout(1500);
   check(!/\/login/.test(page.url()), "/division/AUTO still loads when typed");
 
+  // Symbols went the same way: it renders each evaluation symbol through every
+  // candidate font so a substitution on a new platform is visible rather than
+  // assumed. That is a deployment check, not something a director needs - so
+  // it is off the menu and still there for whoever rolls the app out.
+  await page.goto(BASE + "/sheet");
+  await page.waitForTimeout(1500);
+  check(
+    (await page.locator("nav").getByText("Symbols", { exact: true }).count()) === 0,
+    "no Symbols menu in the nav",
+  );
+  await page.goto(BASE + "/symbols");
+  await page.waitForTimeout(1500);
+  check(!/\/login/.test(page.url()), "/symbols still loads when typed");
+
   // The button names what it keys.
   await page.goto(BASE + "/sheet");
   await page.waitForTimeout(2000);
@@ -1647,6 +1771,7 @@ async function theUatWording(browser) {
     await anObjectiveReadsAsOneStatement(browser);
     await severalControlItemsUnderOneMeasure(browser);
     await adminIsInSections(browser);
+    await outputsCarryTheFilters(browser);
     await theTemplateDownloads(browser);
     await theUploadPreviewWritesNothing(browser);
     await pagesDoNotOverflow(browser);
