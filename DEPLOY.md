@@ -253,7 +253,10 @@ for migrations on boot, `tsx` and `dotenv` for `SEED_ON_BOOT` and
 `npm run set-password` — are declared as dependencies rather than
 devDependencies, which is what makes the prune safe.
 Measured before that change: `tsx` vanished under `--omit=dev` while `prisma`
-and `dotenv` survived only by arriving under `@prisma/client`.
+and `dotenv` survived only by arriving under `@prisma/client`. On the demo, the
+pushed image went from 417 MB to 365 MB across that one commit, and the boot log
+still shows migrations applying and the seed check running — which is the proof
+that the pruned tree still carries what the entrypoint needs.
 
 **It still runs as root, and should not.** The base image ships a `node` user
 at uid 1000 and the change is three lines, but it has not shipped because it
