@@ -8,7 +8,12 @@
  */
 
 import { describe, expect, it } from "vitest";
-import { buildImportPlan, type PlanRow, type Snapshot } from "@/lib/import/plan";
+import {
+  buildImportPlan,
+  type PlanDefinitionRow,
+  type PlanRow,
+  type Snapshot,
+} from "@/lib/import/plan";
 
 const TARGET_VERSION = "v-prb";
 const ACTUAL_VERSION = "v-act";
@@ -39,6 +44,8 @@ const snapshot: Snapshot = {
       aggregation: "SUM",
       direction: "HIGHER_BETTER",
       values: { [TARGET_VERSION]: { "2026-04": 4560 } },
+      definition: "Retail units invoiced, net of cancellations.",
+      latestRationale: "Last year 4,100. Capacity model gives 4,700 with the July line.",
     },
   ],
 };
@@ -66,12 +73,18 @@ function row(overrides: Partial<PlanRow> = {}): PlanRow {
   };
 }
 
-const plan = (rows: PlanRow[], allowCreate = false) =>
-  buildImportPlan(rows, snapshot, {
-    targetVersionId: TARGET_VERSION,
-    actualVersionId: ACTUAL_VERSION,
-    allowCreate,
-  });
+const plan = (rows: PlanRow[], allowCreate = false, definitions: PlanDefinitionRow[] = []) =>
+  buildImportPlan(
+    rows,
+    snapshot,
+    { targetVersionId: TARGET_VERSION, actualVersionId: ACTUAL_VERSION, allowCreate },
+    definitions,
+  );
+
+/** A row of the Definitions sheet, defaulting to one that changes nothing. */
+function definitionRow(overrides: Partial<PlanDefinitionRow> = {}): PlanDefinitionRow {
+  return { row: 2, code: "AU-VOL", definition: "", rationale: "", ...overrides };
+}
 
 describe("writing figures against a measure that exists", () => {
   it("writes a target to the version the form chose", () => {
@@ -304,5 +317,117 @@ describe("settings on a new measure", () => {
     const result = plan([row({ code: "NEW-9", objective: "M", unit: "furlongs" })], true);
     expect(result.refusals[0].reason).toBe("UNKNOWN_SETTING");
     expect(result.measures).toHaveLength(0);
+  });
+});
+
+describe("the Definitions sheet", () => {
+  it("records a definition that differs from what is stored", () => {
+    const result = plan(
+      [],
+      false,
+      [definitionRow({ definition: "Retail units delivered, including fleet." })],
+    );
+    expect(result.definitions).toEqual([
+      {
+        row: 2,
+        controlItemId: "item-1",
+        measureKey: null,
+        body: "Retail units delivered, including fleet.",
+      },
+    ]);
+  });
+
+  /*
+   * The rule the whole feature rests on. The way a template is actually used
+   * is download, fill in a few, upload, notice one more, upload again - so a
+   * second application of the same file has to be a no-op rather than a
+   * duplicate record of the same reasoning.
+   */
+  it("writes nothing when the definition is the one already stored", () => {
+    const result = plan(
+      [],
+      false,
+      [definitionRow({ definition: "Retail units invoiced, net of cancellations." })],
+    );
+    expect(result.definitions).toHaveLength(0);
+    expect(result.unchanged).toBe(1);
+  });
+
+  it("does not treat a reflowed paragraph as a revision", () => {
+    // Excel hands back what somebody's wrapping did to it. Compared the way
+    // statements are compared: trimmed, lowercased, whitespace collapsed.
+    const result = plan(
+      [],
+      false,
+      [definitionRow({ definition: "  Retail units invoiced,\n  net of cancellations. " })],
+    );
+    expect(result.definitions).toHaveLength(0);
+  });
+
+  it("adds a rationale rather than replacing the one recorded", () => {
+    const result = plan([], false, [definitionRow({ rationale: "Line 2 slipped to October." })]);
+    expect(result.rationales).toEqual([
+      { row: 2, controlItemId: "item-1", measureKey: null, body: "Line 2 slipped to October." },
+    ]);
+  });
+
+  it("skips a rationale that is already the newest on this version, and says so", () => {
+    const result = plan(
+      [],
+      false,
+      [
+        definitionRow({
+          rationale: "Last year 4,100. Capacity model gives 4,700 with the July line.",
+        }),
+      ],
+    );
+    expect(result.rationales).toHaveLength(0);
+    expect(result.notes[0].note).toContain("already the newest");
+  });
+
+  it("leaves an empty cell alone rather than clearing what is stored", () => {
+    const result = plan([], false, [definitionRow()]);
+    expect(result.definitions).toHaveLength(0);
+    expect(result.rationales).toHaveLength(0);
+    expect(result.notes).toHaveLength(0);
+    expect(result.unchanged).toBe(0);
+  });
+
+  it("refuses a code no measure has, and never creates one from this sheet", () => {
+    const result = plan([], true, [definitionRow({ code: "NOPE", definition: "Something." })]);
+    expect(result.refusals[0]).toMatchObject({ code: "NOPE", reason: "UNKNOWN_CODE" });
+    expect(result.definitions).toHaveLength(0);
+    expect(result.measures).toHaveLength(0);
+  });
+
+  it("attaches a definition to a measure this same file is creating", () => {
+    const result = plan(
+      [row({ code: "NEW-1", objective: "Fresh measure", controlItem: "Units" })],
+      true,
+      [definitionRow({ row: 3, code: "NEW-1", definition: "Counted at despatch." })],
+    );
+    expect(result.definitions).toEqual([
+      {
+        row: 3,
+        controlItemId: null,
+        measureKey: result.measures[0].key,
+        body: "Counted at despatch.",
+      },
+    ]);
+  });
+
+  it("takes the first of two rows disagreeing about one measure, and says so", () => {
+    // Silently taking the last would make the answer depend on row order.
+    const result = plan(
+      [],
+      false,
+      [
+        definitionRow({ row: 2, definition: "First wording." }),
+        definitionRow({ row: 3, definition: "Second wording." }),
+      ],
+    );
+    expect(result.definitions).toHaveLength(1);
+    expect(result.definitions[0].body).toBe("First wording.");
+    expect(result.notes[0].note).toContain("already read further up");
   });
 });

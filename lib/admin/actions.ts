@@ -223,9 +223,37 @@ export async function copyStructure(fromKiId: string, toKiId: string): Promise<A
       include: { controlItems: true },
     });
 
+    /*
+     * The definitions travel with the measures; the rationale log does not.
+     *
+     * A definition is about what the measure counts, which does not change by
+     * crossing a year boundary any more than its unit or its department does -
+     * and re-typing ninety of them every April is how they stop being written
+     * at all. A target rationale is about one year's numbers, so it stays with
+     * that year for the same reason entries are never copied.
+     *
+     * Only the newest un-withdrawn one per measure. What last year's definition
+     * used to say is last year's history, and carrying the whole chain forward
+     * would make every year's register longer than the one before it.
+     */
+    const definitions = await prisma.controlItemNote.findMany({
+      where: {
+        kind: "DEFINITION",
+        retractedAt: null,
+        controlItem: { node: { kiId: fromKiId } },
+      },
+      orderBy: { createdAt: "desc" },
+      select: { controlItemId: true, body: true, authorId: true, createdAt: true },
+    });
+    const definitionByItem = new Map<string, (typeof definitions)[number]>();
+    for (const note of definitions) {
+      if (!definitionByItem.has(note.controlItemId)) definitionByItem.set(note.controlItemId, note);
+    }
+
     const idMap = new Map<string, string>();
     let copiedNodes = 0;
     let copiedItems = 0;
+    let copiedDefinitions = 0;
 
     await prisma.$transaction(async (tx) => {
       // Levels ascend, so a parent is always created before its children.
@@ -245,7 +273,7 @@ export async function copyStructure(fromKiId: string, toKiId: string): Promise<A
         copiedNodes++;
 
         for (const item of node.controlItems) {
-          await tx.controlItem.create({
+          const createdItem = await tx.controlItem.create({
             data: {
               nodeId: created.id,
               // Codes are unique across the database, so they are namespaced
@@ -265,7 +293,25 @@ export async function copyStructure(fromKiId: string, toKiId: string): Promise<A
               responsibleUserId: item.responsibleUserId,
               sortOrder: item.sortOrder,
             },
+            select: { id: true },
           });
+
+          // Kept with its original author and date: the words genuinely were
+          // written then, and stamping them with today's copy would claim
+          // somebody had reviewed a definition they had not looked at.
+          const definition = definitionByItem.get(item.id);
+          if (definition) {
+            await tx.controlItemNote.create({
+              data: {
+                controlItemId: createdItem.id,
+                kind: "DEFINITION",
+                body: definition.body,
+                authorId: definition.authorId,
+                createdAt: definition.createdAt,
+              },
+            });
+            copiedDefinitions++;
+          }
           copiedItems++;
         }
       }
@@ -274,7 +320,11 @@ export async function copyStructure(fromKiId: string, toKiId: string): Promise<A
     revalidatePath("/admin");
     return {
       ok: true,
-      message: `Copied ${copiedNodes} nodes and ${copiedItems} Control Items from ${source.code} into ${target.code}. No values were copied.`,
+      message:
+        `Copied ${copiedNodes} nodes and ${copiedItems} Control Items from ${source.code} into ` +
+        `${target.code}` +
+        (copiedDefinitions > 0 ? `, with ${copiedDefinitions} definitions` : "") +
+        `. No values and no target rationale were copied.`,
     };
   } catch (error) {
     return fail(error);

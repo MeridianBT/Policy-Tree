@@ -197,7 +197,7 @@ export function AdminScreen({
                 </form>
               </Panel>
 
-              <Panel title="Copy structure from a previous Ki" hint="Copies Goals, Themes, Objectives and Control Items. Values are never copied.">
+              <Panel title="Copy structure from a previous Ki" hint="Copies Goals, Themes, Objectives, Control Items and their definitions. Values and target rationale are never copied.">
                 <form
                   className="flex flex-wrap items-end gap-2"
                   action={(formData) =>

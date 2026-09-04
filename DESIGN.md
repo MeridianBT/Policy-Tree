@@ -168,6 +168,29 @@ badly.
   good-to-bad axis, so an average of them would be a number the data cannot
   support. A month with nothing keyed is a dashed outline, never an empty gap.
 
-Both are read-only. Neither introduced a token, and neither is reachable from a
-row action on the sheet — they are destinations in the nav, because they are
-read at different moments than the sheet is.
+- **Rationale** (`/rationale`). The sheet says what the number is. This says
+  what the measure counts and why the target is that number — the two things
+  that actually get argued about, and the two the grid answers worst, because
+  seventeen columns of figures leave nowhere to put a paragraph. One block per
+  measure: its place in the tree, its Ki target, the definition, then the
+  rationale entries newest first with the author, the date and the version each
+  one explains. A measure with nothing written prints a muted line saying so,
+  the way the cascade does for an Objective nothing ladders into; a count above
+  the list says how many of the ninety are in that state.
+
+  Nothing about it appears on the sheet — no column, no marker. It is off the
+  operating surface on purpose.
+
+**Two of the three are read-only. The Rationale register is not, and that is a
+departure worth stating rather than glossing.** Cascade and Insights are pages
+you read; this one is a page you work down, and the gaps are the reason it
+exists. Filling ninety of them through ninety round trips to ninety detail
+pages is not a thing anybody would ever do, so the writing happens where the
+gap is visible. It is written inline all the same — a textarea opening where
+the text will sit, never a modal — which is the rule the entry screen and the
+sheet's structure editing already follow, and it matters more here: a modal
+over a list of ninety loses your place in the list.
+
+None of the three introduced a token, and none is reachable from a row action
+on the sheet — they are destinations in the nav, because they are read at
+different moments than the sheet is.

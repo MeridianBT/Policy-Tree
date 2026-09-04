@@ -601,8 +601,9 @@ shared mailbox does not fill with hundreds of copies nobody reads.
 | `/division/[code]` | The same Level 4 sheet, pre-scoped to one division and its departments — a narrower, single-division view of what "+ Departments" on the company sheet shows for everyone. Reached by URL; not linked from the nav, where it duplicated the sheet's own filters |
 | `/cascade` | A read-only, one-page alignment map from every Company Goal down to the Department work laddering into it, narrowable by view, business unit and division — see below |
 | `/insights` | The month-end review, anchored on one month: how much of it has reported and who owes the rest, what is below target ranked by direction of travel, and the biggest movers either way — see below |
+| `/rationale` | The register: what each measure counts and why its target is that number, one block per measure, with the same filters the sheet uses and a **Nothing recorded** worklist preset. The one later screen that is written to as well as read — see below |
 | `/my-entries` | Keyboard-driven monthly entry for everything the signed-in user owns, with an outstanding count |
-| `/control-item/[id]` | Trend chart with every version overlaid, stored cells including formulas as typed, and the full audit trail |
+| `/control-item/[id]` | Trend chart with every version overlaid, stored cells including formulas as typed, the full audit trail, and this measure's definition and rationale |
 | `/print/company` | A3 landscape, print-only |
 | `/print/division/[code]` | The same, pre-scoped to one division |
 | `/admin` | Five sections, one at a time and addressable (`?section=people`): **Year** (Ki setup, version locking, emptying a year, copy-from-previous-Ki), **Structure** (workbook upload), **Organisation** (divisions, departments, business units), **People**, **Evaluation** (the band scale) |
@@ -1071,6 +1072,60 @@ exactly where it structurally attaches — under the Level 3 Objective it
 ladders into — with no possibility of drifting from what the sheet itself
 would show.
 
+### Why a measure means what it means
+
+The definitions of Control Items and their targets get argued about, and until
+`/rationale` the plan kept no trace of either. A Control Item carries
+`measured_as` — a short label like "Units sold" — which names the measurement
+method without defining it: whether that is retail or wholesale, invoiced or
+delivered, net of cancellations, lived only in a meeting nobody minuted. And
+`entry_audit` records that a figure changed, by whom and when, with no column
+for why.
+
+Two kinds of record, because they have different lifetimes.
+
+| | **Definition** | **Target rationale** |
+|---|---|---|
+| Answers | What is counted, and where the figure comes from | Why the target is this number, and what it assumes |
+| Belongs to | The measure | One year's targets |
+| Carries a version | No | The version it explains — OB, 2QFC — so a revision reads as a revision |
+| Next year | Copied forward with the measure | Stays where it was written |
+| Revising it | Write a new one; the newest stands | Add an entry; the log is the history of the argument |
+
+**Nothing is ever updated.** The table is append-only, the same rule
+`entry_audit` follows and for the same reason: reasoning that can be quietly
+rewritten is worth nothing in the argument it exists to settle. A revised
+definition is a new row and the one it replaced stays readable behind an
+"earlier versions" disclosure. A mistake — the note pasted against the wrong
+measure — is **withdrawn**, by its author or a super admin, which marks the row
+rather than removing it. That is deliberate: a delete button on a dispute log
+would defeat the log.
+
+The screen is a destination in the nav, like the cascade and insights, because
+it is read at a different moment than the sheet — before the year starts, and
+in the middle of a review when somebody disputes a definition. It is the only
+one of the three you also write to, because filling ninety gaps through ninety
+round trips is not a thing anybody would do. Writing is inline, at the row,
+never a modal. A **Nothing recorded** preset narrows to the measures carrying
+neither, which turns the page into a worklist, and every filter travels in the
+URL so that worklist can be sent to whoever has to fill it in.
+
+Nothing about it appears on the sheet. No column, no marker.
+
+Who may write is the same rule as who may key a figure —
+`canEditControlItem`, so an OWNER writes against measures they are responsible
+for or whose department is their own, and a VIEWER writes nothing. Two
+deliberate differences from the figure rules:
+
+- **A locked version does not block a note.** The lock exists so a closed
+  figure cannot be rewritten; a note is not a figure, and writing down after
+  the fact why OB was set the way it was is the case this table exists for.
+  Refusing it would leave the years that matter most as the ones nothing can
+  be said about.
+- **Withdrawal is the author's, not the measure owner's.** Being able to edit
+  a measure is not the same as being able to take back somebody else's stated
+  reasoning. Disagree by adding your own.
+
 ### The month-end review
 
 `/insights` is the page a monthly review is held on. It replaced a
@@ -1286,10 +1341,51 @@ and carries one worked row. Nothing is pre-filled on the Upload sheet of an
 empty year on purpose: an example left in place is a measure nobody meant to
 create.
 
+#### Definitions upload too
+
+A third sheet, **Definitions**, carries what each measure counts and why its
+target is that number — one row per measure, not per month. That grain is the
+whole reason it is a separate sheet: the Upload grid is one row per measure per
+month, so a Definition column there would ask for the same paragraph twelve
+times and give it twelve chances to disagree with itself.
+
+| Column | Read? | |
+|---|---|---|
+| Code | Read | Which measure. This sheet never creates one |
+| Measure | Ignored | Context, so a list of codes is usable |
+| Definition | Read | Pre-filled with what is stored. Edit it to revise it |
+| Rationale to add | Read | **Added** as a new dated entry, never a replacement |
+| Rationale recorded so far | Ignored | What has already been said, greyed, beside the box for adding to it |
+
+Definition is pre-filled and Rationale is not, and the asymmetry is the point:
+a definition is replaced by its newest version, so editing what is there is the
+right gesture; a rationale entry is dated, attributed and already read by other
+people, so the file offers a box to add one and shows the existing log where it
+cannot be typed over.
+
+**Sending the same file twice is safe**, which matters because the way a
+template is actually used is download, fill in a few, upload, notice one more,
+upload again. A definition matching what is stored writes nothing — compared
+the way statements are compared, trimmed and whitespace-collapsed, so a
+paragraph Excel reflowed is not a revision of itself. A rationale matching the
+newest entry already on that version is skipped and reported under "differences
+left alone" rather than silently. An empty cell still means "nothing to say",
+never "clear it". And two rows disagreeing about one measure take the first and
+say so, because taking the last would make the answer depend on row order.
+
+Anything written this way is stamped with the uploader's name, today's date and
+the version the Target column writes to — you are uploading OB's numbers and
+OB's reasons in one file.
+
 `tests/template.test.ts` sends the generated file straight back through
 `readWorkbook`, and fills a blank one in and runs it through `buildImportPlan`
 — the two modules that have to agree about column names live apart, so the
-round trip is the only thing that catches a heading changed on one side.
+round trip is the only thing that catches a heading changed on one side. It
+also asserts that the Definitions sheet does not become the sheet the *figures*
+are read from: the reader used to take the first worksheet carrying rows, which
+was right only because Upload happened to be added before Reference, and with a
+third populated sheet that was one reorder away from reading definitions as a
+plan. It names the sheets now.
 
 **The Data tab of an export uploads too** — export, edit, upload back. A
 hand-made sheet with just `Code`, `Period` and `Target` works as well, because
@@ -1516,9 +1612,9 @@ current Ki, so run it on a development database and re-seed afterwards.
 
 ## Deliberately not built
 
-Gap analysis and countermeasure text (deferred by design — the schema
-accommodates a text block attached to a Control Item per quarter, and nothing is
-built), approval workflow, notifications, chat integrations, weighted
+Gap analysis and countermeasure text (deferred by design — `control_item_note`
+now has the place for it: a third value in `NoteKind`, beside DEFINITION and
+RATIONALE, rather than a third table. Nothing is built), approval workflow, notifications, chat integrations, weighted
 roll-up or contribution scoring between levels, initiatives or task tracking
 beneath Control Items, and mobile-optimised entry. The application is
 desktop-first and does not break on a tablet.

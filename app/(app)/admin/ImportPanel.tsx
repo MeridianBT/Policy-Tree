@@ -59,7 +59,16 @@ export function ImportPanel({ kis }: { kis: KiOption[] }) {
   }
 
   const plan = outcome?.plan;
-  const hasWork = Boolean(plan && (plan.figures.length || plan.measures.length || plan.nodes.length));
+  const hasWork = Boolean(
+    plan &&
+      (plan.figures.length ||
+        plan.measures.length ||
+        plan.nodes.length ||
+        // A file that only fills in definitions is a real upload, and Apply
+        // has to stay enabled for it.
+        plan.definitions.length ||
+        plan.rationales.length),
+  );
 
   return (
     <form ref={form} className="flex flex-col gap-2">
@@ -172,6 +181,35 @@ export function ImportPanel({ kis }: { kis: KiOption[] }) {
             </Detail>
           )}
 
+          {plan && (plan.definitions.length > 0 || plan.rationales.length > 0) && (
+            <Detail
+              title={
+                [
+                  plan.definitions.length &&
+                    `${plan.definitions.length} definition${plan.definitions.length === 1 ? "" : "s"}`,
+                  plan.rationales.length &&
+                    `${plan.rationales.length} rationale entr${plan.rationales.length === 1 ? "y" : "ies"}`,
+                ]
+                  .filter(Boolean)
+                  .join(" · ") + " from the Definitions sheet"
+              }
+            >
+              {/*
+                Only what actually changes reaches here. A definition matching
+                what is stored, and a rationale already recorded against this
+                version, are counted as unchanged or listed under "differences
+                left alone" - which is what makes sending the same file twice
+                safe.
+              */}
+              {plan.definitions.map((write) => (
+                <li key={`definition-${write.row}`}>row {write.row}: definition — {excerpt(write.body)}</li>
+              ))}
+              {plan.rationales.map((write) => (
+                <li key={`rationale-${write.row}`}>row {write.row}: rationale — {excerpt(write.body)}</li>
+              ))}
+            </Detail>
+          )}
+
           {plan && plan.refusals.length > 0 && <Refusals plan={plan} />}
 
           {plan && plan.notes.length > 0 && (
@@ -249,4 +287,10 @@ function Refusals({ plan }: { plan: NonNullable<ImportOutcome["plan"]> }) {
       ))}
     </>
   );
+}
+
+/** Enough of a note to recognise it in a preview, never the whole paragraph. */
+function excerpt(body: string): string {
+  const flat = body.replace(/\s+/g, " ").trim();
+  return flat.length > 80 ? `${flat.slice(0, 79)}…` : flat;
 }

@@ -708,7 +708,27 @@ async function comparingVersionsFitsItsRow(browser) {
   check(before.overflow === 0, "a plain sheet keeps its cells inside their rows", `${before.overflow}px`);
 
   await page.locator("label", { hasText: "Compare with" }).first().locator("select").selectOption({ label: "OB" });
-  await page.waitForTimeout(5000);
+
+  /*
+   * Poll for the compared cell rather than sleeping for it. Five seconds was
+   * enough in isolation and not enough during a full run, where the dev server
+   * is compiling other routes - and the way it failed was the worst kind: the
+   * uncompared cell still renders three lines, so the shape assertion passed
+   * and only the content ones failed, which reads as a broken feature rather
+   * than a check that looked too early.
+   */
+  await page
+    .waitForFunction(
+      () =>
+        [...document.querySelectorAll("div.group.flex.w-full")]
+          .flatMap((row) => [...row.querySelectorAll("span.flex.flex-col")])
+          .some((stack) =>
+            [...stack.children].some((line) => line.textContent.trim().startsWith("OB")),
+          ),
+      undefined,
+      { timeout: 30000 },
+    )
+    .catch(() => {});
 
   const after = await layout();
   check(after.overflow === 0, "and so does a compared one", `${after.overflow}px over`);
@@ -1760,6 +1780,137 @@ async function theUatWording(browser) {
   await page.close();
 }
 
+/**
+ * Writing down why a target is the number it is.
+ *
+ * The register is the one screen in the application that both reads a list of
+ * every measure and writes to it, so the failure to guard against is a note
+ * that appears to save and is not there on the next read - the panel showing
+ * its own optimistic state rather than what came back.
+ *
+ * The assertion polls the rendered entries rather than document.body.innerText,
+ * for the reason the add-a-row check does: the textarea that was typed into
+ * still contains the text, so "is it on the page" is true a beat before the
+ * note exists.
+ */
+async function aRationaleCanBeRecorded(browser) {
+  console.log("\nA rationale can be recorded");
+  const page = await browser.newPage({ viewport: { width: 1500, height: 950 } });
+  await signIn(page);
+  await page.goto(`${BASE}/rationale`);
+  const measures = () => page.locator("ol > li").filter({ has: page.locator("h2") });
+  // The rendered blocks, not a fixed pause: a cold route compiles for longer
+  // than any sleep worth writing.
+  await measures().first().waitFor({ timeout: 30000 }).catch(() => {});
+  const count = await measures().count();
+  check(count > 0, "the register lists measures", `${count} measures`);
+
+  const summary = await page.locator("p.num").first().innerText();
+  check(/of \d+ defined/.test(summary), "and says how much of the plan is written down", summary);
+
+  const first = measures().first();
+  const heading = (await first.locator("h2").innerText()).trim();
+
+  // Definition, written where it will be read.
+  await first.locator("button", { hasText: /^(Edit|Record a definition)$/ }).first().click();
+  await page.waitForTimeout(400);
+  const stamp = `UICHECK ${Date.now().toString(36)}`;
+  await first.locator("textarea").fill(`Counted at despatch. ${stamp}`);
+  await first.locator("button", { hasText: /^(Save definition|Record definition)$/ }).click();
+
+  const definitionLanded = await page
+    .waitForFunction(
+      ([text]) => {
+        const blocks = [...document.querySelectorAll("ol > li")].filter((li) => li.querySelector("h2"));
+        const target = blocks[0];
+        if (!target) return false;
+        // The paragraph, not the form: a textarea still holding what was typed
+        // would answer this question wrongly.
+        return [...target.querySelectorAll("p")].some((p) => p.textContent.includes(text));
+      },
+      [stamp],
+      { timeout: 15000 },
+    )
+    .then(() => true)
+    .catch(() => false);
+  check(definitionLanded, `the definition is saved against "${heading}"`, stamp);
+
+  const attributed = await first.innerText();
+  check(/\d{4}/.test(attributed), "and carries who wrote it and when");
+
+  // A rationale is added rather than replacing what is there.
+  await first.locator("button", { hasText: /^Add a note$/ }).click();
+  await page.waitForTimeout(400);
+  const second = `UICHECK-RATIONALE ${Date.now().toString(36)}`;
+  await first.locator("textarea").fill(`Capacity model, ramped from July. ${second}`);
+  await first.locator("button", { hasText: /^Record rationale$/ }).click();
+
+  const rationaleLanded = await page
+    .waitForFunction(
+      ([added, definition]) => {
+        const blocks = [...document.querySelectorAll("ol > li")].filter((li) => li.querySelector("h2"));
+        const target = blocks[0];
+        if (!target) return false;
+        const text = [...target.querySelectorAll("p")].map((p) => p.textContent).join(" ");
+        // Both, because the point of the log is that it adds.
+        return text.includes(added) && text.includes(definition);
+      },
+      [second, stamp],
+      { timeout: 15000 },
+    )
+    .then(() => true)
+    .catch(() => false);
+  check(rationaleLanded, "a rationale is added without replacing the definition", second);
+
+  // And it survives a reload, which is the part an optimistic render fakes.
+  await page.reload();
+  await measures().first().waitFor({ timeout: 30000 }).catch(() => {});
+  const afterReload = await measures().first().innerText();
+  check(afterReload.includes(stamp), "the definition is still there after a reload");
+  check(afterReload.includes(second), "and so is the rationale");
+
+  await page.close();
+}
+
+/**
+ * The register as a worklist.
+ *
+ * The gap is the reason the page exists, so "Nothing recorded" has to narrow
+ * to exactly the measures carrying neither - and it has to intersect with the
+ * other filters rather than replacing them, the way every filter on the sheet
+ * does.
+ */
+async function theRegisterShowsWhatIsMissing(browser) {
+  console.log("\nThe register shows what is missing");
+  const page = await browser.newPage({ viewport: { width: 1500, height: 950 } });
+  await signIn(page);
+  await page.goto(`${BASE}/rationale`);
+  const measures = () => page.locator("ol > li").filter({ has: page.locator("h2") });
+  await measures().first().waitFor({ timeout: 30000 }).catch(() => {});
+  const all = await measures().count();
+  check(all > 0, "the register opens on every measure", `${all} measures`);
+
+  await page.locator("button", { hasText: /^Nothing recorded$/ }).click();
+  await page.waitForTimeout(1500);
+  const missing = await measures().count();
+  check(missing <= all, "Nothing recorded narrows the list", `${all} -> ${missing}`);
+
+  // Every remaining block says so in as many words, rather than being empty.
+  if (missing > 0) {
+    const text = await measures().first().innerText();
+    check(text.includes("Not recorded"), "and every measure left is one with nothing written");
+  }
+
+  // It travels in the URL, so a worklist can be sent to whoever has to fill it.
+  check(page.url().includes("missing=1"), "the worklist is a link", page.url());
+
+  await page.locator("button", { hasText: /^Clear filters$/ }).click();
+  await page.waitForTimeout(1500);
+  check((await measures().count()) === all, "Clear filters puts them all back");
+
+  await page.close();
+}
+
 (async () => {
   const browser = await chromium.launch({
     executablePath: process.env.PLAYWRIGHT_CHROMIUM || undefined,
@@ -1790,6 +1941,8 @@ async function theUatWording(browser) {
     await theRowButtonsAreInOrder(browser);
     await theFormFollowsThePencil(browser);
     await departmentChipsDoNotRepeatTheDivision(browser);
+    await aRationaleCanBeRecorded(browser);
+    await theRegisterShowsWhatIsMissing(browser);
   } finally {
     await browser.close();
   }

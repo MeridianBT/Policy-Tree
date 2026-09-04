@@ -49,6 +49,15 @@ export interface SnapshotItem {
   direction: string;
   /** Stored month values by version id, for spotting rows that change nothing. */
   values: Record<string, Record<PeriodKey, number | null>>;
+  /**
+   * The definition as it stands, and the newest rationale on the version being
+   * written to. Here for exactly the reason `values` is: without them this
+   * module cannot tell a row that changes something from a row that restates
+   * what is already stored, and re-uploading a file would double the record.
+   * Empty string when nothing has been written.
+   */
+  definition: string;
+  latestRationale: string;
 }
 
 export interface Snapshot {
@@ -117,10 +126,24 @@ export interface FigureWrite {
   input: string | number;
 }
 
+/** A definition or a rationale the file would record against a measure. */
+export interface NoteWrite {
+  row: number;
+  /** Set when the measure exists; otherwise it is created first. */
+  controlItemId: string | null;
+  /** Set when the measure is being created by this same import. */
+  measureKey: string | null;
+  body: string;
+}
+
 export interface ImportPlan {
   nodes: NodeCreation[];
   measures: MeasureCreation[];
   figures: FigureWrite[];
+  /** Definitions that differ from what is stored. Matching ones write nothing. */
+  definitions: NoteWrite[];
+  /** Rationale entries to add against the version the Target column writes to. */
+  rationales: NoteWrite[];
   /** Rows whose value already matches what is stored. */
   unchanged: number;
   refusals: Refusal[];
@@ -205,15 +228,26 @@ function same(a: string, b: string): boolean {
   return a.trim().toLowerCase().replace(/\s+/g, " ") === b.trim().toLowerCase().replace(/\s+/g, " ");
 }
 
+/** A row of the file's Definitions sheet, restated so this module needs no import. */
+export interface PlanDefinitionRow {
+  row: number;
+  code: string;
+  definition: string;
+  rationale: string;
+}
+
 export function buildImportPlan(
   rows: readonly PlanRow[],
   snapshot: Snapshot,
   options: PlanOptions,
+  definitionRows: readonly PlanDefinitionRow[] = [],
 ): ImportPlan {
   const plan: ImportPlan = {
     nodes: [],
     measures: [],
     figures: [],
+    definitions: [],
+    rationales: [],
     unchanged: 0,
     refusals: [],
     notes: [],
@@ -505,7 +539,117 @@ export function buildImportPlan(
     }
   }
 
+  planNotes(definitionRows, plan, itemByCode);
+
   return plan;
+}
+
+/**
+ * What the Definitions sheet would write.
+ *
+ * Two rules do the work here, and both exist so that sending the same file
+ * twice is safe - which it has to be, because the way a template is used is
+ * download, fill in a few, upload, notice one more, upload again.
+ *
+ * A definition matching what is stored writes nothing. Compared with `same()`,
+ * the same trim-and-collapse comparison statements are matched by, so a
+ * paragraph that came back from Excel with its whitespace reflowed is not a
+ * revision of itself.
+ *
+ * A rationale matching the newest entry already on that version writes nothing
+ * either, and says so through `notes` rather than silently - somebody who
+ * pasted last quarter's reasoning back in should be told it was already there,
+ * not left wondering why the log did not grow. Any other text is *added*: the
+ * log is append-only, so a rationale is never a replacement.
+ *
+ * A measure this same file is creating takes the note by `measureKey`, exactly
+ * as its figures do. A measure that exists in neither is refused, reusing
+ * UNKNOWN_CODE rather than inventing a second way to say the same thing.
+ */
+function planNotes(
+  definitionRows: readonly PlanDefinitionRow[],
+  plan: ImportPlan,
+  itemByCode: Map<string, SnapshotItem>,
+) {
+  /*
+   * Measures this same file is creating, by code. `measureKeys` above is keyed
+   * by parent-and-statement, which is what deduplicates twelve months of one
+   * new measure into one creation - it is not a code lookup, and using it as
+   * one silently found nothing.
+   */
+  const creationByCode = new Map(
+    plan.measures.filter((measure) => measure.code).map((measure) => [measure.code.toLowerCase(), measure.key]),
+  );
+  // One measure, one note of each kind, however many rows name it. A file
+  // where two rows disagree about a definition takes the first and says so:
+  // silently taking the last would make the answer depend on row order.
+  const seenDefinition = new Set<string>();
+  const seenRationale = new Set<string>();
+
+  for (const row of definitionRows) {
+    const code = row.code.trim();
+    const key = code.toLowerCase();
+    const item = itemByCode.get(key) ?? null;
+    const measureKey = item ? null : creationByCode.get(key) ?? null;
+
+    if (!item && !measureKey) {
+      plan.refusals.push({
+        row: row.row,
+        code,
+        reason: "UNKNOWN_CODE",
+        detail: `No measure has the code "${code}". Definitions cannot create one.`,
+      });
+      continue;
+    }
+
+    const definition = row.definition.trim();
+    if (definition) {
+      if (seenDefinition.has(key)) {
+        plan.notes.push({
+          row: row.row,
+          code,
+          note: "A definition for this measure was already read further up the sheet. This one is ignored.",
+        });
+      } else if (item && same(item.definition, definition)) {
+        seenDefinition.add(key);
+        plan.unchanged++;
+      } else {
+        seenDefinition.add(key);
+        plan.definitions.push({
+          row: row.row,
+          controlItemId: item?.id ?? null,
+          measureKey,
+          body: definition,
+        });
+      }
+    }
+
+    const rationale = row.rationale.trim();
+    if (rationale) {
+      if (seenRationale.has(key)) {
+        plan.notes.push({
+          row: row.row,
+          code,
+          note: "A rationale for this measure was already read further up the sheet. This one is ignored.",
+        });
+      } else if (item && same(item.latestRationale, rationale)) {
+        seenRationale.add(key);
+        plan.notes.push({
+          row: row.row,
+          code,
+          note: "That rationale is already the newest one recorded against this version. Nothing added.",
+        });
+      } else {
+        seenRationale.add(key);
+        plan.rationales.push({
+          row: row.row,
+          controlItemId: item?.id ?? null,
+          measureKey,
+          body: rationale,
+        });
+      }
+    }
+  }
 }
 
 /** One line saying what the plan would do, for the preview's summary. */
@@ -517,6 +661,12 @@ export function describePlan(plan: ImportPlan): string {
   if (actuals) parts.push(`${actuals} actual${actuals === 1 ? "" : "s"}`);
   if (plan.nodes.length) parts.push(`${plan.nodes.length} new rows in the structure`);
   if (plan.measures.length) parts.push(`${plan.measures.length} new measures`);
+  if (plan.definitions.length)
+    parts.push(`${plan.definitions.length} definition${plan.definitions.length === 1 ? "" : "s"}`);
+  if (plan.rationales.length)
+    parts.push(
+      `${plan.rationales.length} rationale entr${plan.rationales.length === 1 ? "y" : "ies"}`,
+    );
   if (plan.unchanged) parts.push(`${plan.unchanged} already matching`);
   if (plan.refusals.length) parts.push(`${plan.refusals.length} refused`);
   return parts.length ? parts.join(" · ") : "Nothing to do.";

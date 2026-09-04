@@ -65,6 +65,16 @@ enum AchievementMethod {
   INVERSE
 }
 
+enum NoteKind {
+  /// What the measure counts, and where the figure comes from. The newest one
+  /// is the definition; the ones before it are what it used to say.
+  DEFINITION
+  /// Why the target is the number it is. Each entry stands on its own - a
+  /// revision is a new entry, which is what makes the log a history of the
+  /// argument rather than its latest position.
+  RATIONALE
+}
+
 enum Aggregation {
   SUM
   AVERAGE
@@ -127,10 +137,12 @@ model AppUser {
 
   orgUnit OrgUnit? @relation(fields: [orgUnitId], references: [id])
 
-  responsibleFor ControlItem[] @relation("ControlItemResponsible")
-  entriesUpdated Entry[]       @relation("EntryUpdatedBy")
-  auditEntries   EntryAudit[]  @relation("AuditChangedBy")
-  reminders      ReminderLog[] @relation("ReminderRecipient")
+  responsibleFor ControlItem[]     @relation("ControlItemResponsible")
+  entriesUpdated Entry[]           @relation("EntryUpdatedBy")
+  auditEntries   EntryAudit[]      @relation("AuditChangedBy")
+  reminders      ReminderLog[]     @relation("ReminderRecipient")
+  notesWritten   ControlItemNote[] @relation("NoteAuthor")
+  notesWithdrawn ControlItemNote[] @relation("NoteRetractedBy")
 
   @@index([orgUnitId])
   @@map("app_user")
@@ -176,8 +188,9 @@ model PlanVersion {
   isActual Boolean   @default(false) @map("is_actual")
   lockedAt DateTime? @map("locked_at")
 
-  ki      Ki      @relation(fields: [kiId], references: [id], onDelete: Cascade)
+  ki      Ki                @relation(fields: [kiId], references: [id], onDelete: Cascade)
   entries Entry[]
+  notes   ControlItemNote[]
 
   @@unique([kiId, code])
   @@index([kiId, sequence])
@@ -278,6 +291,7 @@ model ControlItem {
 
   entries      Entry[]
   dependencies EntryDependency[] @relation("DependencyTarget")
+  notes        ControlItemNote[]
 
   @@index([nodeId])
   @@index([dicOrgUnitId])
@@ -330,6 +344,52 @@ model EntryAudit {
 
   @@index([entryId, changedAt])
   @@map("entry_audit")
+}
+
+/// Why a measure means what it means, and why its target is that number.
+///
+/// The definitions of Control Items and their targets get argued about, and
+/// until this table there was nowhere to put the answer: `measured_as` is a
+/// 120-character label ("Units sold"), and `entry_audit` records that a figure
+/// changed without room to say why.
+///
+/// Append-only. Never updated, never deleted - the same rule `entry_audit`
+/// follows, and for the same reason: reasoning that can be quietly rewritten is
+/// worth nothing in the argument it exists to settle. A correction is a new
+/// row, and the row it corrects stays readable underneath it.
+///
+/// One table with a `kind` rather than two, because the gap analysis and
+/// countermeasure text listed under "Deliberately not built" is a third kind of
+/// the same thing and should not need a third table when it arrives.
+model ControlItemNote {
+  id            String    @id @default(cuid())
+  controlItemId String    @map("control_item_id")
+  kind          NoteKind
+  body          String
+  /// The plan version this reasoning explains, so a rationale written at 2QFC
+  /// is read beside the targets it was written about. Null on a DEFINITION,
+  /// which is about the measure rather than about any one set of targets, and
+  /// null on a rationale that is general rather than tied to a forecast.
+  planVersionId String?   @map("plan_version_id")
+  /// Null only when the author's account has been removed. The note survives
+  /// the person, the way an audit row does.
+  authorId      String?   @map("author_id")
+  createdAt     DateTime  @default(now()) @map("created_at")
+  /// Withdrawn rather than deleted. A note typed against the wrong measure has
+  /// to be retractable or nobody writes freely - but it stays on the record as
+  /// withdrawn, because the alternative is a delete button on a dispute log.
+  retractedAt   DateTime? @map("retracted_at")
+  retractedById String?   @map("retracted_by")
+
+  controlItem ControlItem  @relation(fields: [controlItemId], references: [id], onDelete: Cascade)
+  planVersion PlanVersion? @relation(fields: [planVersionId], references: [id], onDelete: SetNull)
+  author      AppUser?     @relation("NoteAuthor", fields: [authorId], references: [id])
+  retractedBy AppUser?     @relation("NoteRetractedBy", fields: [retractedById], references: [id])
+
+  /// The register reads every note for a set of measures at once, newest
+  /// first, and asks for one kind at a time.
+  @@index([controlItemId, kind, createdAt])
+  @@map("control_item_note")
 }
 
 /// Edges of the formula dependency graph: `dependentEntry` reads the cell

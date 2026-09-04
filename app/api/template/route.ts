@@ -17,6 +17,7 @@ import { prisma } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth/session";
 import { loadSheet } from "@/lib/sheet/query";
 import { buildTemplate } from "@/lib/export/template";
+import { loadNotes } from "@/lib/rationale/query";
 
 export const dynamic = "force-dynamic";
 
@@ -34,7 +35,13 @@ export async function GET(request: Request) {
   // started on the sheet, where the Objective it ladders into is chosen - so
   // pre-filling one would be offering a row that cannot be sent back.
   const model = await loadSheet({ levels: [1, 2, 3], kiId: ki.id });
-  const workbook = await buildTemplate(model);
+
+  // The Definitions sheet opens pre-filled, so editing a definition in Excel
+  // is editing it rather than retyping it from memory.
+  const notes = await loadNotes(
+    model.rows.filter((row) => row.kind === "CONTROL_ITEM").map((row) => row.id),
+  );
+  const workbook = await buildTemplate(model, notes);
 
   const safeKi = model.kiCode.replace(/\s+/g, "-").toLowerCase();
   return new NextResponse(workbook, {

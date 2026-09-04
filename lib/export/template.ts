@@ -11,13 +11,21 @@
  * wonder why nothing happened.
  *
  * So this carries the fifteen columns `lib/import/read.ts` actually reads, and
- * nothing else. Two sheets:
+ * nothing else. Three sheets:
  *
- *   "Upload"     the grid to fill in, pre-filled with the Ki's own measures
- *                when it has any, so a populated year still round-trips.
- *   "Reference"  what each column is for, which are needed to create a measure
- *                as opposed to update a figure, and every value the parser will
- *                accept - which is also where the dropdowns point.
+ *   "Upload"       the grid to fill in, pre-filled with the Ki's own measures
+ *                  when it has any, so a populated year still round-trips.
+ *   "Definitions"  what each measure counts and why its target is that number,
+ *                  one row per measure rather than per month.
+ *   "Reference"    what each column is for, which are needed to create a
+ *                  measure as opposed to update a figure, and every value the
+ *                  parser will accept - which is also where the dropdowns
+ *                  point.
+ *
+ * Why Definitions is its own sheet: the Upload grid is one row per measure per
+ * *month*, so a definition column there would ask for the same paragraph twelve
+ * times and give twelve chances to disagree with itself. The grain of a
+ * definition is the measure.
  *
  * The vocabulary comes from `lib/import/plan.ts` rather than being retyped
  * here, because a template offering a value the parser refuses is worse than no
@@ -29,6 +37,7 @@ import type { SheetModel, ControlItemRow, GroupRow } from "@/lib/sheet/types";
 import { groupHeading } from "@/components/sheet/outline";
 import { plainText } from "@/lib/text/emphasis";
 import { UNITS, AGGREGATIONS, DIRECTIONS } from "@/lib/import/plan";
+import { latestDefinition, rationaleLog, type NoteRow } from "@/lib/rationale/notes";
 
 const BAND_STRONG = "FFE9E9E6";
 const INK_FAINT = "FF8A8985";
@@ -84,7 +93,11 @@ const COLUMNS: TemplateColumn[] = [
 ];
 
 
-export async function buildTemplate(model: SheetModel): Promise<ArrayBuffer> {
+export async function buildTemplate(
+  model: SheetModel,
+  /** Notes by control item id, so the Definitions sheet opens pre-filled. */
+  notesByItem: ReadonlyMap<string, readonly NoteRow[]> = new Map(),
+): Promise<ArrayBuffer> {
   const workbook = new ExcelJS.Workbook();
   workbook.creator = "Hoshin Kanri";
   workbook.created = new Date();
@@ -98,11 +111,20 @@ export async function buildTemplate(model: SheetModel): Promise<ArrayBuffer> {
     periods: { title: "Period", values: [...model.months] },
   };
 
+  /*
+   * Upload is added first, and that matters: the reader falls back to the
+   * first sheet carrying rows when a file has no "Data" tab, so the figure
+   * grid has to come before Definitions. lib/import/read.ts no longer relies
+   * on that ordering - it names both - but a file that reads correctly either
+   * way is one less thing to get wrong.
+   */
   const upload = workbook.addWorksheet("Upload", { views: [{ state: "frozen", ySplit: 1 }] });
+  const definitions = workbook.addWorksheet("Definitions", { views: [{ state: "frozen", ySplit: 1 }] });
   const reference = workbook.addWorksheet("Reference");
 
   buildReference(reference, model, vocabulary);
   buildUpload(upload, model, vocabulary);
+  buildDefinitions(definitions, model, notesByItem);
 
   const written = await workbook.xlsx.writeBuffer();
   return new Uint8Array(written).buffer as ArrayBuffer;
@@ -211,6 +233,107 @@ function applyValidation(
       };
     }
   });
+}
+
+// ------------------------------------------------------------- "Definitions"
+
+/**
+ * The definition columns, in the order they sit on the sheet.
+ *
+ * Two of the five are context and are not read back. That is a departure from
+ * this file's own rule for the Upload grid - "the columns read.ts reads, and
+ * nothing else" - and it is deliberate: a bare list of codes is unusable, and
+ * what has already been said is the thing somebody needs in front of them
+ * before adding to it. The Reference sheet names which two are ignored.
+ */
+const DEFINITION_COLUMNS: Array<{ header: string; key: string; width: number; read: boolean; note: string }> = [
+  { header: "Code", key: "code", width: 14, read: true, note: "Which measure. Must already exist - this sheet never creates one." },
+  { header: "Measure", key: "measure", width: 42, read: false, note: "Context only. Not read back; edit it here and nothing happens." },
+  {
+    header: "Definition",
+    key: "definition",
+    width: 64,
+    read: true,
+    note: "What exactly is counted, and where the figure comes from. Pre-filled with what is stored; edit it to revise it, and leave it alone to leave it alone.",
+  },
+  {
+    header: "Rationale to add",
+    key: "rationale",
+    width: 64,
+    read: true,
+    note: "Why the target is this number. Anything typed here is ADDED as a new dated entry against the version the Target column writes to - it never replaces what is there.",
+  },
+  {
+    header: "Rationale recorded so far",
+    key: "recorded",
+    width: 64,
+    read: false,
+    note: "Context only. The entries already written, newest first, so you can see what has been said before adding to it.",
+  },
+];
+
+/**
+ * One row per measure: what it counts, and why its target is that number.
+ *
+ * Definition is pre-filled, because a definition is replaced by its newest
+ * version and editing what is there is exactly the right gesture. Rationale is
+ * always blank, because it is not: an entry is dated and attributed and other
+ * people have read it, so the file offers a box to *add* one and shows what is
+ * already recorded beside it, greyed, where it cannot be typed over.
+ */
+function buildDefinitions(
+  sheet: ExcelJS.Worksheet,
+  model: SheetModel,
+  notesByItem: ReadonlyMap<string, readonly NoteRow[]>,
+) {
+  sheet.columns = DEFINITION_COLUMNS.map((column) => ({
+    header: column.header,
+    key: column.key,
+    width: column.width,
+  }));
+
+  const header = sheet.getRow(1);
+  header.font = { bold: true, size: 9 };
+  header.fill = { type: "pattern", pattern: "solid", fgColor: { argb: BAND_STRONG } };
+
+  for (const row of model.rows) {
+    if (row.kind !== "CONTROL_ITEM") continue;
+    const item = row as ControlItemRow;
+    // Level 4 is left out for the same reason it is left off the Upload grid:
+    // the importer refuses those rows, so offering them is offering something
+    // that cannot be sent back.
+    if (item.level === 4) continue;
+
+    const notes = notesByItem.get(item.id) ?? [];
+    const definition = latestDefinition(notes);
+    const recorded = rationaleLog(notes)
+      .map((note) => {
+        const when = note.createdAt.slice(0, 10);
+        const version = note.versionCode ? ` · ${note.versionCode}` : "";
+        return `${note.authorName ?? "Unknown"} · ${when}${version}\n${plainText(note.body)}`;
+      })
+      .join("\n\n");
+
+    const added = sheet.addRow({
+      code: item.code,
+      measure: `${plainText(item.name)}${item.measuredAs ? ` — ${item.measuredAs}` : ""}`,
+      definition: definition ? plainText(definition.body) : "",
+      rationale: "",
+      recorded,
+    });
+    added.font = { size: 9 };
+    added.alignment = { vertical: "top", wrapText: true };
+    // The two context columns read as context: greyed, so nobody spends five
+    // minutes editing a column the importer is going to ignore.
+    for (const key of ["measure", "recorded"]) {
+      added.getCell(key).font = { size: 9, color: { argb: INK_FAINT } };
+    }
+  }
+
+  sheet.autoFilter = {
+    from: { row: 1, column: 1 },
+    to: { row: 1, column: DEFINITION_COLUMNS.length },
+  };
 }
 
 // --------------------------------------------------------------- "Reference"
@@ -328,4 +451,33 @@ function buildReference(
   sheet.getCell(row, notesColumn).value =
     "One row per measure per month, so a measure planned across the year is twelve rows.";
   sheet.getCell(row, notesColumn).font = { size: 9, color: { argb: INK_FAINT } };
+  row += 2;
+
+  write("The Definitions sheet", true);
+  write("One row per measure, not per month - a definition is about the measure, so asking for");
+  write("it twelve times would only give it twelve chances to disagree with itself.");
+  row += 1;
+
+  const definitionHeadings = sheet.getRow(row);
+  definitionHeadings.getCell(notesColumn).value = "Column";
+  definitionHeadings.getCell(notesColumn + 1).value = "Read?";
+  definitionHeadings.getCell(notesColumn + 2).value = "What it is";
+  definitionHeadings.font = { bold: true, size: 9 };
+  row += 1;
+  for (const column of DEFINITION_COLUMNS) {
+    const line = sheet.getRow(row);
+    line.getCell(notesColumn).value = column.header;
+    line.getCell(notesColumn + 1).value = column.read ? "Read" : "Ignored";
+    line.getCell(notesColumn + 2).value = column.note;
+    line.font = { size: 9 };
+    row += 1;
+  }
+  row += 1;
+
+  write("Sending the same file twice is safe. A definition matching what is stored writes");
+  write("nothing at all, and a rationale matching the newest entry on that version is skipped");
+  write("rather than added again - so a re-upload cannot double the record.");
+  write("An empty cell still means \"nothing to say\": it never clears what is already there.");
+  write("Anything typed under Rationale to add is stamped with your name, today's date and the");
+  write("version the Target column on the Upload sheet writes to.");
 }

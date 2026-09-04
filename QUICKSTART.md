@@ -103,7 +103,18 @@ neither dataset keys actuals for the whole Ki — the demo dataset stops after
 July, the worked example after September. That is the "nothing keyed yet" state
 rendering correctly, not a gap in the page.
 
-**4 · Keying a number** — `/my-entries`
+**4 · The rationale register** — `/rationale`
+
+What each measure counts and why its target is that number, one block per
+measure. On a fresh database everything reads "Not recorded", which is the
+honest state and the reason the page opens with a count of how many. Press
+**Nothing recorded** to narrow to them, then write one: a definition is edited
+and replaced by its newest version, a rationale is *added* as a dated entry
+under your name. Nothing here is ever overwritten — a revised definition keeps
+the one before it behind "earlier versions", and a note is withdrawn rather
+than deleted.
+
+**5 · Keying a number** — `/my-entries`
 
 Sign in as `service.manager@driveaus.example` (demo dataset) or
 `auto.lead@example.com` (worked example) — someone who owns a department rather
@@ -112,19 +123,20 @@ figure, press `Tab` to save and move.
 `Enter` saves and drops a row, `Escape` reverts. No modal dialogs anywhere in
 that flow.
 
-**5 · The audit trail** — `/control-item/[id]`
+**6 · The audit trail** — `/control-item/[id]`
 
 Click any measure you just edited. Trend chart with every plan version overlaid,
-the stored cell including any formula as typed, and the full history of who
-changed what and when.
+the stored cell including any formula as typed, the full history of who changed
+what and when, and a **Rationale** tab carrying the same definition and log the
+register shows — the one editable thing on an otherwise read-only page.
 
-**6 · Admin** — `/admin`
+**7 · Admin** — `/admin`
 
 Ki setup, version locking, the evaluation scale, users and departments. Try
 removing a department that still has data: it refuses outright and tells you
 what is pointing at it, rather than silently orphaning Level 4 rows.
 
-**7 · Export** — the toolbar's *Export to Excel*
+**8 · Export** — the toolbar's *Export to Excel*
 
 Three tabs — the sheet as rendered, the same figures in long format for
 pivoting, and the evaluation bands in force. Numbers are written as numbers,

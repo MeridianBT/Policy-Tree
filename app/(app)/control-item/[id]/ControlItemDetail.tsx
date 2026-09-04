@@ -8,6 +8,7 @@
 
 import { useMemo, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import {
   CartesianGrid,
   Legend,
@@ -24,9 +25,25 @@ import { monthLabel } from "@/lib/domain/period";
 import { EvaluationSymbol } from "@/components/sheet/EvaluationSymbol";
 import { RichText } from "@/components/ui/RichText";
 import { columnClass, columnWidth, sheetColumns } from "@/components/sheet/columns";
+import { RationalePanel } from "@/components/rationale/RationalePanel";
+import type { NoteRow } from "@/lib/rationale/notes";
 
-export function ControlItemDetailView({ detail }: { detail: ControlItemDetail }) {
-  const [tab, setTab] = useState<"TREND" | "CELLS" | "HISTORY">("TREND");
+export function ControlItemDetailView({
+  detail,
+  notes,
+  canEdit,
+  currentUserId,
+  isSuperAdmin,
+}: {
+  detail: ControlItemDetail;
+  /** Every note against this measure, newest first. */
+  notes: NoteRow[];
+  canEdit: boolean;
+  currentUserId: string;
+  isSuperAdmin: boolean;
+}) {
+  const router = useRouter();
+  const [tab, setTab] = useState<"TREND" | "CELLS" | "HISTORY" | "RATIONALE">("TREND");
   const columns = useMemo(() => sheetColumns(detail.kiStartYear), [detail.kiStartYear]);
   const cellByKey = useMemo(() => new Map(detail.cells.map((cell) => [cell.key, cell])), [detail.cells]);
 
@@ -115,7 +132,7 @@ export function ControlItemDetailView({ detail }: { detail: ControlItemDetail })
       </section>
 
       <nav className="mt-4 flex gap-1 border-b border-rule text-[11px]">
-        {(["TREND", "CELLS", "HISTORY"] as const).map((value) => (
+        {(["TREND", "CELLS", "HISTORY", "RATIONALE"] as const).map((value) => (
           <button
             key={value}
             type="button"
@@ -125,7 +142,13 @@ export function ControlItemDetailView({ detail }: { detail: ControlItemDetail })
               tab === value ? "border-b-2 border-ink font-medium" : "text-ink-muted hover:text-ink"
             }`}
           >
-            {value === "TREND" ? "Trend" : value === "CELLS" ? "Stored cells" : "Edit history"}
+            {value === "TREND"
+              ? "Trend"
+              : value === "CELLS"
+                ? "Stored cells"
+                : value === "HISTORY"
+                  ? "Edit history"
+                  : "Rationale"}
           </button>
         ))}
       </nav>
@@ -262,6 +285,28 @@ export function ControlItemDetailView({ detail }: { detail: ControlItemDetail })
               </tbody>
             </table>
           )}
+        </section>
+      )}
+
+      {tab === "RATIONALE" && (
+        <section className="mt-3 border border-rule-strong bg-paper p-3">
+          {/*
+            The only editable thing on this page, which until now was purely a
+            reading surface. It is here because this is where somebody lands
+            from the sheet asking "what is this measure?", and the answer to
+            that question and the answer to "why is the target this" are the
+            same paragraph. The register at /rationale is the same panel over
+            every measure at once, for filling the gaps in one sitting.
+          */}
+          <RationalePanel
+            controlItemId={detail.id}
+            notes={notes}
+            versions={detail.versions}
+            canEdit={canEdit}
+            currentUserId={currentUserId}
+            isSuperAdmin={isSuperAdmin}
+            onChanged={() => router.refresh()}
+          />
         </section>
       )}
 

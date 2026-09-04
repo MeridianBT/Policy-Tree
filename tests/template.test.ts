@@ -191,3 +191,133 @@ describe("filling in the template for an unplanned year", () => {
     }
   });
 });
+
+describe("the Definitions sheet", () => {
+  const notesFor = (controlItemId: string, definition: string) =>
+    new Map([
+      [
+        controlItemId,
+        [
+          {
+            id: "n1",
+            controlItemId,
+            kind: "DEFINITION" as const,
+            body: definition,
+            versionCode: null,
+            authorId: "u1",
+            authorName: "J. Smith",
+            createdAt: "2026-03-12T00:00:00.000Z",
+            retractedAt: null,
+            retractedByName: null,
+          },
+        ],
+      ],
+    ]);
+
+  it("comes back through readDefinitions with the columns recognised", async () => {
+    const model = await loadSheet({ levels: [1, 2, 3], kiId: fx.kiId, targetVersionId: null });
+    const item = model.rows.find((row) => row.kind === "CONTROL_ITEM");
+    if (!item) throw new Error("fixture has no measures");
+
+    const file = await buildTemplate(model, notesFor(item.id, "Retail units invoiced."));
+    const read = await readWorkbook(file);
+
+    const definition = read.definitions.find((row) => row.definition);
+    expect(definition?.definition).toBe("Retail units invoiced.");
+    // Pre-filled, so editing it in Excel is editing it rather than retyping
+    // it - and unedited, it round-trips to a no-op.
+    expect(definition?.code).toBeTruthy();
+  });
+
+  /*
+   * The sheet picker used to take the first worksheet carrying rows, which was
+   * right only because Upload happened to be added before Reference. With a
+   * third populated sheet in the file that was one reorder away from reading
+   * the definitions as a plan.
+   */
+  it("does not become the sheet the figures are read from", async () => {
+    const model = await loadSheet({ levels: [1, 2, 3], kiId: fx.kiId, targetVersionId: null });
+    const item = model.rows.find((row) => row.kind === "CONTROL_ITEM");
+    if (!item) throw new Error("fixture has no measures");
+
+    const file = await buildTemplate(model, notesFor(item.id, "Retail units invoiced."));
+    const read = await readWorkbook(file);
+
+    expect(read.sheetName).toBe("Upload");
+    expect(read.rows.every((row) => row.period.match(/^\d{4}-\d{2}$/))).toBe(true);
+  });
+
+  it("leaves the rationale column empty, because an entry is added and never edited", async () => {
+    const model = await loadSheet({ levels: [1, 2, 3], kiId: fx.kiId, targetVersionId: null });
+    const file = await buildTemplate(model);
+
+    const workbook = new ExcelJS.Workbook();
+    await workbook.xlsx.load(file);
+    const sheet = workbook.getWorksheet("Definitions");
+    expect(sheet).toBeDefined();
+
+    const headers = sheet!.getRow(1).values as string[];
+    expect(headers).toContain("Rationale to add");
+    expect(sheet!.getRow(2).getCell(4).value).toBeFalsy();
+  });
+
+  it("drops rows with nothing filled in, so a returned template is mostly no-ops", async () => {
+    const model = await loadSheet({ levels: [1, 2, 3], kiId: fx.kiId, targetVersionId: null });
+    // No notes at all: every Definitions row comes back blank in both input
+    // columns and should not travel as an empty write.
+    const read = await readWorkbook(await buildTemplate(model));
+    expect(read.definitions).toEqual([]);
+  });
+});
+
+describe("a workbook carrying only definitions", () => {
+  /*
+   * Somebody writing up the reasoning for a plan whose numbers are already
+   * keyed has no reason to send the months back, and deleting the Upload sheet
+   * is the obvious way to say so. This used to be refused as "no rows in it".
+   */
+  it("is read rather than refused for having no figures", async () => {
+    const model = await loadSheet({ levels: [1, 2, 3], kiId: fx.kiId, targetVersionId: null });
+    const item = model.rows.find((row) => row.kind === "CONTROL_ITEM");
+    if (!item) throw new Error("fixture has no measures");
+
+    const workbook = new ExcelJS.Workbook();
+    await workbook.xlsx.load(
+      await buildTemplate(
+        model,
+        new Map([
+          [
+            item.id,
+            [
+              {
+                id: "n1",
+                controlItemId: item.id,
+                kind: "DEFINITION" as const,
+                body: "Counted at invoice.",
+                versionCode: null,
+                authorId: "u1",
+                authorName: "J. Smith",
+                createdAt: "2026-03-12T00:00:00.000Z",
+                retractedAt: null,
+                retractedByName: null,
+              },
+            ],
+          ],
+        ]),
+      ),
+    );
+    workbook.removeWorksheet(workbook.getWorksheet("Upload")!.id);
+
+    const read = await readWorkbook((await workbook.xlsx.writeBuffer()) as ArrayBuffer);
+    expect(read.rows).toEqual([]);
+    expect(read.definitions.some((row) => row.definition === "Counted at invoice.")).toBe(true);
+  });
+
+  it("still refuses a workbook with nothing in it at all", async () => {
+    const empty = new ExcelJS.Workbook();
+    empty.addWorksheet("Sheet1");
+    await expect(readWorkbook((await empty.xlsx.writeBuffer()) as ArrayBuffer)).rejects.toThrow(
+      /no rows/i,
+    );
+  });
+});

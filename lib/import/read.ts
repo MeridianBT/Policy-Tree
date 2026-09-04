@@ -56,6 +56,11 @@ export interface ReadResult {
   /** Rows skipped for being derived columns rather than months. */
   skippedNonMonth: number;
   /**
+   * The Definitions sheet, empty when the file has none. Read here rather than
+   * by a second pass so a workbook is opened once.
+   */
+  definitions: DefinitionRow[];
+  /**
    * The export's own "Target: PRB" stamp when the file carries one.
    *
    * Worth reading because the Target column of an export taken on "latest
@@ -170,6 +175,91 @@ function readDecimals(value: ExcelJS.CellValue): number | null {
   return Number.isInteger(places) && places >= 0 && places <= 4 ? places : null;
 }
 
+/** Sheets that are never the figure grid, whatever order a file puts them in. */
+const NOT_FIGURES = new Set(["reference", "definitions"]);
+
+/**
+ * Which sheet carries the months.
+ *
+ * The export's own long-format tab first, then the template's own grid by
+ * name, and only then whatever the file leads with - so a hand-made sheet
+ * still needs no particular name. Reference and Definitions are excluded from
+ * that fallback outright: both carry rows, and a workbook whose sheets came
+ * back in a different order would otherwise be read as a plan.
+ *
+ * Named rather than positional on purpose. This used to take the first sheet
+ * with rows in it, which was right only because Upload happened to be added
+ * before Reference.
+ */
+function findFigureSheet(workbook: ExcelJS.Workbook): ExcelJS.Worksheet | undefined {
+  return (
+    workbook.getWorksheet("Data") ??
+    workbook.getWorksheet("Upload") ??
+    workbook.worksheets.find(
+      (candidate) => candidate.rowCount > 1 && !NOT_FIGURES.has(candidate.name.trim().toLowerCase()),
+    )
+  );
+}
+
+/** One measure's definition and any rationale being added, as the file states it. */
+export interface DefinitionRow {
+  row: number;
+  code: string;
+  definition: string;
+  rationale: string;
+}
+
+const DEFINITION_COLUMNS: Record<string, keyof DefinitionRow> = {
+  code: "code",
+  definition: "definition",
+  rationale: "rationale",
+  rationaletoadd: "rationale",
+};
+
+/**
+ * The Definitions sheet, when the file has one.
+ *
+ * Absent is not a problem: this is additive, and a hand-made workbook carrying
+ * only Code, Period and Target still uploads exactly as it always did. A sheet
+ * carrying Code and Definition columns under any name is not looked for -
+ * unlike the figure grid, this one is named, because "the first sheet with a
+ * Definition column" would be a rule nobody could predict.
+ *
+ * Rows with no Code, and rows with a Code but nothing written in either input
+ * column, are dropped here rather than travelling as empties - a template
+ * comes back with ninety rows and usually a handful filled in.
+ */
+export function readDefinitions(workbook: ExcelJS.Workbook): DefinitionRow[] {
+  const sheet = workbook.getWorksheet("Definitions");
+  if (!sheet) return [];
+
+  const byColumn = new Map<number, keyof DefinitionRow>();
+  sheet.getRow(1).eachCell((cell, columnNumber) => {
+    const key = DEFINITION_COLUMNS[normaliseHeader(cellText(cell))];
+    if (key) byColumn.set(columnNumber, key);
+  });
+  if (![...byColumn.values()].includes("code")) return [];
+
+  const rows: DefinitionRow[] = [];
+  sheet.eachRow((row, rowNumber) => {
+    if (rowNumber === 1) return;
+    const raw: Partial<Record<keyof DefinitionRow, string>> = {};
+    row.eachCell((cell, columnNumber) => {
+      const key = byColumn.get(columnNumber);
+      if (key && key !== "row") raw[key] = cellText(cell.value);
+    });
+
+    const code = raw.code ?? "";
+    const definition = raw.definition ?? "";
+    const rationale = raw.rationale ?? "";
+    if (!code) return;
+    if (!definition && !rationale) return;
+    rows.push({ row: rowNumber, code, definition, rationale });
+  });
+
+  return rows;
+}
+
 export async function readWorkbook(buffer: ArrayBuffer): Promise<ReadResult> {
   if (buffer.byteLength > MAX_FILE_BYTES) {
     throw new ImportReadError(
@@ -184,11 +274,26 @@ export async function readWorkbook(buffer: ArrayBuffer): Promise<ReadResult> {
     throw new ImportReadError("That file could not be opened as a workbook (.xlsx).");
   }
 
-  // The export's own long-format tab first; otherwise whatever the file leads
-  // with, so a hand-made sheet needs no particular name.
-  const sheet =
-    workbook.getWorksheet("Data") ?? workbook.worksheets.find((candidate) => candidate.rowCount > 1);
-  if (!sheet) throw new ImportReadError("That workbook has no rows in it.");
+  const sheet = findFigureSheet(workbook);
+  if (!sheet) {
+    /*
+     * A file carrying definitions and no figures is a real upload: somebody
+     * writing up the reasoning for a plan whose numbers are already keyed has
+     * no reason to send the months back, and deleting the Upload sheet is the
+     * obvious way to say so. Refusing it as "no rows in it" would be both
+     * wrong and unhelpful.
+     */
+    const definitions = readDefinitions(workbook);
+    if (definitions.length === 0) throw new ImportReadError("That workbook has no rows in it.");
+    return {
+      rows: [],
+      problems: [],
+      skippedNonMonth: 0,
+      definitions,
+      sheetName: "Definitions",
+      basis: null,
+    };
+  }
 
   const headerRow = sheet.getRow(1);
   const byColumn = new Map<number, keyof ImportRow>();
@@ -296,6 +401,7 @@ export async function readWorkbook(buffer: ArrayBuffer): Promise<ReadResult> {
     rows,
     problems,
     skippedNonMonth,
+    definitions: readDefinitions(workbook),
     sheetName: sheet.name,
     basis: rows.find((row) => row.basis)?.basis ?? null,
   };

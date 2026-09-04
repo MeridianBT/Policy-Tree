@@ -24,6 +24,7 @@ import { requireRole, requireSession } from "@/lib/auth/session";
 import { activeKiId } from "@/lib/ki/active";
 import { saveEntry } from "@/lib/entries/save";
 import { addControlItem, addNode } from "@/lib/structure/actions";
+import { addNote } from "@/lib/rationale/actions";
 import { dateToPeriod, kiMonths, kiStartYearOf, type PeriodKey } from "@/lib/domain/period";
 import { readWorkbook, ImportReadError, type ReadProblem } from "./read";
 import { buildImportPlan, describePlan, type ImportPlan, type Snapshot } from "./plan";
@@ -47,6 +48,8 @@ export interface ImportOutcome {
     nodes: number;
     measures: number;
     figures: number;
+    /** Definitions and rationale entries recorded from the Definitions sheet. */
+    notes: number;
     failures: Array<{ row: number; message: string }>;
   };
   versionCode?: string;
@@ -74,9 +77,14 @@ function readOptions(form: FormData): Options {
  * and the sheet's own cells carry a resolved target across versions instead -
  * a different question with a different answer.
  */
-async function buildSnapshot(kiId: string, versionIds: string[]): Promise<Snapshot> {
+async function buildSnapshot(
+  kiId: string,
+  versionIds: string[],
+  /** Which version a rationale would be written against, for the no-op check. */
+  targetVersionId: string,
+): Promise<Snapshot> {
   const ki = await prisma.ki.findUniqueOrThrow({ where: { id: kiId } });
-  const [nodes, items, entries, orgUnits, businessUnits] = await Promise.all([
+  const [nodes, items, entries, orgUnits, businessUnits, notes] = await Promise.all([
     prisma.node.findMany({
       where: { kiId },
       select: { id: true, kind: true, level: true, statement: true, parentId: true },
@@ -112,6 +120,16 @@ async function buildSnapshot(kiId: string, versionIds: string[]): Promise<Snapsh
       select: { code: true },
     }),
     prisma.businessUnit.findMany({ select: { code: true } }),
+    /*
+     * What has already been written, so the planner can tell a row that
+     * changes something from a row restating what is stored. Both kinds in one
+     * read; the newest of each is picked below.
+     */
+    prisma.controlItemNote.findMany({
+      where: { retractedAt: null, controlItem: { node: { kiId } } },
+      orderBy: { createdAt: "desc" },
+      select: { controlItemId: true, kind: true, body: true, planVersionId: true },
+    }),
   ]);
 
   const parentById = new Map(nodes.map((node) => [node.id, node.parentId]));
@@ -124,6 +142,26 @@ async function buildSnapshot(kiId: string, versionIds: string[]): Promise<Snapsh
     }
     return chain;
   };
+
+  /*
+   * The newest definition per measure, and the newest rationale per measure on
+   * the version being written to. Notes arrive newest first, so the first of
+   * each wins - a rationale written at OB is not what a 2QFC upload is
+   * repeating, which is why the version is part of the key.
+   */
+  const definitionByItem = new Map<string, string>();
+  const rationaleByItem = new Map<string, string>();
+  for (const note of notes) {
+    if (note.kind === "DEFINITION") {
+      if (!definitionByItem.has(note.controlItemId)) {
+        definitionByItem.set(note.controlItemId, note.body);
+      }
+    } else if (note.planVersionId === targetVersionId) {
+      if (!rationaleByItem.has(note.controlItemId)) {
+        rationaleByItem.set(note.controlItemId, note.body);
+      }
+    }
+  }
 
   const values = new Map<string, Record<string, Record<PeriodKey, number | null>>>();
   for (const entry of entries) {
@@ -157,6 +195,8 @@ async function buildSnapshot(kiId: string, versionIds: string[]): Promise<Snapsh
       aggregation: item.aggregation,
       direction: item.direction,
       values: values.get(item.id) ?? {},
+      definition: definitionByItem.get(item.id) ?? "",
+      latestRationale: rationaleByItem.get(item.id) ?? "",
     })),
   };
 }
@@ -181,12 +221,17 @@ async function planFrom(form: FormData, options: Options) {
   }
 
   const read = await readWorkbook(await file.arrayBuffer());
-  const snapshot = await buildSnapshot(options.kiId, [target.id, actual.id]);
-  const plan = buildImportPlan(read.rows, snapshot, {
-    targetVersionId: target.id,
-    actualVersionId: actual.id,
-    allowCreate: options.allowCreate,
-  });
+  const snapshot = await buildSnapshot(options.kiId, [target.id, actual.id], target.id);
+  const plan = buildImportPlan(
+    read.rows,
+    snapshot,
+    {
+      targetVersionId: target.id,
+      actualVersionId: actual.id,
+      allowCreate: options.allowCreate,
+    },
+    read.definitions,
+  );
   return { read, plan, target, actual };
 }
 
@@ -308,24 +353,60 @@ export async function applyImport(_previous: unknown, form: FormData): Promise<I
       }
     }
 
+    /*
+     * Then the notes, through `addNote` for the same reason the figures go
+     * through `saveEntry`: it is where the permission rule lives, and a
+     * refusal on one measure should be reported for that row rather than
+     * abort the file. The planner has already dropped everything that would
+     * write nothing, so anything reaching here genuinely changes the record.
+     */
+    let recorded = 0;
+    for (const [kind, writes] of [
+      ["DEFINITION", plan.definitions],
+      ["RATIONALE", plan.rationales],
+    ] as const) {
+      for (const write of writes) {
+        const controlItemId =
+          write.controlItemId ?? (write.measureKey ? itemIds.get(write.measureKey) : undefined);
+        if (!controlItemId) continue;
+        const result = await addNote({
+          controlItemId,
+          kind,
+          body: write.body,
+          // A definition is about the measure; a rationale explains the
+          // targets this same file is writing, so it takes their version.
+          planVersionId: kind === "RATIONALE" ? target.id : null,
+        });
+        if (result.ok) recorded += 1;
+        else failures.push({ row: write.row, message: result.message });
+      }
+    }
+
     revalidatePath("/sheet");
     revalidatePath("/admin");
     revalidatePath("/insights");
     revalidatePath("/my-entries");
+    revalidatePath("/rationale");
 
     return {
       ok: failures.length === 0,
       message: `Wrote ${written} ${plural(written, "figure")}${
         createdMeasures ? `, created ${createdMeasures} ${plural(createdMeasures, "measure")}` : ""
       }${createdNodes ? ` and ${createdNodes} ${plural(createdNodes, "row")} in the structure` : ""}${
-        failures.length ? `. ${failures.length} could not be applied.` : "."
-      }`,
+        recorded ? `, recorded ${recorded} ${plural(recorded, "note")}` : ""
+      }${failures.length ? `. ${failures.length} could not be applied.` : "."}`,
       plan,
       problems: read.problems,
       skippedNonMonth: read.skippedNonMonth,
       versionCode: target.code,
       basisWarning: basisWarning(read.basis, target.code),
-      applied: { nodes: createdNodes, measures: createdMeasures, figures: written, failures },
+      applied: {
+        nodes: createdNodes,
+        measures: createdMeasures,
+        figures: written,
+        notes: recorded,
+        failures,
+      },
     };
   } catch (error) {
     return { ok: false, message: messageOf(error) };
