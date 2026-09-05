@@ -168,7 +168,7 @@ badly.
   good-to-bad axis, so an average of them would be a number the data cannot
   support. A month with nothing keyed is a dashed outline, never an empty gap.
 
-- **Rationale** (`/rationale`). The sheet says what the number is. This says
+- **Definitions** (`/rationale`). The sheet says what the number is. This says
   what the measure counts and why the target is that number — the two things
   that actually get argued about, and the two the grid answers worst, because
   seventeen columns of figures leave nowhere to put a paragraph. One block per
@@ -181,7 +181,7 @@ badly.
   Nothing about it appears on the sheet — no column, no marker. It is off the
   operating surface on purpose.
 
-**Two of the three are read-only. The Rationale register is not, and that is a
+**Two of the three are read-only. The Definitions register is not, and that is a
 departure worth stating rather than glossing.** Cascade and Insights are pages
 you read; this one is a page you work down, and the gaps are the reason it
 exists. Filling ninety of them through ninety round trips to ninety detail

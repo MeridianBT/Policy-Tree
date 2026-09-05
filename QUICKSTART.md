@@ -103,7 +103,7 @@ neither dataset keys actuals for the whole Ki — the demo dataset stops after
 July, the worked example after September. That is the "nothing keyed yet" state
 rendering correctly, not a gap in the page.
 
-**4 · The rationale register** — `/rationale`
+**4 · Definitions** — `/rationale`
 
 What each measure counts and why its target is that number, one block per
 measure. On a fresh database everything reads "Not recorded", which is the
@@ -127,7 +127,7 @@ that flow.
 
 Click any measure you just edited. Trend chart with every plan version overlaid,
 the stored cell including any formula as typed, the full history of who changed
-what and when, and a **Rationale** tab carrying the same definition and log the
+what and when, and a **Definition** tab carrying the same definition and log the
 register shows — the one editable thing on an otherwise read-only page.
 
 **7 · Admin** — `/admin`

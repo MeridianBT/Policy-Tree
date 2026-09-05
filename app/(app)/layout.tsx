@@ -17,7 +17,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     { href: "/sheet", label: "Company sheet" },
     { href: "/cascade", label: "Cascade" },
     { href: "/insights", label: "Insights" },
-    { href: "/rationale", label: "Rationale" },
+    { href: "/rationale", label: "Definitions" },
     { href: "/my-entries", label: "My entries" },
     ...(user.role === "SUPER_ADMIN" ? [{ href: "/admin", label: "Admin" }] : []),
     // "/symbols" is deliberately absent. It renders each evaluation symbol

@@ -601,7 +601,7 @@ shared mailbox does not fill with hundreds of copies nobody reads.
 | `/division/[code]` | The same Level 4 sheet, pre-scoped to one division and its departments — a narrower, single-division view of what "+ Departments" on the company sheet shows for everyone. Reached by URL; not linked from the nav, where it duplicated the sheet's own filters |
 | `/cascade` | A read-only, one-page alignment map from every Company Goal down to the Department work laddering into it, narrowable by view, business unit and division — see below |
 | `/insights` | The month-end review, anchored on one month: how much of it has reported and who owes the rest, what is below target ranked by direction of travel, and the biggest movers either way — see below |
-| `/rationale` | The register: what each measure counts and why its target is that number, one block per measure, with the same filters the sheet uses and a **Nothing recorded** worklist preset. The one later screen that is written to as well as read — see below |
+| `/rationale` | **Definitions** on the menu. The register: what each measure counts and why its target is that number, one block per measure, with the same filters the sheet uses and a **Nothing recorded** worklist preset. The one later screen that is written to as well as read — see below |
 | `/my-entries` | Keyboard-driven monthly entry for everything the signed-in user owns, with an outstanding count |
 | `/control-item/[id]` | Trend chart with every version overlaid, stored cells including formulas as typed, the full audit trail, and this measure's definition and rationale |
 | `/print/company` | A3 landscape, print-only |
@@ -1072,7 +1072,7 @@ exactly where it structurally attaches — under the Level 3 Objective it
 ladders into — with no possibility of drifting from what the sheet itself
 would show.
 
-### Why a measure means what it means
+### Definitions — why a measure means what it means
 
 The definitions of Control Items and their targets get argued about, and until
 `/rationale` the plan kept no trace of either. A Control Item carries

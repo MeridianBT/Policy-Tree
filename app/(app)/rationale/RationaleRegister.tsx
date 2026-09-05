@@ -192,7 +192,7 @@ export function RationaleRegister({
     <div className="min-h-0 flex-1 overflow-auto bg-paper">
       <div className="mx-auto max-w-5xl px-8 py-6">
         <header className="mb-2">
-          <h1 className="text-[15px] font-semibold">Rationale</h1>
+          <h1 className="text-[15px] font-semibold">Definitions</h1>
           <p className="mt-0.5 text-[11px] text-ink-muted">
             What each measure counts, and why its target is the number it is. {model.kiCode}.
           </p>

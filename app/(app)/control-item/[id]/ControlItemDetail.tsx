@@ -148,7 +148,7 @@ export function ControlItemDetailView({
                 ? "Stored cells"
                 : value === "HISTORY"
                   ? "Edit history"
-                  : "Rationale"}
+                  : "Definition"}
           </button>
         ))}
       </nav>
