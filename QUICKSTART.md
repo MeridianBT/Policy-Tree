@@ -96,14 +96,7 @@ Every Company Goal down to the department work beneath it, on one page. The
 thing to look at is the *gaps*: objectives showing "nothing yet ladders in
 here" are the point of the page, not a rendering fault.
 
-**3 · Insights** — `/insights`
-
-Symbol distribution per division per month. The later months are empty because
-neither dataset keys actuals for the whole Ki — the demo dataset stops after
-July, the worked example after September. That is the "nothing keyed yet" state
-rendering correctly, not a gap in the page.
-
-**4 · Definitions** — `/rationale`
+**3 · Definitions** — `/rationale`
 
 What each measure counts and why its target is that number, one block per
 measure. On a fresh database everything reads "Not recorded", which is the
@@ -113,6 +106,13 @@ and replaced by its newest version, a rationale is *added* as a dated entry
 under your name. Nothing here is ever overwritten — a revised definition keeps
 the one before it behind "earlier versions", and a note is withdrawn rather
 than deleted.
+
+**4 · Insights** — `/insights`
+
+Symbol distribution per division per month. The later months are empty because
+neither dataset keys actuals for the whole Ki — the demo dataset stops after
+July, the worked example after September. That is the "nothing keyed yet" state
+rendering correctly, not a gap in the page.
 
 **5 · Keying a number** — `/my-entries`
 
