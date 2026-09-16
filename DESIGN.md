@@ -146,12 +146,17 @@ Three things carry over unchanged: the filters, through the same `matchRows`,
 so a business unit means here what it means there; the target version; and the
 Excel export, which is the data rather than the layout.
 
-- **Row spans are the relationship.** A Goal cell four rows tall says those
-  four Objectives belong to it. No connector lines to maintain, no absolute
-  positioning to drift, and the browser does the height arithmetic. A Level 2
-  deploying into four Level 3s spans those four as well — without that, one
-  Objective and three blank rows is what the reader sees, which is a different
-  and untrue statement.
+- **A Goal is a heading, not a column.** It sits above its Objectives with
+  them indented one step beneath, exactly as on the sheet. A column was tried
+  first and spent about an eighth of the page carrying one short phrase per
+  five rows; as a heading it costs one row per Goal and gives that width to the
+  statements, which are the thing that runs out of room. Horizontal space is
+  the whole constraint here — the page exists to fit a slide.
+- **The row spans that remain are the relationship.** A Level 2 deploying into
+  four Level 3s spans those four — without that, one Objective and three blank
+  rows is what the reader sees, which is a different and untrue statement. No
+  connector lines to maintain, no absolute positioning to drift, and the
+  browser does the height arithmetic.
 - **The empty half is the finding.** Measured on the live plan: 59 Level 2
   Objectives, 9 of which deploy to Level 3 at all, and 7 Level 3 measures in
   the whole company. The right-hand column is blank on fifty rows. That is

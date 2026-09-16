@@ -662,11 +662,17 @@ printed plainly, the same way the cascade prints a line under an Objective
 nothing ladders into: the gap is what the page is for, and the footer's count
 makes the blankness a fact rather than a rendering fault.
 
-Row spans do the drawing. A Goal cell as tall as its block says those
-Objectives belong to it, and a Level 2 deploying into four Level 3s spans those
-four — without the span, one Objective and three empty rows is what a reader
-sees, which is a different claim entirely. The browser does the height
-arithmetic, and `thead` repeats itself on a second printed page for free.
+A Goal is a **heading row** with its Objectives indented beneath, the way the
+sheet draws one. A left-hand Goal column was tried first and spent about an
+eighth of the width on one phrase per five rows; as a heading it costs one row
+per Goal — five rows on the current plan — and hands that width to the
+statements, which take the L2 statement column from roughly 19% to 25% of the
+page. Horizontal room is the constraint the whole view exists to work inside.
+
+The row spans that remain do real drawing: a Level 2 deploying into four Level
+3s spans those four, and without the span one Objective and three empty rows is
+what a reader sees, which is a different claim entirely. The browser does the
+height arithmetic, and `thead` repeats itself on a second printed page for free.
 
 Level 4 never appears. A department branch belongs to the division that owns
 it, not to a company slide, and `buildLandscape` drops it outright, so

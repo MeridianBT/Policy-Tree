@@ -94,7 +94,13 @@ export interface LandscapeGoal {
   /** Its place in the company's priority list, when it has one. */
   ordinal: number | null;
   objectives: LandscapeL2[];
-  /** Printed height of the whole block, for the Goal cell's row span. */
+  /**
+   * Measure rows this Goal owns - what its heading stands over.
+   *
+   * It is not the Goal's printed height: the heading itself is a row too, so
+   * the block is `rows + 1` on the page. `landscapeFit` adds those back, which
+   * is the only place the distinction matters.
+   */
   rows: number;
 }
 
@@ -114,7 +120,14 @@ export interface LandscapeGoal {
 export const ROWS_PER_SLIDE = 35;
 
 export interface LandscapeFit {
-  /** Printed rows across every goal. */
+  /**
+   * Printed rows across every goal, its heading row included.
+   *
+   * The heading counts because it takes vertical space like anything else, and
+   * this number is what the slide estimate divides. Counting only the measures
+   * would under-report by one per Goal and quietly promise a slide that does
+   * not fit.
+   */
   rows: number;
   /** Measures on the page, both sides counted. */
   measures: number;
@@ -256,7 +269,8 @@ export function landscapeFit(goals: readonly LandscapeGoal[]): LandscapeFit {
   let deployed = 0;
 
   for (const goal of goals) {
-    rows += goal.rows;
+    // Its measures, plus the heading row above them.
+    rows += goal.rows + 1;
     for (const objective of goal.objectives) {
       measures += objective.left.filter((measure) => !measure.unmeasured).length;
       measures += objective.right.filter((measure) => !measure.unmeasured).length;

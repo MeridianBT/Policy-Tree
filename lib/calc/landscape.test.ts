@@ -170,7 +170,7 @@ describe("how tall a block is", () => {
     expect(goal.objectives[0].rows).toBe(2);
   });
 
-  it("spans the Goal cell over every row its Objectives occupy", () => {
+  it("reports the rows a Goal's heading stands over", () => {
     const rows = [
       group("goal", 1, []),
       item("one", 2, ["goal"]),
@@ -223,14 +223,27 @@ describe("how many slides it takes", () => {
     return buildLandscape(rows);
   };
 
+  /*
+   * The Goal's heading is a row on the page like any other, so it counts. It
+   * would be easy to leave it out and under-report by one per Goal, which
+   * would quietly promise a slide that does not fit.
+   */
+  it("counts the Goal's heading row, not only its measures", () => {
+    const fit = landscapeFit(goalOf(3));
+    expect(fit.rows).toBe(4);
+    expect(fit.measures).toBe(3);
+  });
+
   it("is one slide while the rows fit", () => {
-    const fit = landscapeFit(goalOf(ROWS_PER_SLIDE));
+    // One objective short of the limit, because the heading takes the last row.
+    const fit = landscapeFit(goalOf(ROWS_PER_SLIDE - 1));
     expect(fit.rows).toBe(ROWS_PER_SLIDE);
     expect(fit.slides).toBe(1);
   });
 
   it("is two the moment they do not", () => {
-    expect(landscapeFit(goalOf(ROWS_PER_SLIDE + 1)).slides).toBe(2);
+    expect(landscapeFit(goalOf(ROWS_PER_SLIDE)).rows).toBe(ROWS_PER_SLIDE + 1);
+    expect(landscapeFit(goalOf(ROWS_PER_SLIDE)).slides).toBe(2);
   });
 
   it("is no slides at all for an empty plan, rather than one blank one", () => {
@@ -251,7 +264,8 @@ describe("how many slides it takes", () => {
       group("bare", 2, ["goal"]),
     ];
     expect(landscapeFit(buildLandscape(rows))).toMatchObject({
-      rows: 2,
+      // Two Objective rows plus the one Goal heading above them.
+      rows: 3,
       measures: 2,
       deployed: 1,
     });

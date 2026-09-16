@@ -10,11 +10,14 @@
  * - "this Goal is held to these Objectives, and this Objective deploys into
  * these" - and it fits a slide, which seventeen month columns never will.
  *
- * An HTML table with row spans rather than a grid of divs, deliberately. The
- * span *is* the relationship being drawn: a Goal cell three rows tall says
- * those three Objectives belong to it, with no connector lines to maintain and
- * no absolute positioning to drift. It also means the browser does the
- * height arithmetic, and `thead` repeats on a second printed page for free.
+ * An HTML table rather than a grid of divs, deliberately. A Goal is a heading
+ * row over its Objectives - a column was tried first and spent about an eighth
+ * of the page on one phrase per five rows, which horizontal space here cannot
+ * afford - and the row spans that remain draw the relationship: a Level 2 cell
+ * four rows tall says those four deployments belong to it, with no connector
+ * lines to maintain and no absolute positioning to drift. It also means the
+ * browser does the height arithmetic, and `thead` repeats on a second printed
+ * page for free.
  *
  * Stops at Level 3. A department branch belongs to the division that owns it,
  * not to a company slide, and `buildLandscape` drops Level 4 outright so a
@@ -27,10 +30,18 @@ import { EvaluationSymbol } from "./EvaluationSymbol";
 import { BandLegend } from "./BandLegend";
 import { buildLandscape, landscapeFit, type LandscapeMeasure } from "./landscape";
 import { matchRows, type SheetFilters } from "./filters";
-import { groupOrdinalPrefix } from "./outline";
+import { groupOrdinalPrefix, INDENT_STEP_PX, OUTLINE_BASE_PX } from "./outline";
 import { formatValue } from "@/lib/calc/format";
 import { EM_DASH } from "@/lib/calc/format";
 import type { SheetModel } from "@/lib/sheet/types";
+
+/**
+ * Five columns a side. Named so the Goal heading's colSpan and the two
+ * spanning header cells cannot drift from the colgroup - a heading one column
+ * short leaves a stray gap at the end of every Goal band.
+ */
+const COLUMNS_PER_SIDE = 5;
+const COLUMN_COUNT = COLUMNS_PER_SIDE * 2;
 
 export function SheetLandscape({
   model,
@@ -60,17 +71,23 @@ export function SheetLandscape({
     <div className="flex min-h-0 flex-1 flex-col border border-rule-strong bg-paper">
       <div className="min-h-0 flex-1 overflow-auto">
         <table className="w-full border-collapse text-[11px]">
+          {/*
+            Ten columns, summing to 100 - which the eleven did not. They came
+            to 114, so the browser normalised every one of them down by about
+            a eighth and the numbers written here were never the widths on
+            screen. Losing the Goal column gives its share to the two
+            statement columns, which are the ones that run out of room.
+          */}
           <colgroup>
-            <col style={{ width: "13%" }} />
-            <col style={{ width: "22%" }} />
-            <col style={{ width: "13%" }} />
+            <col style={{ width: "25%" }} />
+            <col style={{ width: "12%" }} />
             <col style={{ width: "7%" }} />
             <col style={{ width: "7%" }} />
             <col style={{ width: "4%" }} />
             <col style={{ width: "19%" }} />
-            <col style={{ width: "11%" }} />
-            <col style={{ width: "7%" }} />
-            <col style={{ width: "7%" }} />
+            <col style={{ width: "10%" }} />
+            <col style={{ width: "6%" }} />
+            <col style={{ width: "6%" }} />
             <col style={{ width: "4%" }} />
           </colgroup>
 
@@ -82,16 +99,14 @@ export function SheetLandscape({
           */}
           <thead className="sticky top-0 z-10 bg-paper-band-strong">
             <tr>
-              <Th className="border-b-0" />
-              <Th colSpan={5} className="border-b-0 text-ink">
+              <Th colSpan={COLUMNS_PER_SIDE} className="border-b-0 text-ink">
                 Company · Level 2
               </Th>
-              <Th colSpan={5} className="border-b-0 border-l border-l-rule-strong text-ink">
+              <Th colSpan={COLUMNS_PER_SIDE} className="border-b-0 border-l border-l-rule-strong text-ink">
                 Deployed · Level 3
               </Th>
             </tr>
             <tr>
-              <Th>Goal</Th>
               <Th>Objective</Th>
               <Th>Control Item</Th>
               <Th className="text-right">Target</Th>
@@ -111,23 +126,41 @@ export function SheetLandscape({
           */}
           {goals.map((goal) => (
             <tbody key={goal.id} className="border-t border-t-rule-strong">
+              {/*
+                The Goal, as a heading over its rows rather than a column
+                beside them.
+                
+                A column spent about an eighth of the page on one short phrase
+                per five rows, and horizontal room is the whole constraint here
+                - the page exists to fit a slide. As a heading it costs one row
+                per Goal and hands that width to the statements, which is the
+                trade worth making, and it is what the sheet itself does: a
+                Goal sits inline in the row stream as a header, indented one
+                step per level.
+
+                `scope="rowgroup"` because that is what it is - a heading
+                labelling the rows beneath it - and the tbody stays one per
+                Goal, which is what holds the block together across a page
+                break.
+              */}
+              <tr>
+                <th
+                  scope="rowgroup"
+                  colSpan={COLUMN_COUNT}
+                  style={{ paddingLeft: OUTLINE_BASE_PX }}
+                  className="border-b border-rule-strong bg-paper-band-strong py-1 pr-2 text-left text-[13px] font-semibold"
+                >
+                  {groupOrdinalPrefix(goal.ordinal)}
+                  <RichText text={goal.statement} />
+                </th>
+              </tr>
               {goal.objectives.flatMap((objective, objectiveIndex) =>
                 Array.from({ length: objective.rows }, (_unused, rowIndex) => {
                   const left = objective.left[rowIndex];
                   const right = objective.right[rowIndex];
-                  const firstOfGoal = objectiveIndex === 0 && rowIndex === 0;
 
                   return (
                     <tr key={`${goal.id}-${objectiveIndex}-${rowIndex}`} className="align-top">
-                      {firstOfGoal && (
-                        <td
-                          rowSpan={goal.rows}
-                          className="border-r border-rule-strong bg-paper-band-strong px-2 py-1 text-[12px] font-semibold leading-snug"
-                        >
-                          {groupOrdinalPrefix(goal.ordinal)}
-                          <RichText text={goal.statement} />
-                        </td>
-                      )}
                       {/*
                         A side with one measure draws it once, spanning the
                         block; a side with several draws one per row. Anything
@@ -136,7 +169,11 @@ export function SheetLandscape({
                         rather than a hole in the rendering.
                       */}
                       {(rowIndex === 0 || objective.leftSpan === 1) && (
-                        <MeasureCells measure={left} span={rowIndex === 0 ? objective.leftSpan : 1} />
+                        <MeasureCells
+                          measure={left}
+                          span={rowIndex === 0 ? objective.leftSpan : 1}
+                          indent={OUTLINE_BASE_PX + INDENT_STEP_PX}
+                        />
                       )}
                       {(rowIndex === 0 || objective.rightSpan === 1) && (
                         <MeasureCells
@@ -194,17 +231,25 @@ function MeasureCells({
   measure,
   span = 1,
   leading,
+  indent,
 }: {
   measure?: LandscapeMeasure;
   span?: number;
   leading?: boolean;
+  /**
+   * Left padding on the statement cell, so a Level 2 reads as sitting under
+   * the Goal heading above it rather than flush against the page edge. The
+   * step comes from outline.ts, which is the sheet's own indent scale - a
+   * second one would drift.
+   */
+  indent?: number;
 }) {
   const edge = leading ? "border-l border-l-rule-strong" : "";
 
   if (!measure) {
     return (
       <>
-        <Td className={edge} span={span} />
+        <Td className={edge} span={span} indent={indent} />
         <Td span={span} />
         <Td span={span} />
         <Td span={span} />
@@ -215,7 +260,7 @@ function MeasureCells({
 
   return (
     <>
-      <Td span={span} className={`${edge} leading-snug`}>
+      <Td span={span} indent={indent} className={`${edge} leading-snug`}>
         <RichText text={measure.statement} />
       </Td>
       <Td span={span} className="text-ink-muted">
@@ -281,13 +326,19 @@ function Td({
   children,
   className = "",
   span = 1,
+  indent,
 }: {
   children?: React.ReactNode;
   className?: string;
   span?: number;
+  indent?: number;
 }) {
   return (
-    <td rowSpan={span} className={`border-b border-rule px-2 py-1 ${className}`}>
+    <td
+      rowSpan={span}
+      style={indent === undefined ? undefined : { paddingLeft: indent }}
+      className={`border-b border-rule py-1 pr-2 ${indent === undefined ? "pl-2" : ""} ${className}`}
+    >
       {children}
     </td>
   );

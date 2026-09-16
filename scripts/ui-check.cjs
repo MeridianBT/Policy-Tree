@@ -1963,23 +1963,48 @@ async function theCompanyReadsAcrossThePage(browser) {
   );
 
   /*
-   * The span is the relationship. A Goal cell has to be exactly as tall as the
-   * rows beneath it, and a Level 2 deploying into several has to cover them -
-   * without that, four deployments read as one Objective and three empty ones.
+   * The Goal is a heading over its rows, not a column beside them - a column
+   * spent about an eighth of the page on one phrase per five rows, and
+   * horizontal room is the whole point of the view.
+   *
+   * What can go wrong is quiet: a colSpan one short leaves a gap at the end of
+   * every Goal band, and a heading that is not the first row of its group puts
+   * a measure above the Goal it belongs to.
    */
-  const spans = await page.evaluate(() => {
-    const bodies = [...document.querySelectorAll("tbody")];
-    return bodies.map((body) => {
-      const rows = body.querySelectorAll("tr").length;
-      const goalCell = body.querySelector("tr:first-child > td[rowspan]");
-      return { rows, goalSpan: goalCell ? Number(goalCell.getAttribute("rowspan")) : 0 };
-    });
+  const blocks = await page.evaluate(() => {
+    const columns = document.querySelectorAll("colgroup col").length;
+    return {
+      columns,
+      groups: [...document.querySelectorAll("tbody")].map((body) => {
+        const first = body.querySelector("tr:first-child");
+        const heading = first?.querySelector('th[scope="rowgroup"]') ?? null;
+        return {
+          rows: body.querySelectorAll("tr").length,
+          headings: body.querySelectorAll('th[scope="rowgroup"]').length,
+          headingIsFirst: Boolean(heading),
+          span: heading ? Number(heading.getAttribute("colspan")) : 0,
+          // A measure row must carry no Goal cell now that the column is gone.
+          cellsOnSecondRow: body.querySelectorAll("tr:nth-child(2) > td").length,
+        };
+      }),
+    };
   });
-  check(spans.length > 0, "every Goal is its own block", `${spans.length} goals`);
+
+  check(blocks.groups.length > 0, "every Goal is its own block", `${blocks.groups.length} goals`);
   check(
-    spans.every((block) => block.goalSpan === block.rows),
-    "and its cell spans exactly the rows it owns",
-    spans.map((b) => `${b.goalSpan}/${b.rows}`).join(" "),
+    blocks.groups.every((block) => block.headings === 1 && block.headingIsFirst),
+    "opened by exactly one heading row, above its measures",
+    blocks.groups.map((b) => `${b.headings}${b.headingIsFirst ? "" : "!"}`).join(" "),
+  );
+  check(
+    blocks.groups.every((block) => block.span === blocks.columns),
+    "and the heading spans the whole table",
+    `${blocks.groups[0]?.span} of ${blocks.columns} columns`,
+  );
+  check(
+    blocks.groups.every((block) => block.rows > 1 && block.cellsOnSecondRow <= blocks.columns),
+    "with no Goal cell left on the measure rows",
+    blocks.groups.map((b) => b.cellsOnSecondRow).join(" "),
   );
 
   const footer = async () => (await page.locator("span.num").last().innerText()).replace(/\s+/g, " ");
