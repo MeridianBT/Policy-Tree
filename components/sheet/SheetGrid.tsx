@@ -35,7 +35,7 @@ import { SheetCellView, rowHeightFor, type DisplayMode } from "./SheetCellView";
 import { SheetCellInput, SheetCellReadOnly } from "./SheetCellInput";
 import { cellKey, displayFor, isDirty, seedInput, type CellEditState } from "./entry-state";
 import { isSingleCell, parseClipboardGrid, planPaste, type PasteCell } from "./paste";
-import { EvaluationSymbol } from "./EvaluationSymbol";
+import { BandLegend } from "./BandLegend";
 
 const GROUP_ROW_HEIGHT = 28;
 
@@ -1215,25 +1215,3 @@ function MonthEntryCell({
   );
 }
 
-function BandLegend({ model }: { model: SheetModel }) {
-  return (
-    <div className="flex items-center gap-3">
-      {model.bands.map((band) => (
-        <span key={band.symbol} className="flex items-center gap-1">
-          <EvaluationSymbol symbol={band.symbol} label={band.label} color={band.colorHex} size={13} />
-          <span className="text-[10px] text-ink-faint">{bandRange(band)}</span>
-        </span>
-      ))}
-    </div>
-  );
-}
-
-function bandRange(band: SheetModel["bands"][number]): string {
-  if (band.minPct === null) return `< ${pct(band.maxPct!)}`;
-  if (band.maxPct === null) return `≥ ${pct(band.minPct)}`;
-  return `${pct(band.minPct)}–${pct(band.maxPct)}`;
-}
-
-function pct(ratio: number): string {
-  return `${Math.round(ratio * 100)}%`;
-}

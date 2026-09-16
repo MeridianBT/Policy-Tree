@@ -1911,6 +1911,101 @@ async function theRegisterShowsWhatIsMissing(browser) {
   await page.close();
 }
 
+/**
+ * The company read across the page rather than down it.
+ *
+ * Three things can break here and none of them throws. The toolbar can keep
+ * offering controls that describe month columns the view no longer draws. The
+ * row spans can come out one short or one long, which reads as a CSS problem
+ * rather than a counting one. And the slide count - the whole reason the view
+ * is honest about not fitting - can stop responding to the filters it is meant
+ * to react to.
+ */
+async function theCompanyReadsAcrossThePage(browser) {
+  console.log("\nThe company reads across the page");
+  const page = await browser.newPage({ viewport: { width: 1600, height: 900 } });
+  await signIn(page);
+
+  const visibleControls = () =>
+    page.evaluate(() =>
+      [...document.querySelectorAll("label, button")]
+        .filter((el) => el.offsetParent !== null)
+        .map((el) => el.textContent.trim().split("\n")[0])
+        .join(" | "),
+    );
+
+  const portrait = await visibleControls();
+  // "Months" is a Columns option and appears nowhere in landscape. The
+  // Segmented label itself is for assistive tech rather than visible text, so
+  // asserting on "Display mode" found nothing and said so misleadingly.
+  check(/\bMonths\b/.test(portrait), "portrait offers the month/quarter columns toggle");
+  check((await page.locator("table").count()) === 0, "and draws the grid, not a table");
+
+  await page.locator("button", { hasText: /^Across$/ }).first().click();
+  // The rendered table, not a fixed pause: the switch reloads the model when
+  // departments were folded in.
+  await page.locator("table tbody tr").first().waitFor({ timeout: 30000 }).catch(() => {});
+
+  const landscape = await visibleControls();
+  check((await page.locator("table").count()) === 1, "Across draws the bracket");
+  check(
+    !/\bMonths\b/.test(landscape) && !/\bQuarters\b/.test(landscape),
+    "and drops the controls that only describe month columns",
+    landscape.slice(0, 90),
+  );
+  check(
+    !/Departments/.test(landscape),
+    "and the level toggle, because landscape is the company by definition",
+  );
+  check(
+    !/Print view/.test(landscape),
+    "and Print view, which would hand back the portrait sheet",
+  );
+
+  /*
+   * The span is the relationship. A Goal cell has to be exactly as tall as the
+   * rows beneath it, and a Level 2 deploying into several has to cover them -
+   * without that, four deployments read as one Objective and three empty ones.
+   */
+  const spans = await page.evaluate(() => {
+    const bodies = [...document.querySelectorAll("tbody")];
+    return bodies.map((body) => {
+      const rows = body.querySelectorAll("tr").length;
+      const goalCell = body.querySelector("tr:first-child > td[rowspan]");
+      return { rows, goalSpan: goalCell ? Number(goalCell.getAttribute("rowspan")) : 0 };
+    });
+  });
+  check(spans.length > 0, "every Goal is its own block", `${spans.length} goals`);
+  check(
+    spans.every((block) => block.goalSpan === block.rows),
+    "and its cell spans exactly the rows it owns",
+    spans.map((b) => `${b.goalSpan}/${b.rows}`).join(" "),
+  );
+
+  const footer = async () => (await page.locator("span.num").last().innerText()).replace(/\s+/g, " ");
+  const before = await footer();
+  check(/slides? at 16:9/.test(before), "the footer says how many slides this is", before);
+  check(/deployed to Level 3/.test(before), "and how much is deployed at all", before);
+
+  const rowsNow = () => page.locator("table tbody tr").count();
+  const all = await rowsNow();
+
+  // A filter has to move the slide count, or the number is decoration.
+  await page.locator("label", { hasText: "Find" }).locator("input").fill("motorcycle");
+  await page.waitForTimeout(1200);
+  const narrowed = await rowsNow();
+  check(narrowed > 0 && narrowed < all, "Find narrows the bracket", `${all} -> ${narrowed}`);
+  const after = await footer();
+  check(after !== before, "and the slide count follows it", after);
+
+  await page.locator("button", { hasText: /^Down$/ }).first().click();
+  await page.waitForTimeout(2500);
+  check((await page.locator("table").count()) === 0, "Down puts the grid back");
+  check(/\bMonths\b/.test(await visibleControls()), "with its own controls back");
+
+  await page.close();
+}
+
 (async () => {
   const browser = await chromium.launch({
     executablePath: process.env.PLAYWRIGHT_CHROMIUM || undefined,
@@ -1943,6 +2038,7 @@ async function theRegisterShowsWhatIsMissing(browser) {
     await departmentChipsDoNotRepeatTheDivision(browser);
     await aRationaleCanBeRecorded(browser);
     await theRegisterShowsWhatIsMissing(browser);
+    await theCompanyReadsAcrossThePage(browser);
   } finally {
     await browser.close();
   }

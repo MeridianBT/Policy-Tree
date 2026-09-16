@@ -22,6 +22,8 @@ import {
   type SheetFilters,
 } from "./SheetGrid";
 import { viewToParams } from "./filters";
+import { SheetLandscape } from "./SheetLandscape";
+import type { SheetOrientation } from "./landscape";
 import { cellKey, retireSaved, type CellEditState } from "./entry-state";
 import { canEnterFigures, type EditingUser } from "./permissions";
 import { saveEntriesAction, saveEntryAction } from "@/lib/entries/actions";
@@ -88,6 +90,7 @@ export function SheetScreen({
   currentUser,
   onStructureChanged,
   viewToggle,
+  orientation = "PORTRAIT",
 }: {
   model: SheetModel;
   title: string;
@@ -112,7 +115,28 @@ export function SheetScreen({
   onStructureChanged?: () => void;
   /** An optional Company/+Departments toggle, rendered in the toolbar. */
   viewToggle?: React.ReactNode;
+  /**
+   * Which way the plan is read. Portrait is the sheet proper - the grid, with
+   * time running across the page. Landscape replaces the grid with the
+   * deployment bracket and drops every control that only means something
+   * against month columns.
+   *
+   * A prop rather than local state, because the caller decides whether the
+   * mode is offered at all: it is a company view, and the division sheet has
+   * no business showing it.
+   */
+  orientation?: SheetOrientation;
 }) {
+  /*
+   * Landscape has no month columns, so the controls that describe them have
+   * nothing to describe: the display density, the Months/Quarters condense,
+   * the single-quarter picker, and keying figures inline. They are hidden
+   * rather than disabled, the rule the sheet already follows for a row action
+   * somebody cannot take - a greyed control reads as a bug to fix rather than
+   * a boundary to respect.
+   */
+  const landscape = orientation === "LANDSCAPE";
+
   const [displayMode, setDisplayMode] = useState<DisplayMode>("FULL");
   const [filters, setFilters] = useState<SheetFilters>(EMPTY_FILTERS);
   // Narrows the Department picker to one Division and its Departments, so choosing
@@ -186,7 +210,16 @@ export function SheetScreen({
     : "The whole sheet — nothing is filtered";
 
   const canEditStructure = Boolean(currentUser && currentUser.role !== "VIEWER");
-  const [editMode, setEditMode] = useState(false);
+  const [editModeWanted, setEditMode] = useState(false);
+  /*
+   * Both editing modes are *derived* off the orientation rather than cleared
+   * when it changes. Landscape draws no row-label column for a pencil and no
+   * month cells for a keystroke, so neither mode can mean anything there - and
+   * deriving it keeps a reader's choice intact for when they switch back,
+   * which syncing state in an effect would throw away (and which React rightly
+   * complains about).
+   */
+  const editMode = editModeWanted && !landscape;
 
   /*
    * Keying figures.
@@ -214,7 +247,7 @@ export function SheetScreen({
       !pinnedVersion.isActual &&
       !pinnedVersion.lockedAt,
   );
-  const entryMode = entryModeWanted && canEnterFiguresHere;
+  const entryMode = entryModeWanted && canEnterFiguresHere && !landscape;
 
   /*
    * A saved figure changes its quarter, its Ki total, its achievement and its
@@ -587,12 +620,17 @@ export function SheetScreen({
           options={versionOptions}
           onChange={onTargetVersionChange}
         />
-        <Select
-          label="Compare with"
-          value={compareVersionId}
-          options={compareOptions}
-          onChange={onCompareVersionChange}
-        />
+        {/* Comparison prints a second target beside the first, in the month
+            cells. Landscape has one figure per measure and nowhere to put it,
+            so the picker goes rather than sitting there doing nothing. */}
+        {!landscape && (
+          <Select
+            label="Compare with"
+            value={compareVersionId}
+            options={compareOptions}
+            onChange={onCompareVersionChange}
+          />
+        )}
         <span className="mx-1 h-4 w-px bg-rule" aria-hidden />
         {exportHref && (
           <a
@@ -603,7 +641,7 @@ export function SheetScreen({
             <Download size={12} /> Export to Excel
           </a>
         )}
-        {printHref && (
+        {printHref && !landscape && (
           <Link
             href={outputUrl(printHref, printParams)}
             target="_blank"
@@ -620,34 +658,38 @@ export function SheetScreen({
         {viewToggle}
         {viewToggle && <span className="mx-1 h-4 w-px bg-rule" aria-hidden />}
 
-        <Segmented
-          label="Display mode"
-          value={displayMode}
-          onChange={setDisplayMode}
-          options={DISPLAY_MODES}
-        />
+        {!landscape && (
+          <>
+            <Segmented
+              label="Display mode"
+              value={displayMode}
+              onChange={setDisplayMode}
+              options={DISPLAY_MODES}
+            />
 
-        <Segmented
-          label="Columns"
-          value={columnsMode}
-          onChange={(value) =>
-            setCondensedQuarters(value === "QUARTERS" ? [...ALL_QUARTERS] : [])
-          }
-          options={[
-            { value: "MONTHS", label: "Months", hint: "Every month, with its quarter beside it" },
-            { value: "QUARTERS", label: "Quarters", hint: "Condense every quarter to its total" },
-          ]}
-        />
+            <Segmented
+              label="Columns"
+              value={columnsMode}
+              onChange={(value) =>
+                setCondensedQuarters(value === "QUARTERS" ? [...ALL_QUARTERS] : [])
+              }
+              options={[
+                { value: "MONTHS", label: "Months", hint: "Every month, with its quarter beside it" },
+                { value: "QUARTERS", label: "Quarters", hint: "Condense every quarter to its total" },
+              ]}
+            />
 
-        <Select
-          label="Quarter"
-          value={onlyQuarter ?? "ALL"}
-          onChange={(value) => setOnlyQuarter(value === "ALL" ? null : (value as QuarterCode))}
-          options={[
-            { value: "ALL", label: "Full year" },
-            ...ALL_QUARTERS.map((quarter) => ({ value: quarter, label: quarter })),
-          ]}
-        />
+            <Select
+              label="Quarter"
+              value={onlyQuarter ?? "ALL"}
+              onChange={(value) => setOnlyQuarter(value === "ALL" ? null : (value as QuarterCode))}
+              options={[
+                { value: "ALL", label: "Full year" },
+                ...ALL_QUARTERS.map((quarter) => ({ value: quarter, label: quarter })),
+              ]}
+            />
+          </>
+        )}
 
         <span className="mx-1 h-4 w-px bg-rule" aria-hidden />
 
@@ -715,7 +757,7 @@ export function SheetScreen({
           Below target
         </Button>
 
-        {canEnterFiguresHere && (
+        {canEnterFiguresHere && !landscape && (
           <>
             <span className="mx-1 h-4 w-px bg-rule" aria-hidden />
             <Button
@@ -728,7 +770,7 @@ export function SheetScreen({
           </>
         )}
 
-        {canEditStructure && (
+        {canEditStructure && !landscape && (
           <>
             <span className="mx-1 h-4 w-px bg-rule" aria-hidden />
             <Button
@@ -1078,18 +1120,22 @@ export function SheetScreen({
         </div>
       )}
 
-      <SheetGrid
-        model={model}
-        displayMode={displayMode}
-        filters={effectiveFilters}
-        compareModel={compareModel}
-        compareVersionId={compareVersionId || null}
-        condensedQuarters={condensedQuarters}
-        onlyQuarter={onlyQuarter}
-        onToggleQuarter={toggleQuarter}
-        editing={editing}
-        entry={entry}
-      />
+      {landscape ? (
+        <SheetLandscape model={model} filters={effectiveFilters} />
+      ) : (
+        <SheetGrid
+          model={model}
+          displayMode={displayMode}
+          filters={effectiveFilters}
+          compareModel={compareModel}
+          compareVersionId={compareVersionId || null}
+          condensedQuarters={condensedQuarters}
+          onlyQuarter={onlyQuarter}
+          onToggleQuarter={toggleQuarter}
+          editing={editing}
+          entry={entry}
+        />
+      )}
     </div>
   );
 }

@@ -116,6 +116,57 @@ mode. The grid is tight on purpose.
   sheet (that is the whole point of scoping to a department); a disabled
   icon would read as a bug to fix, not as a boundary to respect.
 
+## Which way the plan reads
+
+One toggle, **Down** and **Across**, on the company sheet only.
+
+**Down** is the sheet as designed above: levels cascading vertically, time
+running across the page. It is the operating surface, and the right shape for
+keying a figure and for reading a year.
+
+**Across** turns the same plan ninety degrees. Goals and their Level 2
+Objectives on the left, whatever each deploys into at Level 3 on the right,
+one figure per measure instead of seventeen. It exists because the sheet cannot
+be photographed onto a slide: seventeen month columns and sixty rows is an A3,
+not a 16:9 projection.
+
+This is a **mode on the sheet where the seventeen columns disappear**, which is
+an odd thing for a mode to do and is worth stating rather than discovering. It
+lives here rather than on the cascade — where the structure-without-columns
+view already lives — because that is where a reader goes looking for "the
+company sheet, rotated". The cost is paid in the toolbar: Across hides the
+display densities, the Months/Quarters condense, the single-quarter picker,
+inline target entry and structure editing, because every one of them describes
+month columns that are no longer drawn. Hidden rather than greyed, which is the
+rule the sheet already follows for an action somebody cannot take. Print view
+is hidden too — it renders the portrait sheet, and offering it from Across
+would hand back a page that is not what is on screen.
+
+Three things carry over unchanged: the filters, through the same `matchRows`,
+so a business unit means here what it means there; the target version; and the
+Excel export, which is the data rather than the layout.
+
+- **Row spans are the relationship.** A Goal cell four rows tall says those
+  four Objectives belong to it. No connector lines to maintain, no absolute
+  positioning to drift, and the browser does the height arithmetic. A Level 2
+  deploying into four Level 3s spans those four as well — without that, one
+  Objective and three blank rows is what the reader sees, which is a different
+  and untrue statement.
+- **The empty half is the finding.** Measured on the live plan: 59 Level 2
+  Objectives, 9 of which deploy to Level 3 at all, and 7 Level 3 measures in
+  the whole company. The right-hand column is blank on fifty rows. That is
+  printed rather than designed around, the same argument the cascade makes for
+  a line under an Objective nothing ladders into, and the footer states the
+  count so the blankness reads as a fact rather than a rendering fault.
+- **The slide count is admitted, not engineered around.** The footer says how
+  many 16:9 slides the current view would take. Shrinking the type until
+  everything fits would produce a slide nobody at the back of a room can read,
+  and would do it silently; the reader filters until it says one.
+
+No token was added. The figures use the same tabular numerals, the symbols the
+same five glyphs and the same band colours, and the Goal band the same
+`--paper-band-strong` the group header rows use.
+
 ## Display modes
 
 One toggle, four densities, because a review needs different things at

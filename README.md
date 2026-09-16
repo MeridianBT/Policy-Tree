@@ -597,7 +597,7 @@ shared mailbox does not fill with hundreds of copies nobody reads.
 
 | Route | What it is |
 |---|---|
-| `/sheet` | The company sheet — Levels 1–3 by default, with a View toggle folding every Level 4 branch in under its Objective. Virtualised, with version selector, compare mode, three display densities, condensable quarter columns, a single-quarter view, three filters — Business unit, then Division, then Department — read outside-in, and a one-click **Below target** preset. Rows can be dragged into a new order among their own siblings, and month cells become keyable when a specific unlocked version is pinned ADMIN and OWNER (division/department leads) can edit the structure directly here |
+| `/sheet` | Two orientations. **Down** is the company sheet — Levels 1–3 by default, with a View toggle folding every Level 4 branch in under its Objective. Virtualised, with version selector, compare mode, three display densities, condensable quarter columns, a single-quarter view, three filters — Business unit, then Division, then Department — read outside-in, and a one-click **Below target** preset. Rows can be dragged into a new order among their own siblings, and month cells become keyable when a specific unlocked version is pinned ADMIN and OWNER (division/department leads) can edit the structure directly here. **Across** is the same plan turned ninety degrees for a 16:9 slide — see below |
 | `/division/[code]` | The same Level 4 sheet, pre-scoped to one division and its departments — a narrower, single-division view of what "+ Departments" on the company sheet shows for everyone. Reached by URL; not linked from the nav, where it duplicated the sheet's own filters |
 | `/cascade` | A read-only, one-page alignment map from every Company Goal down to the Department work laddering into it, narrowable by view, business unit and division — see below |
 | `/rationale` | **Definitions** on the menu. The register: what each measure counts and why its target is that number, one block per measure, with the same filters the sheet uses and a **Nothing recorded** worklist preset. The one later screen that is written to as well as read — see below |
@@ -623,6 +623,59 @@ changes nothing that is computed: the quarter figure is derived from the
 monthly grain whether or not the months are on screen. A condensed sheet prints
 condensed — the Print view link carries the state as `?columns=quarters`, which
 gives a much less dense one-pager for a board reading.
+
+### Reading the company across the page
+
+The sheet runs time across the page, which is what keying and reading a year
+need — and what makes it impossible to photograph onto a slide. Sixty rows and
+seventeen month columns is an A3.
+
+The **Down / Across** toggle, company sheet only, turns the same plan ninety
+degrees: Goals and their Level 2 Objectives on the left, whatever each deploys
+into at Level 3 on the right, one figure per measure — target, actual and
+evaluation symbol — instead of seventeen.
+
+It is a mode where the sheet's seventeen columns disappear, so Across hides
+every control that only describes them: the display densities, the
+Months/Quarters condense, the single-quarter picker, inline target entry and
+structure editing. Print view goes too, because it renders the portrait sheet
+and would hand back a page that is not what is on screen. The filters, the
+target version and Export to Excel all carry over — the filters through the
+same `matchRows` the sheet uses, so a business unit means the same thing in
+both.
+
+Two things the layout is built to tell you rather than hide.
+
+**How many slides this is.** The footer counts: *"68 measures · 67 rows · 2
+slides at 16:9 · 7 deployed to Level 3"*. Thirty-five rows fit one slide at a
+size a room can read — 13.33in × 7.5in leaves about 158mm of height after
+margins and a title, and a single-line row at 9pt is about 4.5mm. Single-line
+is measured rather than hoped for: no Objective statement in the current plan
+exceeds 40 characters. The count is *reported* rather than engineered around,
+because the alternative — shrinking the type until everything fits — produces
+an unreadable slide and does it silently. Filter until it says one.
+
+**How little is deployed.** On the live plan there are 59 Level 2 Objectives,
+9 of which have anything at Level 3, and **7 Level 3 measures in the whole
+company**. So the right-hand column is blank on about fifty rows. That is
+printed plainly, the same way the cascade prints a line under an Objective
+nothing ladders into: the gap is what the page is for, and the footer's count
+makes the blankness a fact rather than a rendering fault.
+
+Row spans do the drawing. A Goal cell as tall as its block says those
+Objectives belong to it, and a Level 2 deploying into four Level 3s spans those
+four — without the span, one Objective and three empty rows is what a reader
+sees, which is a different claim entirely. The browser does the height
+arithmetic, and `thead` repeats itself on a second printed page for free.
+
+Level 4 never appears. A department branch belongs to the division that owns
+it, not to a company slide, and `buildLandscape` drops it outright, so
+switching to Across with "+ Departments" still on folds them away rather than
+silently dropping rows somebody asked for.
+
+A PowerPoint export is **not built**. The view is sized and counted for 16:9 so
+a screenshot lands cleanly; a native `.pptx` download was specified and
+deferred — see "Deliberately not built".
 
 ### Running more than one year
 
@@ -1612,7 +1665,12 @@ current Ki, so run it on a development database and re-seed afterwards.
 
 ## Deliberately not built
 
-Gap analysis and countermeasure text (deferred by design — `control_item_note`
+A PowerPoint export of the landscape company view (specified and deferred: it
+needs `pptxgenjs`, which pulls a transitive package named `https` — one
+maintainer, no repository, shadowing a Node builtin's name — and that is a
+conversation to have with IT before it lands rather than after. The view itself
+is sized and counted for 16:9 so a screenshot works meanwhile), gap analysis
+and countermeasure text (deferred by design — `control_item_note`
 now has the place for it: a third value in `NoteKind`, beside DEFINITION and
 RATIONALE, rather than a third table. Nothing is built), approval workflow, notifications, chat integrations, weighted
 roll-up or contribution scoring between levels, initiatives or task tracking
