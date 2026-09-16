@@ -14,7 +14,7 @@
  */
 
 import { describe, expect, it } from "vitest";
-import { buildLandscape, landscapeFit, ROWS_PER_SLIDE } from "@/components/sheet/landscape";
+import { buildLandscape, landscapeFit, quartersFor, ROWS_PER_SLIDE } from "@/components/sheet/landscape";
 import type { ControlItemRow, GroupRow, SheetRowModel } from "@/lib/sheet/types";
 import type { SheetCell } from "@/lib/calc/row";
 
@@ -96,6 +96,21 @@ function item(
     kiSymbol: "〇",
     ...overrides,
   } as SheetRowModel;
+}
+
+/** One quarter's cell, for the views that read a quarter rather than the year. */
+function quarterCell(
+  quarter: "Q1" | "Q2" | "Q3" | "Q4",
+  target: number | null,
+  actual: number | null,
+): SheetCell {
+  return {
+    ...kiCell(target, actual, actual === null ? null : "◎"),
+    key: quarter,
+    kind: "QUARTER",
+    label: quarter,
+    quarter,
+  } as SheetCell;
 }
 
 describe("which side a measure lands on", () => {
@@ -330,5 +345,120 @@ describe("row spans, which are the relationship being drawn", () => {
       expect(objective.leftSpan).toBeLessThanOrEqual(objective.rows);
       expect(objective.rightSpan).toBeLessThanOrEqual(objective.rows);
     }
+  });
+});
+
+
+/*
+ * One figure per measure is the whole shape of this view, so which period that
+ * figure comes from is a choice somebody makes rather than a column they
+ * scroll to. Reading the wrong one is the failure that looks entirely right:
+ * a quarter's number under a heading that says the year.
+ */
+describe("which period the figure comes from", () => {
+  const withQuarters = (overrides = {}) =>
+    item("l2", 2, ["goal"], {
+      cells: [
+        quarterCell("Q1", 1000, 950),
+        quarterCell("Q2", 1100, 400),
+        quarterCell("Q3", 1200, null),
+        quarterCell("Q4", 1300, null),
+        kiCell(4600, 1350, "〇"),
+      ],
+      ...overrides,
+    });
+
+  it("reads the Ki total when no quarter is picked", () => {
+    const [goal] = buildLandscape([group("goal", 1, []), withQuarters()]);
+    expect(goal.objectives[0].left[0]).toMatchObject({ target: 4600, actual: 1350, symbol: "〇" });
+  });
+
+  it("reads the picked quarter's own cell", () => {
+    const [goal] = buildLandscape([group("goal", 1, []), withQuarters()], "Q2");
+    expect(goal.objectives[0].left[0]).toMatchObject({ target: 1100, actual: 400, symbol: "◎" });
+  });
+
+  it("carries the period down to Level 3 as well, not only the left-hand side", () => {
+    const rows = [
+      group("goal", 1, []),
+      withQuarters(),
+      item("l3", 3, ["goal", "l2"], {
+        cells: [quarterCell("Q2", 55, 60), kiCell(220, 60, "〇")],
+      }),
+    ];
+    const [goal] = buildLandscape(rows, "Q2");
+    expect(goal.objectives[0].right[0]).toMatchObject({ target: 55, actual: 60 });
+  });
+
+  it("shows nothing rather than the year when the picked quarter has no cell", () => {
+    // A measure keyed only at the Ki level. Falling back to the Ki total would
+    // print a year's figure in a column headed Q3.
+    const [goal] = buildLandscape([group("goal", 1, []), item("l2", 2, ["goal"])], "Q3");
+    expect(goal.objectives[0].left[0]).toMatchObject({ target: null, actual: null, symbol: null });
+  });
+
+  it("keeps every cell on the measure, so four quarters need no second build", () => {
+    const [goal] = buildLandscape([group("goal", 1, []), withQuarters()], "Q2");
+    expect(goal.objectives[0].left[0].cells).toHaveLength(5);
+  });
+
+  /*
+   * The badge beside every statement. It is the same accountability the sheet
+   * prints in its Measures column, and a slide that names a target without
+   * naming who holds it is the reason the badge exists.
+   */
+  it("carries the owning org unit through, code and name both", () => {
+    const [goal] = buildLandscape([group("goal", 1, []), withQuarters()]);
+    expect(goal.objectives[0].left[0]).toMatchObject({ dicCode: "AUTO", dicName: "Auto" });
+  });
+});
+
+describe("the four quarters at one number each", () => {
+  const KI_START = 2026; // April 2026 - March 2027
+  // Mid-August 2026: Q1 has closed, Q2 is being lived through.
+  const MID_Q2 = new Date(Date.UTC(2026, 7, 15));
+
+  const measure = () => {
+    const [goal] = buildLandscape([
+      group("goal", 1, []),
+      item("l2", 2, ["goal"], {
+        cells: [
+          quarterCell("Q1", 1000, 950),
+          quarterCell("Q2", 1100, 400),
+          quarterCell("Q3", 1200, null),
+          quarterCell("Q4", 1300, null),
+          kiCell(4600, 1350, "〇"),
+        ],
+      }),
+    ]);
+    return goal.objectives[0].left[0];
+  };
+
+  it("gives four figures in calendar order", () => {
+    expect(quartersFor(measure(), KI_START, MID_Q2).map((q) => q.quarter)).toEqual([
+      "Q1",
+      "Q2",
+      "Q3",
+      "Q4",
+    ]);
+  });
+
+  /*
+   * Deferred to the cascade's rule rather than restated: a closed quarter
+   * answers with what happened, an open one with what was promised. Asserted
+   * here so a future shortcut in this module - reading the quarter cell's
+   * actual directly, say - shows up as a target reported as an achievement.
+   */
+  it("answers with the actual once a quarter has closed and the target while it is open", () => {
+    const [q1, q2] = quartersFor(measure(), KI_START, MID_Q2);
+    expect(q1).toMatchObject({ basis: "ACTUAL", value: 950, symbol: "◎" });
+    expect(q2).toMatchObject({ basis: "TARGET", value: 1100, symbol: null });
+  });
+
+  it("has nothing to show for an Objective with no measure against it", () => {
+    const [goal] = buildLandscape([group("goal", 1, []), group("l2", 2, ["goal"])]);
+    const figures = quartersFor(goal.objectives[0].left[0], KI_START, MID_Q2);
+    expect(figures).toHaveLength(4);
+    expect(figures.every((q) => q.value === null)).toBe(true);
   });
 });

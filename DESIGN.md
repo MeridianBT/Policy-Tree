@@ -135,9 +135,9 @@ an odd thing for a mode to do and is worth stating rather than discovering. It
 lives here rather than on the cascade — where the structure-without-columns
 view already lives — because that is where a reader goes looking for "the
 company sheet, rotated". The cost is paid in the toolbar: Across hides the
-display densities, the Months/Quarters condense, the single-quarter picker,
-inline target entry and structure editing, because every one of them describes
-month columns that are no longer drawn. Hidden rather than greyed, which is the
+display densities, the inline comparison, inline target entry and structure
+editing, because every one of them describes month columns that are no longer
+drawn. Hidden rather than greyed, which is the
 rule the sheet already follows for an action somebody cannot take. Print view
 is hidden too — it renders the portrait sheet, and offering it from Across
 would hand back a page that is not what is on screen.
@@ -146,6 +146,24 @@ Three things carry over unchanged: the filters, through the same `matchRows`,
 so a business unit means here what it means there; the target version; and the
 Excel export, which is the data rather than the layout.
 
+- **Which period is on screen is a choice, and the title states it.** With one
+  figure per measure, "which month am I looking at" stops being a question a
+  reader answers by scrolling. Two controls therefore survive the turn, because
+  the questions they ask survive it: Columns, re-labelled *Year total* / *Four
+  quarters* — the same state as the sheet's Months/Quarters condense, so the
+  answer carries across the switch — and the Quarter picker, which names the
+  period the single figure block holds. Four quarters shows one number each on
+  the cascade's rule (the actual once a quarter has closed, the target while it
+  is open), so the two views cannot disagree about what Q2 shows. The figure
+  headings and the page title both name the period: a slide outlives the
+  toolbar that made it, and an unlabelled column of figures beside "Company
+  sheet" gets read as the full year.
+- **The owner travels with the measure.** The division or department code is
+  badged beside every statement, inline rather than in a column of its own — a
+  column would spend width this view cannot spare repeating a four-letter code,
+  and the sheet already establishes that the badge belongs beside the name. A
+  board slide that names a number and not who holds it is the half that gets
+  argued about later.
 - **A Goal is a heading, not a column.** It sits above its Objectives with
   them indented one step beneath, exactly as on the sheet. A column was tried
   first and spent about an eighth of the page carrying one short phrase per

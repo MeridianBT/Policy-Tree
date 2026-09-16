@@ -1949,9 +1949,21 @@ async function theCompanyReadsAcrossThePage(browser) {
   const landscape = await visibleControls();
   check((await page.locator("table").count()) === 1, "Across draws the bracket");
   check(
-    !/\bMonths\b/.test(landscape) && !/\bQuarters\b/.test(landscape),
-    "and drops the controls that only describe month columns",
+    !/\bMonths\b/.test(landscape),
+    "and drops the month columns toggle, having no months to fold",
     landscape.slice(0, 90),
+  );
+  /*
+   * The Columns question survives the turn, re-labelled: one figure block or
+   * four quarters is the same choice the sheet makes between months and
+   * quarter totals, and it went missing in the first pass along with the
+   * period picker - which matters more here than on the sheet, because one
+   * figure per measure means the period is chosen rather than scrolled to.
+   */
+  check(
+    /Year total/.test(landscape) && /Four quarters/.test(landscape),
+    "but keeps the Columns choice in its own words",
+    landscape.slice(0, 120),
   );
   check(
     !/Departments/.test(landscape),
@@ -1960,6 +1972,14 @@ async function theCompanyReadsAcrossThePage(browser) {
   check(
     !/Print view/.test(landscape),
     "and Print view, which would hand back the portrait sheet",
+  );
+
+  // Who holds the target, badged beside the statement exactly as the sheet
+  // badges it. A slide naming a number and not its owner is the reason it is
+  // there at all.
+  check(
+    (await page.locator('table td span[title^="In charge:"]').count()) > 0,
+    "every measure still carries its owner badge",
   );
 
   /*
@@ -2022,6 +2042,68 @@ async function theCompanyReadsAcrossThePage(browser) {
   check(narrowed > 0 && narrowed < all, "Find narrows the bracket", `${all} -> ${narrowed}`);
   const after = await footer();
   check(after !== before, "and the slide count follows it", after);
+
+  await page.locator("label", { hasText: "Find" }).locator("input").fill("");
+  await page.waitForTimeout(1200);
+
+  /*
+   * The period, in the figure headings and in the title.
+   *
+   * The headings matter because "Target" alone over a single column cannot
+   * say whether it is a quarter's or a year's; the title matters because a
+   * slide is pasted into a deck and read months later with no toolbar beside
+   * it, and that is exactly when a quarter gets taken for the full year.
+   */
+  const headings = () =>
+    page.evaluate(() =>
+      [...document.querySelectorAll("thead tr:last-child th")]
+        .map((el) => el.textContent.trim())
+        .join(" | "),
+    );
+  const heading = () => page.locator("h1").first().innerText();
+
+  check(/Full year/.test(await heading()), "the title names the period on screen", await heading());
+
+  const quarter = page.locator("label", { hasText: "Quarter" }).locator("select");
+  await quarter.selectOption("Q2");
+  await page.waitForTimeout(1200);
+  check(/Q2 target/.test(await headings()), "a picked quarter names itself in the figure headings", await headings());
+  check(/Q2/.test(await heading()) && !/Full year/.test(await heading()), "and in the title", await heading());
+
+  // Four quarters costs two columns and takes the period picker with it -
+  // narrowing to Q2 when all four are on screen is what the other mode is.
+  await page.locator("button", { hasText: /^Four quarters$/ }).first().click();
+  await page.waitForTimeout(1200);
+  const quarterly = await page.evaluate(() => ({
+    columns: document.querySelectorAll("colgroup col").length,
+    headings: [...document.querySelectorAll("thead tr:last-child th")].map((el) =>
+      el.textContent.trim(),
+    ),
+    heads: [...document.querySelectorAll("tbody")].map((body) =>
+      Number(body.querySelector('th[scope="rowgroup"]')?.getAttribute("colspan") ?? 0),
+    ),
+  }));
+  check(
+    ["Q1", "Q2", "Q3", "Q4"].every((q) => quarterly.headings.includes(q)),
+    "Four quarters puts all four on the page",
+    quarterly.headings.join(" "),
+  );
+  check(
+    quarterly.columns === 12 && quarterly.heads.every((span) => span === quarterly.columns),
+    "and the Goal headings span the wider table",
+    `${quarterly.columns} columns, spans ${quarterly.heads.join(" ")}`,
+  );
+  check(
+    (await page.locator("label", { hasText: "Quarter" }).count()) === 0,
+    "with no period left to pick",
+  );
+
+  await page.locator("button", { hasText: /^Year total$/ }).first().click();
+  await page.waitForTimeout(1200);
+  check(
+    (await page.locator("label", { hasText: "Quarter" }).count()) === 1,
+    "Year total brings the period picker back",
+  );
 
   await page.locator("button", { hasText: /^Down$/ }).first().click();
   await page.waitForTimeout(2500);

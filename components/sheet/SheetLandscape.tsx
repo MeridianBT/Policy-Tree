@@ -28,27 +28,59 @@ import { useMemo } from "react";
 import { RichText } from "@/components/ui/RichText";
 import { EvaluationSymbol } from "./EvaluationSymbol";
 import { BandLegend } from "./BandLegend";
-import { buildLandscape, landscapeFit, type LandscapeMeasure } from "./landscape";
+import {
+  buildLandscape,
+  landscapeFit,
+  quartersFor,
+  type LandscapeFigures,
+  type LandscapeMeasure,
+  type LandscapePeriod,
+} from "./landscape";
 import { matchRows, type SheetFilters } from "./filters";
 import { groupOrdinalPrefix, INDENT_STEP_PX, OUTLINE_BASE_PX } from "./outline";
 import { formatValue } from "@/lib/calc/format";
 import { EM_DASH } from "@/lib/calc/format";
 import type { SheetModel } from "@/lib/sheet/types";
+import { QUARTERS } from "@/lib/domain/period";
+import type { QuarterFigure } from "./quarter-figures";
 
-/**
- * Five columns a side. Named so the Goal heading's colSpan and the two
- * spanning header cells cannot drift from the colgroup - a heading one column
- * short leaves a stray gap at the end of every Goal band.
+/*
+ * Column geometry, per mode, in one place.
+ *
+ * Both modes sum to 100 - the first version of this file summed to 114 and the
+ * browser normalised every width down by about an eighth, so the numbers
+ * written here were never the widths on screen. Named together so the Goal
+ * heading's colSpan and the two spanning header cells cannot drift from the
+ * colgroup: a heading one column short leaves a stray gap at the end of every
+ * Goal band and throws nothing.
+ *
+ * Four quarters cost width, and it comes out of the statements rather than out
+ * of the figures - a measure whose name is cut off is useless, but 21% still
+ * holds the measured 40-character maximum on one line.
  */
-const COLUMNS_PER_SIDE = 5;
-const COLUMN_COUNT = COLUMNS_PER_SIDE * 2;
+const GEOMETRY = {
+  PERIOD: {
+    left: [25, 12, 7, 7, 4],
+    right: [19, 10, 6, 6, 4],
+  },
+  QUARTERS: {
+    left: [21, 10, 6, 6, 6, 6],
+    right: [15, 8, 5.5, 5.5, 5.5, 5.5],
+  },
+} as const;
 
 export function SheetLandscape({
   model,
   filters,
+  period = "KI",
+  figures = "PERIOD",
 }: {
   model: SheetModel;
   filters: SheetFilters;
+  /** Which period the figures come from; the year total unless a quarter is picked. */
+  period?: LandscapePeriod;
+  /** One figure block for that period, or all four quarters at one number each. */
+  figures?: LandscapeFigures;
 }) {
   /*
    * `matchRows` unchanged, so a business unit or a division means here exactly
@@ -56,8 +88,23 @@ export function SheetLandscape({
    * it survived, which is what makes a filtered slide a coherent page rather
    * than a list of orphaned Goals.
    */
-  const goals = useMemo(() => buildLandscape(matchRows(model.rows, filters)), [model.rows, filters]);
+  const goals = useMemo(
+    () => buildLandscape(matchRows(model.rows, filters), period),
+    [model.rows, filters, period],
+  );
   const fit = useMemo(() => landscapeFit(goals), [goals]);
+
+  const geometry = GEOMETRY[figures];
+  const columnsPerSide = geometry.left.length;
+  const columnCount = columnsPerSide * 2;
+
+  /*
+   * One clock for the whole page, so two measures cannot disagree about which
+   * quarter has closed because the render crossed a month boundary. The
+   * cascade takes the same care for the same reason.
+   */
+  const today = useMemo(() => new Date(), []);
+  const periodLabel = period === "KI" ? "Ki total" : period;
 
   if (goals.length === 0) {
     return (
@@ -71,24 +118,10 @@ export function SheetLandscape({
     <div className="flex min-h-0 flex-1 flex-col border border-rule-strong bg-paper">
       <div className="min-h-0 flex-1 overflow-auto">
         <table className="w-full border-collapse text-[11px]">
-          {/*
-            Ten columns, summing to 100 - which the eleven did not. They came
-            to 114, so the browser normalised every one of them down by about
-            a eighth and the numbers written here were never the widths on
-            screen. Losing the Goal column gives its share to the two
-            statement columns, which are the ones that run out of room.
-          */}
           <colgroup>
-            <col style={{ width: "25%" }} />
-            <col style={{ width: "12%" }} />
-            <col style={{ width: "7%" }} />
-            <col style={{ width: "7%" }} />
-            <col style={{ width: "4%" }} />
-            <col style={{ width: "19%" }} />
-            <col style={{ width: "10%" }} />
-            <col style={{ width: "6%" }} />
-            <col style={{ width: "6%" }} />
-            <col style={{ width: "4%" }} />
+            {[...geometry.left, ...geometry.right].map((width, index) => (
+              <col key={index} style={{ width: `${width}%` }} />
+            ))}
           </colgroup>
 
           {/*
@@ -99,24 +132,29 @@ export function SheetLandscape({
           */}
           <thead className="sticky top-0 z-10 bg-paper-band-strong">
             <tr>
-              <Th colSpan={COLUMNS_PER_SIDE} className="border-b-0 text-ink">
+              <Th colSpan={columnsPerSide} className="border-b-0 text-ink">
                 Company · Level 2
               </Th>
-              <Th colSpan={COLUMNS_PER_SIDE} className="border-b-0 border-l border-l-rule-strong text-ink">
+              <Th
+                colSpan={columnsPerSide}
+                className="border-b-0 border-l border-l-rule-strong text-ink"
+              >
                 Deployed · Level 3
               </Th>
             </tr>
             <tr>
+              {/*
+                The figure headings name the period. On a slide pasted into a
+                deck three months later, "Target" alone is the difference
+                between a quarter and a year, and nothing else on the page
+                would settle it.
+              */}
               <Th>Objective</Th>
               <Th>Control Item</Th>
-              <Th className="text-right">Target</Th>
-              <Th className="text-right">Actual</Th>
-              <Th className="text-center">Eval</Th>
+              <FigureHeadings figures={figures} periodLabel={periodLabel} />
               <Th className="border-l border-l-rule-strong">Objective</Th>
               <Th>Control Item</Th>
-              <Th className="text-right">Target</Th>
-              <Th className="text-right">Actual</Th>
-              <Th className="text-center">Eval</Th>
+              <FigureHeadings figures={figures} periodLabel={periodLabel} />
             </tr>
           </thead>
 
@@ -146,7 +184,7 @@ export function SheetLandscape({
               <tr>
                 <th
                   scope="rowgroup"
-                  colSpan={COLUMN_COUNT}
+                  colSpan={columnCount}
                   style={{ paddingLeft: OUTLINE_BASE_PX }}
                   className="border-b border-rule-strong bg-paper-band-strong py-1 pr-2 text-left text-[13px] font-semibold"
                 >
@@ -173,6 +211,9 @@ export function SheetLandscape({
                           measure={left}
                           span={rowIndex === 0 ? objective.leftSpan : 1}
                           indent={OUTLINE_BASE_PX + INDENT_STEP_PX}
+                          figures={figures}
+                          kiStartYear={model.kiStartYear}
+                          today={today}
                         />
                       )}
                       {(rowIndex === 0 || objective.rightSpan === 1) && (
@@ -180,6 +221,9 @@ export function SheetLandscape({
                           measure={right}
                           span={rowIndex === 0 ? objective.rightSpan : 1}
                           leading
+                          figures={figures}
+                          kiStartYear={model.kiStartYear}
+                          today={today}
                         />
                       )}
                     </tr>
@@ -232,6 +276,9 @@ function MeasureCells({
   span = 1,
   leading,
   indent,
+  figures,
+  kiStartYear,
+  today,
 }: {
   measure?: LandscapeMeasure;
   span?: number;
@@ -243,17 +290,21 @@ function MeasureCells({
    * second one would drift.
    */
   indent?: number;
+  figures: LandscapeFigures;
+  kiStartYear: number;
+  today: Date;
 }) {
   const edge = leading ? "border-l border-l-rule-strong" : "";
+  const figureColumns = figures === "QUARTERS" ? QUARTERS.length : 3;
 
   if (!measure) {
     return (
       <>
         <Td className={edge} span={span} indent={indent} />
         <Td span={span} />
-        <Td span={span} />
-        <Td span={span} />
-        <Td span={span} />
+        {Array.from({ length: figureColumns }, (_unused, index) => (
+          <Td key={index} span={span} />
+        ))}
       </>
     );
   }
@@ -261,7 +312,26 @@ function MeasureCells({
   return (
     <>
       <Td span={span} indent={indent} className={`${edge} leading-snug`}>
-        <RichText text={measure.statement} />
+        <span className="flex items-baseline gap-1.5">
+          <span className="min-w-0">
+            <RichText text={measure.statement} />
+          </span>
+          {/*
+            Who is accountable, badged exactly as the sheet badges it in the
+            Measures column - same border, same size, same "In charge:" title.
+            Inline rather than a column of its own: a column would cost width
+            this view cannot spare to repeat a four-letter code, and the sheet
+            already establishes that the badge belongs beside the name.
+          */}
+          {measure.dicCode && (
+            <span
+              className="shrink-0 rounded-sm border border-rule px-1 text-[10px] text-ink-muted"
+              title={`In charge: ${measure.dicName ?? measure.dicCode}`}
+            >
+              {measure.dicCode}
+            </span>
+          )}
+        </span>
       </Td>
       <Td span={span} className="text-ink-muted">
         {measure.unmeasured ? (
@@ -272,21 +342,99 @@ function MeasureCells({
           measure.measuredAs
         )}
       </Td>
-      <Td span={span} className="num text-right">{figure(measure, measure.target)}</Td>
-      <Td span={span} className="num text-right">{figure(measure, measure.actual)}</Td>
-      <Td span={span} className="text-center">
-        {measure.symbol ? (
-          <EvaluationSymbol
-            symbol={measure.symbol}
-            label={measure.symbolLabel}
-            color={measure.symbolColor}
-            size={13}
-          />
-        ) : (
-          <span className="text-ink-faint">{EM_DASH}</span>
-        )}
-      </Td>
+      {figures === "QUARTERS" ? (
+        quartersFor(measure, kiStartYear, today).map((quarter) => (
+          <QuarterFigureCell key={quarter.quarter} figure={quarter} measure={measure} span={span} />
+        ))
+      ) : (
+        <>
+          <Td span={span} className="num text-right">{figure(measure, measure.target)}</Td>
+          <Td span={span} className="num text-right">{figure(measure, measure.actual)}</Td>
+          <Td span={span} className="text-center">
+            {measure.symbol ? (
+              <EvaluationSymbol
+                symbol={measure.symbol}
+                label={measure.symbolLabel}
+                color={measure.symbolColor}
+                size={13}
+              />
+            ) : (
+              <span className="text-ink-faint">{EM_DASH}</span>
+            )}
+          </Td>
+        </>
+      )}
     </>
+  );
+}
+
+/** The figure column headings, which name the period they hold. */
+function FigureHeadings({
+  figures,
+  periodLabel,
+}: {
+  figures: LandscapeFigures;
+  periodLabel: string;
+}) {
+  if (figures === "QUARTERS") {
+    return (
+      <>
+        {QUARTERS.map((quarter) => (
+          <Th key={quarter} className="text-right">
+            {quarter}
+          </Th>
+        ))}
+      </>
+    );
+  }
+  return (
+    <>
+      <Th className="text-right">{periodLabel === "Ki total" ? "Target" : `${periodLabel} target`}</Th>
+      <Th className="text-right">{periodLabel === "Ki total" ? "Actual" : `${periodLabel} actual`}</Th>
+      <Th className="text-center">Eval</Th>
+    </>
+  );
+}
+
+/**
+ * One quarter, one number, the cascade's rule and the cascade's typography.
+ *
+ * An actual is set in ink and carries its evaluation symbol; a target is
+ * quieter and italic, because "this is what happened" and "this is what we
+ * said we would do" have to stay distinguishable at arm's length off a wall -
+ * and the whole point of this view is being read from a distance.
+ */
+function QuarterFigureCell({
+  figure: quarter,
+  measure,
+  span,
+}: {
+  figure: QuarterFigure;
+  measure: LandscapeMeasure;
+  span: number;
+}) {
+  const isActual = quarter.basis === "ACTUAL";
+  const text = formatValue(quarter.value, measure.decimalPlaces, measure.unit ?? undefined, {
+    withUnit: true,
+  });
+
+  return (
+    <Td
+      span={span}
+      className={`num text-right ${isActual ? "text-ink" : "italic text-ink-faint"}`}
+    >
+      <span className="flex items-baseline justify-end gap-1">
+        {isActual && quarter.symbol && (
+          <EvaluationSymbol
+            symbol={quarter.symbol}
+            label={quarter.symbolLabel}
+            color={quarter.symbolColor}
+            size={10}
+          />
+        )}
+        {quarter.value === null ? <span className="text-ink-faint">{EM_DASH}</span> : text}
+      </span>
+    </Td>
   );
 }
 

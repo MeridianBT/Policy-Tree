@@ -636,17 +636,43 @@ into at Level 3 on the right, one figure per measure — target, actual and
 evaluation symbol — instead of seventeen.
 
 It is a mode where the sheet's seventeen columns disappear, so Across hides
-every control that only describes them: the display densities, the
-Months/Quarters condense, the single-quarter picker, inline target entry and
-structure editing. Print view goes too, because it renders the portrait sheet
-and would hand back a page that is not what is on screen. The filters, the
-target version and Export to Excel all carry over — the filters through the
-same `matchRows` the sheet uses, so a business unit means the same thing in
-both.
+every control that only describes them: the display densities, the inline
+comparison, inline target entry and structure editing. Print view goes too,
+because it renders the portrait sheet and would hand back a page that is not
+what is on screen. The filters, the target version and Export to Excel all
+carry over — the filters through the same `matchRows` the sheet uses, so a
+business unit means the same thing in both. Every measure keeps its **owner
+badge**, the division or department code beside the statement, badged exactly
+as the sheet badges it: a slide that names a target without naming who holds it
+is missing the half that makes it a commitment.
+
+**Which period the slide shows is a choice, and the title says which.** One
+figure per measure means the question the sheet answers by scrolling — which
+month is this — has to be answered by picking, so two controls survive the
+turn:
+
+- **Columns** asks the same question it asks on the sheet, in the slide's
+  words: *Year total* gives one target, actual and symbol per measure; *Four
+  quarters* gives Q1–Q4 at one number each, on the cascade's rule — the actual
+  once a quarter has closed, the standing target while it is still open or
+  still ahead. It is the same state as the sheet's Months/Quarters condense, so
+  the answer carries across the Down/Across switch instead of each view keeping
+  its own opinion.
+- **Quarter** narrows the single figure block to one quarter — *"here is where
+  Q2 landed"* is the slide somebody actually asks for. With four quarters
+  already on screen there is nothing left to narrow to, so the picker is hidden
+  in that mode rather than left meaning nothing.
+
+The heading carries the answer: *"Company sheet — deployment across the page ·
+Q2"*. A slide is pasted into a deck and read months later with no toolbar
+beside it, and that is exactly when a quarter gets taken for the full year.
+Four quarters costs two columns, taken out of the statements rather than the
+figures — 21% of the page still holds the measured 40-character maximum on one
+line.
 
 Two things the layout is built to tell you rather than hide.
 
-**How many slides this is.** The footer counts: *"68 measures · 67 rows · 2
+**How many slides this is.** The footer counts: *"68 measures · 72 rows · 3
 slides at 16:9 · 7 deployed to Level 3"*. Thirty-five rows fit one slide at a
 size a room can read — 13.33in × 7.5in leaves about 158mm of height after
 margins and a title, and a single-line row at 9pt is about 4.5mm. Single-line

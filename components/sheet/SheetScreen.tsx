@@ -23,7 +23,7 @@ import {
 } from "./SheetGrid";
 import { viewToParams } from "./filters";
 import { SheetLandscape } from "./SheetLandscape";
-import type { SheetOrientation } from "./landscape";
+import type { LandscapeFigures, LandscapePeriod, SheetOrientation } from "./landscape";
 import { cellKey, retireSaved, type CellEditState } from "./entry-state";
 import { canEnterFigures, type EditingUser } from "./permissions";
 import { saveEntriesAction, saveEntryAction } from "@/lib/entries/actions";
@@ -128,12 +128,19 @@ export function SheetScreen({
   orientation?: SheetOrientation;
 }) {
   /*
-   * Landscape has no month columns, so the controls that describe them have
-   * nothing to describe: the display density, the Months/Quarters condense,
-   * the single-quarter picker, and keying figures inline. They are hidden
-   * rather than disabled, the rule the sheet already follows for a row action
-   * somebody cannot take - a greyed control reads as a bug to fix rather than
-   * a boundary to respect.
+   * Landscape has no month columns, so the controls that describe a month have
+   * nothing to describe: the display density, the inline comparison, keying
+   * figures, and editing structure. They are hidden rather than disabled, the
+   * rule the sheet already follows for a row action somebody cannot take - a
+   * greyed control reads as a bug to fix rather than a boundary to respect.
+   *
+   * Two of them survive the turn because the question they ask survives it.
+   * "One summary column or four quarters" is the same question whether the
+   * columns are months or a slide's single figure block, so the Columns toggle
+   * is re-labelled rather than replaced; and with one figure per measure
+   * instead of seventeen, "which period am I looking at" stops being something
+   * the reader answers by scrolling and becomes something they have to choose,
+   * which is the Quarter picker's whole job.
    */
   const landscape = orientation === "LANDSCAPE";
 
@@ -567,6 +574,39 @@ export function SheetScreen({
   const columnsMode: string =
     condensedQuarters.length === 0 ? "MONTHS" : allCondensed ? "QUARTERS" : "MIXED";
 
+  /*
+   * The same two pieces of state, read the way landscape means them.
+   *
+   * `condensedQuarters` says how much the sheet folds its months up; every
+   * quarter folded is "show me quarter totals, not months", and landscape
+   * takes that as "four quarters rather than one figure". Reusing it means the
+   * answer carries across the Down/Across switch instead of each view keeping
+   * its own opinion about the same question. A partial fold - one quarter
+   * condensed on the sheet - is not a landscape state at all, so it reads as
+   * the period figure.
+   *
+   * `onlyQuarter` names the period when there is one figure block. With four
+   * quarters on screen it has nothing to narrow, so it is pinned to the Ki
+   * total rather than left to imply the columns came from somewhere else.
+   */
+  const landscapeFigures: LandscapeFigures = allCondensed ? "QUARTERS" : "PERIOD";
+  const landscapePeriod: LandscapePeriod =
+    landscapeFigures === "QUARTERS" ? "KI" : (onlyQuarter ?? "KI");
+  /*
+   * Which period is on screen, said in the title.
+   *
+   * A slide is pasted into a deck and read months later with no controls
+   * beside it, so the heading has to carry what the toolbar knows. "Company
+   * sheet - across the page" beside a single column of figures is exactly the
+   * thing that gets mistaken for the full year.
+   */
+  const landscapePeriodLabel =
+    landscapeFigures === "QUARTERS"
+      ? "Four quarters"
+      : landscapePeriod === "KI"
+        ? "Full year"
+        : landscapePeriod;
+
   const toggleQuarter = useCallback((quarter: QuarterCode) => {
     setCondensedQuarters((previous) =>
       previous.includes(quarter)
@@ -603,7 +643,12 @@ export function SheetScreen({
     <div className="flex min-h-0 flex-1 flex-col gap-2 p-3">
       <header className="flex flex-wrap items-center justify-between gap-2">
         <div>
-          <h1 className="text-[15px] font-semibold">{title}</h1>
+          <h1 className="text-[15px] font-semibold">
+            {title}
+            {/* Landscape's figures are one period's; the title is where a
+                reader looking at a pasted slide can still find out which. */}
+            {landscape && ` · ${landscapePeriodLabel}`}
+          </h1>
           <p className="text-[11px] text-ink-muted">
             {model.kiCode}
             {subtitle ? ` · ${subtitle}` : ""}
@@ -658,37 +703,62 @@ export function SheetScreen({
         {viewToggle}
         {viewToggle && <span className="mx-1 h-4 w-px bg-rule" aria-hidden />}
 
+        {/* Display density describes row labels and month cells, neither of
+            which landscape draws. */}
         {!landscape && (
-          <>
-            <Segmented
-              label="Display mode"
-              value={displayMode}
-              onChange={setDisplayMode}
-              options={DISPLAY_MODES}
-            />
+          <Segmented
+            label="Display mode"
+            value={displayMode}
+            onChange={setDisplayMode}
+            options={DISPLAY_MODES}
+          />
+        )}
 
-            <Segmented
-              label="Columns"
-              value={columnsMode}
-              onChange={(value) =>
-                setCondensedQuarters(value === "QUARTERS" ? [...ALL_QUARTERS] : [])
-              }
-              options={[
-                { value: "MONTHS", label: "Months", hint: "Every month, with its quarter beside it" },
-                { value: "QUARTERS", label: "Quarters", hint: "Condense every quarter to its total" },
-              ]}
-            />
+        {/* One control, two vocabularies: the sheet folds months into quarter
+            totals, the slide swaps its single figure block for four. Same
+            state, so the choice survives the switch between them. */}
+        <Segmented
+          label="Columns"
+          value={landscape ? landscapeFigures : columnsMode}
+          onChange={(value) =>
+            setCondensedQuarters(
+              value === "QUARTERS" ? [...ALL_QUARTERS] : [],
+            )
+          }
+          options={
+            landscape
+              ? [
+                  {
+                    value: "PERIOD",
+                    label: "Year total",
+                    hint: "One target, actual and evaluation per measure",
+                  },
+                  {
+                    value: "QUARTERS",
+                    label: "Four quarters",
+                    hint: "Q1 to Q4 at one number each: the actual once a quarter has closed, the target while it is still open",
+                  },
+                ]
+              : [
+                  { value: "MONTHS", label: "Months", hint: "Every month, with its quarter beside it" },
+                  { value: "QUARTERS", label: "Quarters", hint: "Condense every quarter to its total" },
+                ]
+          }
+        />
 
-            <Select
-              label="Quarter"
-              value={onlyQuarter ?? "ALL"}
-              onChange={(value) => setOnlyQuarter(value === "ALL" ? null : (value as QuarterCode))}
-              options={[
-                { value: "ALL", label: "Full year" },
-                ...ALL_QUARTERS.map((quarter) => ({ value: quarter, label: quarter })),
-              ]}
-            />
-          </>
+        {/* With four quarters already on screen there is no period left to
+            narrow to - Q2 alone is what the other mode shows - so the picker
+            goes rather than sitting there meaning nothing. */}
+        {(!landscape || landscapeFigures === "PERIOD") && (
+          <Select
+            label="Quarter"
+            value={onlyQuarter ?? "ALL"}
+            onChange={(value) => setOnlyQuarter(value === "ALL" ? null : (value as QuarterCode))}
+            options={[
+              { value: "ALL", label: "Full year" },
+              ...ALL_QUARTERS.map((quarter) => ({ value: quarter, label: quarter })),
+            ]}
+          />
         )}
 
         <span className="mx-1 h-4 w-px bg-rule" aria-hidden />
@@ -1121,7 +1191,12 @@ export function SheetScreen({
       )}
 
       {landscape ? (
-        <SheetLandscape model={model} filters={effectiveFilters} />
+        <SheetLandscape
+          model={model}
+          filters={effectiveFilters}
+          period={landscapePeriod}
+          figures={landscapeFigures}
+        />
       ) : (
         <SheetGrid
           model={model}

@@ -30,8 +30,24 @@
 import { buildCascadeTree, type CascadeNode } from "./outline";
 import type { ControlItemRow, GroupRow, SheetRowModel } from "@/lib/sheet/types";
 import type { Unit } from "@/lib/calc/types";
+import type { SheetCell } from "@/lib/calc/row";
+import { quarterFigures, type QuarterFigure } from "./quarter-figures";
+import type { QuarterCode } from "@/lib/domain/period";
 
 export type SheetOrientation = "PORTRAIT" | "LANDSCAPE";
+
+/**
+ * Which period the single figure column shows. "KI" is the year total.
+ *
+ * Landscape has one figure per measure where the sheet has seventeen, so the
+ * question the sheet answers by scrolling - which month am I looking at - this
+ * view has to answer by choosing. The quarter picker earns its place again:
+ * "here is where Q2 landed" is a slide somebody actually wants.
+ */
+export type LandscapePeriod = "KI" | QuarterCode;
+
+/** One figure block, or four quarters of them. */
+export type LandscapeFigures = "PERIOD" | "QUARTERS";
 
 /** One measure, reduced to what a slide has room for. */
 export interface LandscapeMeasure {
@@ -42,10 +58,18 @@ export interface LandscapeMeasure {
   /** How it is measured. Empty on an Objective with nothing against it. */
   measuredAs: string;
   code: string | null;
+  /** The org unit accountable, as the sheet badges it beside every measure. */
   dicCode: string | null;
+  dicName: string | null;
   unit: Unit | null;
   decimalPlaces: number;
-  /** The Ki total, from the row's own KI cell - never recomputed here. */
+  /**
+   * Every derived cell for this row, kept so a period can be chosen or the
+   * four quarters read without rebuilding the tree. It is the same array the
+   * sheet holds, not a copy.
+   */
+  cells: readonly SheetCell[];
+  /** The chosen period's figures, from that period's own cell. Never recomputed here. */
   target: number | null;
   actual: number | null;
   symbol: string | null;
@@ -149,7 +173,11 @@ export interface LandscapeFit {
  * dropped: this is the company page, and a caller that hands over a sheet with
  * departments folded in gets the company back rather than a surprise.
  */
-export function buildLandscape(rows: readonly SheetRowModel[]): LandscapeGoal[] {
+export function buildLandscape(
+  rows: readonly SheetRowModel[],
+  /** Which period the figures come from. The year total unless a quarter is picked. */
+  period: LandscapePeriod = "KI",
+): LandscapeGoal[] {
   const goals: LandscapeGoal[] = [];
 
   for (const root of buildCascadeTree(rows)) {
@@ -160,10 +188,10 @@ export function buildLandscape(rows: readonly SheetRowModel[]): LandscapeGoal[] 
     for (const child of root.children) {
       if (child.row.level !== 2) continue;
 
-      const left = ownMeasures(child, 2);
+      const left = ownMeasures(child, 2, period);
       const right = child.children
         .filter((grandchild) => grandchild.row.level === 3)
-        .flatMap((grandchild) => ownMeasures(grandchild, 3));
+        .flatMap((grandchild) => ownMeasures(grandchild, 3, period));
 
       const rows = Math.max(left.length, right.length, 1);
       objectives.push({
@@ -197,14 +225,14 @@ export function buildLandscape(rows: readonly SheetRowModel[]): LandscapeGoal[] 
  * children also include the Objectives deployed from it, and counting those as
  * its own measures would print a Level 3 statement in the Level 2 column.
  */
-function ownMeasures(node: CascadeNode, level: number): LandscapeMeasure[] {
+function ownMeasures(node: CascadeNode, level: number, period: LandscapePeriod): LandscapeMeasure[] {
   if (node.row.kind === "CONTROL_ITEM") {
-    return [measureFrom(node.row as ControlItemRow)];
+    return [measureFrom(node.row as ControlItemRow, period)];
   }
 
   const own = node.children
     .filter((child) => child.row.kind === "CONTROL_ITEM" && child.row.level === level)
-    .map((child) => measureFrom(child.row as ControlItemRow));
+    .map((child) => measureFrom(child.row as ControlItemRow, period));
 
   if (own.length > 0) return own;
 
@@ -218,6 +246,8 @@ function ownMeasures(node: CascadeNode, level: number): LandscapeMeasure[] {
       measuredAs: "",
       code: null,
       dicCode: null,
+      dicName: null,
+      cells: [],
       unit: null,
       decimalPlaces: 0,
       target: null,
@@ -230,26 +260,32 @@ function ownMeasures(node: CascadeNode, level: number): LandscapeMeasure[] {
   ];
 }
 
-function measureFrom(row: ControlItemRow): LandscapeMeasure {
+function measureFrom(row: ControlItemRow, period: LandscapePeriod): LandscapeMeasure {
   /*
-   * The Ki column, found by kind rather than by position. It is the last
-   * column today, but a caller narrowing to a single quarter changes what is
-   * in the array and an index would then read a quarter as the year.
+   * Found by kind and quarter rather than by position. The Ki total is the
+   * last column today, but a reader narrowing to a single quarter changes what
+   * is in the array - and an index would then read a quarter as the year,
+   * which is the kind of wrong that looks right.
    */
-  const ki = row.cells.find((cell) => cell.kind === "KI") ?? null;
+  const cell =
+    row.cells.find((candidate) =>
+      period === "KI" ? candidate.kind === "KI" : candidate.kind === "QUARTER" && candidate.quarter === period,
+    ) ?? null;
   return {
     id: row.id,
     statement: row.name,
     measuredAs: row.measuredAs,
     code: row.code,
     dicCode: row.dicCode,
+    dicName: row.dicName,
+    cells: row.cells,
     unit: row.unit,
     decimalPlaces: row.decimalPlaces,
-    target: ki?.target ?? null,
-    actual: ki?.actual ?? null,
-    symbol: ki?.symbol ?? null,
-    symbolLabel: ki?.symbolLabel ?? null,
-    symbolColor: ki?.symbolColor ?? null,
+    target: cell?.target ?? null,
+    actual: cell?.actual ?? null,
+    symbol: cell?.symbol ?? null,
+    symbolLabel: cell?.symbolLabel ?? null,
+    symbolColor: cell?.symbolColor ?? null,
     unmeasured: false,
   };
 }
@@ -285,4 +321,21 @@ export function landscapeFit(goals: readonly LandscapeGoal[]): LandscapeFit {
     rowsPerSlide: ROWS_PER_SLIDE,
     slides: rows === 0 ? 0 : Math.ceil(rows / ROWS_PER_SLIDE),
   };
+}
+
+/**
+ * The four quarters for one measure, through the cascade's own rule.
+ *
+ * `quarterFigures` decides what a quarter shows when there is room for one
+ * number: the actual once the quarter has closed, the standing target while it
+ * is still open or still ahead. That rule is the calendar's rather than the
+ * data's and it is already tested, so this reuses it rather than restating it -
+ * two answers to "what does Q2 show" would be one too many.
+ */
+export function quartersFor(
+  measure: LandscapeMeasure,
+  kiStartYear: number,
+  today?: Date,
+): QuarterFigure[] {
+  return quarterFigures(measure.cells, kiStartYear, today);
 }
