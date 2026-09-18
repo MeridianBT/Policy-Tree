@@ -230,9 +230,21 @@ badly.
   and keeps only the structure: nested rows, a connecting rule per branch, the
   DIC badge on a department row, and one small evaluation symbol per Control
   Item. Weight alone separates a Goal from the Objectives beneath it, so no new
-  colour and no new type sizes were introduced. An objective with nothing laddering
-  into it prints a muted line saying so — the gap is the point of the page, and
-  hiding it would defeat the reason the page exists.
+  colour and no new type sizes were introduced. A **Level 3 Objective** with
+  nothing laddering into it prints a muted line saying so — the gap is the point
+  of the page, and hiding it would defeat the reason the page exists.
+
+  Level 3 and no other level, which a UAT report had to teach this page.
+  `addDepartmentBranch` attaches a branch to a Level 3 Objective and nothing
+  else, so on a Level 2 the question has no answer and on a Level 4 branch the
+  answer is permanently "no" — Level 4 is the floor of the ladder. The first
+  version asked only "has this row a Level 4 child?", which said *nothing yet
+  ladders in here* under a department branch, above that branch's own measures.
+  Two further rules follow from taking the claim seriously: an Objective with
+  nothing under it at all says it is unmeasured instead, because what it lacks
+  first is a measure rather than a department; and the page says nothing at all
+  in Company view or under a filter, where the Level 4 rows that would answer
+  the question have not been loaded.
 
 - **Insights** (`/insights`). One row per division, one column per month, each
   cell a small stacked bar of symbol counts. It is the only place in the

@@ -35,7 +35,14 @@ import { Segmented, Select, MultiSelect } from "@/components/ui/primitives";
 import { dicOptionLabel } from "@/components/sheet/dic-label";
 import { matchRows, EMPTY_FILTERS, type SheetFilters } from "@/components/sheet/filters";
 import { fetchSheet } from "@/lib/sheet/actions";
-import { buildCascadeTree, groupOrdinalPrefix, hasDepartmentWork, indentPx, type CascadeNode } from "@/components/sheet/outline";
+import {
+  buildCascadeTree,
+  deploymentGap,
+  emptyObjective,
+  groupOrdinalPrefix,
+  indentPx,
+  type CascadeNode,
+} from "@/components/sheet/outline";
 import { RichText } from "@/components/ui/RichText";
 import { quarterFigures, type QuarterFigure } from "@/components/sheet/quarter-figures";
 import { rowKey, type ControlItemRow, type SheetModel, type SheetRowModel } from "@/lib/sheet/types";
@@ -102,6 +109,18 @@ export function CascadeView({ model: initialModel }: { model: SheetModel }) {
   );
 
   const rows = useMemo(() => matchRows(model.rows, filters), [model.rows, filters]);
+  /*
+   * Whether the page is in a position to say "nothing ladders in here" at all.
+   *
+   * Company view loads Levels 1-3 only, so there is no Level 4 row on the page
+   * to find - the absence is the toggle's, not the plan's. A filter is the
+   * same problem one step along: `matchRows` has dropped the branches of every
+   * other division, so a gap would be this reader's view of the page rather
+   * than a fact about the Ki. Unfiltered and expanded, every gap is shown;
+   * narrowed, the page answers the narrower question and keeps quiet about
+   * what it cannot see. That is what this file's header has always promised.
+   */
+  const deploymentsVisible = expanded && filters.businessUnits.length === 0 && !divisionCode;
   const roots = buildCascadeTree(rows);
   const dicsById = new Map(model.dics.map((dic) => [dic.id, dic]));
   // One clock for the whole page, so two measures cannot disagree about which
@@ -210,6 +229,7 @@ export function CascadeView({ model: initialModel }: { model: SheetModel }) {
                 dicsById={dicsById}
                 kiStartYear={model.kiStartYear}
                 today={today}
+                deploymentsVisible={deploymentsVisible}
               />
             </div>
           ))}
@@ -225,16 +245,20 @@ function Branch({
   dicsById,
   kiStartYear,
   today,
+  deploymentsVisible,
 }: {
   node: CascadeNode;
   parentRow: SheetRowModel | null;
   dicsById: Map<string, SheetModel["dics"][number]>;
   kiStartYear: number;
   today: Date;
+  /** Whether the page is showing enough to say anything about deployment. */
+  deploymentsVisible: boolean;
 }) {
   const delta = parentRow ? indentPx(node.row) - indentPx(parentRow) : 0;
   const nested = delta > 0;
-  const showGap = node.row.kind === "OBJECTIVE" && !hasDepartmentWork(node);
+  const empty = emptyObjective(node);
+  const gap = deploymentsVisible && deploymentGap(node);
 
   return (
     <div
@@ -242,7 +266,8 @@ function Branch({
       className={nested ? "border-l border-rule pl-3" : undefined}
     >
       <Row row={node.row} dicsById={dicsById} kiStartYear={kiStartYear} today={today} />
-      {showGap && <GapLine />}
+      {/* Directly under the row, because it is about the row itself. */}
+      {empty && <Marker kind="empty">— nothing measured against this yet —</Marker>}
       {node.children.map((child) => (
         <Branch
           key={rowKey(child.row)}
@@ -251,8 +276,13 @@ function Branch({
           dicsById={dicsById}
           kiStartYear={kiStartYear}
           today={today}
+          deploymentsVisible={deploymentsVisible}
         />
       ))}
+      {/* After the children, because it is about what is missing below them.
+          Printed above, it read as a denial of the measures listed underneath
+          it - which is how this bug was spotted. */}
+      {gap && <Marker kind="deployment">— nothing yet ladders in here —</Marker>}
     </div>
   );
 }
@@ -294,7 +324,7 @@ function Row({
         : "text-[13px] text-ink-muted";
 
   return (
-    <div className={`flex items-baseline gap-2 py-1 ${tone}`}>
+    <div data-level={row.level} className={`flex items-baseline gap-2 py-1 ${tone}`}>
       <span>
         {isGoal && groupOrdinalPrefix(row.ordinal)}
         <RichText text={row.statement} />
@@ -327,7 +357,7 @@ function ControlItemLine({
   const figures = quarterFigures(row.cells, kiStartYear, today);
 
   return (
-    <div className="flex items-baseline gap-2 py-0.5 text-[12px] text-ink-muted">
+    <div data-level={row.level} className="flex items-baseline gap-2 py-0.5 text-[12px] text-ink-muted">
       <EvaluationSymbol symbol={kiCell?.symbol ?? null} label={kiCell?.symbolLabel} color={kiCell?.symbolColor} size={12} />
       {/* The statement is on the row that carries it - the Objective's header
           when it has one, or this row when it does not. A row underneath a
@@ -423,11 +453,23 @@ function quarterTitle(figure: QuarterFigure, text: string): string {
   return `${figure.quarter} target ${text} · the quarter has not closed yet`;
 }
 
-/** The quiet, always-visible marker for an Objective nothing has deployed against yet. */
-function GapLine() {
+/**
+ * The quiet, always-visible marker for an absence.
+ *
+ * Two of them, because there are two different holes and saying the wrong one
+ * is worse than saying nothing: a Level 3 Objective nobody has deployed
+ * against, and an Objective with nothing under it at all. `data-gap` is there
+ * for `scripts/ui-check.cjs`, which asserts *which* rows carry which marker -
+ * the assertion that would have caught a department branch claiming nothing
+ * ladders into it.
+ */
+function Marker({ kind, children }: { kind: "deployment" | "empty"; children: React.ReactNode }) {
   return (
-    <div className="border-l border-dashed border-rule py-1 pl-3 text-[12px] italic text-ink-faint">
-      — nothing yet ladders in here —
+    <div
+      data-gap={kind}
+      className="border-l border-dashed border-rule py-1 pl-3 text-[12px] italic text-ink-faint"
+    >
+      {children}
     </div>
   );
 }

@@ -916,10 +916,50 @@ async function theCascadeCanBeNarrowed(browser) {
     "Company drops the Level 4 branches",
   );
   check(company > 0 && company < all, "and so shows fewer measures", `${all} -> ${company}`);
+  // With no Level 4 row loaded, "nothing ladders in here" would be a statement
+  // about the toggle rather than about the plan.
+  check(
+    (await page.locator('[data-gap="deployment"]').count()) === 0,
+    "and makes no claim about deployment it cannot see",
+  );
 
   await page.locator("button", { hasText: /Departments/ }).first().click();
   await page.waitForTimeout(3000);
   check((await measures()) === all, "+ Departments brings them back", `${await measures()}`);
+
+  /*
+   * The gap markers, and which rows are entitled to carry them.
+   *
+   * A UAT screenshot caught a Level 4 department branch printing "nothing yet
+   * ladders in here" above its own measures. Nothing can ladder into a branch -
+   * Level 4 is the floor - and `addDepartmentBranch` will not attach one to a
+   * Level 2 either, so a deployment marker anywhere but under a Level 3 is the
+   * bug. Counting the string would not have caught it; reading the level of
+   * the row above each marker does.
+   */
+  const markers = () =>
+    page.evaluate(() =>
+      [...document.querySelectorAll("[data-gap]")].map((el) => ({
+        kind: el.getAttribute("data-gap"),
+        // The marker is a sibling of the row it belongs to, inside that node's
+        // own block, and the row is always the first child of it.
+        level: el.parentElement?.querySelector("[data-level]")?.getAttribute("data-level") ?? null,
+      })),
+    );
+
+  const shown = await markers();
+  const deployment = shown.filter((marker) => marker.kind === "deployment");
+  check(deployment.length > 0, "the cascade shows where nothing has deployed", `${deployment.length} gaps`);
+  check(
+    deployment.every((marker) => marker.level === "3"),
+    "and only under a Level 3, the one row a branch can ladder into",
+    [...new Set(deployment.map((m) => m.level))].join(" "),
+  );
+  check(
+    shown.filter((marker) => marker.kind === "empty").every((marker) => marker.level !== null),
+    "an empty Objective says it is unmeasured rather than undeployed",
+    `${shown.filter((m) => m.kind === "empty").length} empty`,
+  );
 
   // Division: one division's work, the departments beneath it included.
   const division = page.locator("label", { hasText: "Division" }).locator("select");
@@ -936,6 +976,13 @@ async function theCascadeCanBeNarrowed(browser) {
     inOx.every((code) => code === "OX" || code.startsWith("OX-")),
     "to that division and nothing else",
     [...new Set(inOx)].join(" "),
+  );
+  // Narrowed, the page answers the narrower question: other divisions' branches
+  // have been filtered away, so a gap here would be this reader's view rather
+  // than a fact about the Ki.
+  check(
+    (await page.locator('[data-gap="deployment"]').count()) === 0,
+    "a narrowed page keeps quiet about gaps it can no longer see",
   );
   // The part a plain code-equality filter would get wrong: a department inside
   // the division survives, because a division means its whole subtree.

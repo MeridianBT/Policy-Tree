@@ -127,11 +127,58 @@ export function buildCascadeTree(rows: readonly SheetRowModel[]): CascadeNode[] 
 }
 
 /**
- * Whether a Level 1-3 Objective has any Level 4 branch laddering into it. A
- * Level 4 branch always attaches as a direct child of the Objective it
- * ladders into (see `addDepartmentBranch`), so this never needs to look
- * further than one level down.
+ * Whether an Objective has any Level 4 branch laddering into it. A Level 4
+ * branch always attaches as a direct child of the Objective it ladders into
+ * (see `addDepartmentBranch`), so this never needs to look further than one
+ * level down.
  */
 export function hasDepartmentWork(node: CascadeNode): boolean {
   return node.children.some((child) => child.row.level === 4);
+}
+
+/**
+ * The node that *is* an Objective - its heading, or the single Control Item
+ * standing in for it when it renders inline.
+ *
+ * This mirrors the rule `buildCascadeTree` already applies above rather than
+ * restating it, because the two must agree: an Objective held to exactly one
+ * measure has no heading row, so a test written against `kind === "OBJECTIVE"`
+ * silently skips it. Most Objectives are that shape, which is how the cascade
+ * came to be silent about most of the gaps it exists to show.
+ */
+export function isObjectiveNode(node: CascadeNode): boolean {
+  const row = node.row;
+  if (row.kind === "OBJECTIVE") return true;
+  return row.kind === "CONTROL_ITEM" && row.firstOfObjective;
+}
+
+/**
+ * An Objective nothing has deployed against: no department branch under it,
+ * on a row that could hold one.
+ *
+ * **Level 3 and no other level.** `addDepartmentBranch` rejects any other
+ * parent outright - "A department branch ladders from a Level 3 Objective" -
+ * so on a Level 2 the question has no answer, and on a Level 4 branch it can
+ * never be anything but "no", Level 4 being the floor of the ladder. Asking it
+ * there produced a line that said nothing ladders in and could not stop saying
+ * it, printed above the branch's own measures.
+ *
+ * An Objective with nothing under it at all is `emptyObjective`'s to report
+ * instead: what it is missing first is a measure, not a department.
+ */
+export function deploymentGap(node: CascadeNode): boolean {
+  return node.row.level === 3 && isObjectiveNode(node) && !hasDepartmentWork(node) && !emptyObjective(node);
+}
+
+/**
+ * An Objective with nothing under it at all - no measure of its own, nothing
+ * deployed from it.
+ *
+ * Children rather than Control Items, deliberately. A Level 3 Objective that
+ * carries no measure but has three departments beneath it is not a hole: the
+ * measurement lives in the branches, which is a perfectly ordinary way to
+ * write a policy. A row with nothing under it at all is the hole.
+ */
+export function emptyObjective(node: CascadeNode): boolean {
+  return node.row.kind === "OBJECTIVE" && node.children.length === 0;
 }

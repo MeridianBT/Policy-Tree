@@ -7,7 +7,13 @@
  */
 
 import { describe, expect, it } from "vitest";
-import { buildCascadeTree, hasDepartmentWork } from "@/components/sheet/outline";
+import {
+  buildCascadeTree,
+  deploymentGap,
+  emptyObjective,
+  hasDepartmentWork,
+  isObjectiveNode,
+} from "@/components/sheet/outline";
 import { rowKey, type ControlItemRow, type GroupRow, type SheetRowModel } from "@/lib/sheet/types";
 
 function group(id: string, level: number, path: string[], overrides: Partial<GroupRow> = {}): SheetRowModel {
@@ -197,5 +203,139 @@ describe("hasDepartmentWork", () => {
     const objective = group("obj", 2, ["goal"]);
     const roots = buildCascadeTree([goal, objective]);
     expect(hasDepartmentWork(roots[0].children[0])).toBe(false);
+  });
+});
+
+
+/*
+ * The gap markers, and the UAT report that found them wrong.
+ *
+ * A department branch on the Cascade printed "nothing yet ladders in here"
+ * above its own measures. The test behind that line asked only whether a row
+ * had a Level 4 child - so it fired on a Level 4 branch, which can never have
+ * one; on a Level 2, which `addDepartmentBranch` will not attach a branch to
+ * either; and never on an Objective held to a single measure, which is the
+ * shape most Objectives have. Every clause below pins one of those.
+ */
+describe("deploymentGap", () => {
+  const withParents = (...rows: SheetRowModel[]) => buildCascadeTree(rows);
+
+  it("is true for a Level 3 Objective with measures and no branch", () => {
+    const roots = withParents(
+      group("goal", 1, []),
+      group("l2", 2, ["goal"]),
+      group("l3", 3, ["goal", "l2"]),
+      item("a", 3, ["goal", "l2", "l3"]),
+      item("b", 3, ["goal", "l2", "l3"]),
+    );
+    expect(deploymentGap(roots[0].children[0].children[0])).toBe(true);
+  });
+
+  /*
+   * The half the page was silent on. An Objective held to one Control Item has
+   * no heading row - that measure *is* the Objective - so a test written
+   * against `kind === "OBJECTIVE"` skipped it, and with it most of the real
+   * gaps in the plan.
+   */
+  it("is true for a Level 3 held to a single measure, which renders inline", () => {
+    const roots = withParents(
+      group("goal", 1, []),
+      group("l2", 2, ["goal"]),
+      item("only", 3, ["goal", "l2"], { objectiveId: "l3", firstOfObjective: true }),
+    );
+    const inline = roots[0].children[0].children[0];
+    expect(inline.row.kind).toBe("CONTROL_ITEM");
+    expect(isObjectiveNode(inline)).toBe(true);
+    expect(deploymentGap(inline)).toBe(true);
+  });
+
+  it("is false once a department branch ladders in", () => {
+    const roots = withParents(
+      group("goal", 1, []),
+      group("l2", 2, ["goal"]),
+      group("l3", 3, ["goal", "l2"]),
+      item("a", 3, ["goal", "l2", "l3"]),
+      group("branch", 4, ["goal", "l2", "l3"], { orgUnitId: "org-auto" } as Partial<GroupRow>),
+    );
+    expect(deploymentGap(roots[0].children[0].children[0])).toBe(false);
+  });
+
+  /*
+   * The row in the UAT screenshot. A branch is the bottom of the ladder, so
+   * the question has one permanent answer and printing it is noise dressed as
+   * a finding.
+   */
+  it("is false for a Level 4 department branch, which nothing can ladder into", () => {
+    const roots = withParents(
+      group("goal", 1, []),
+      group("l2", 2, ["goal"]),
+      group("l3", 3, ["goal", "l2"]),
+      group("branch", 4, ["goal", "l2", "l3"], { orgUnitId: "org-auto" } as Partial<GroupRow>),
+      item("bm", 4, ["goal", "l2", "l3", "branch"], { objectiveId: "branch" }),
+      item("bn", 4, ["goal", "l2", "l3", "branch"], { objectiveId: "branch" }),
+    );
+    const branch = roots[0].children[0].children[0].children[0];
+    expect(branch.row.level).toBe(4);
+    expect(deploymentGap(branch)).toBe(false);
+  });
+
+  it("is false for a Level 2, which a branch cannot attach to either", () => {
+    const roots = withParents(
+      group("goal", 1, []),
+      group("l2", 2, ["goal"]),
+      item("a", 2, ["goal", "l2"]),
+      item("b", 2, ["goal", "l2"]),
+    );
+    expect(deploymentGap(roots[0].children[0])).toBe(false);
+  });
+
+  it("is false for a Goal", () => {
+    const roots = withParents(group("goal", 1, []), group("l2", 2, ["goal"]));
+    expect(deploymentGap(roots[0])).toBe(false);
+  });
+
+  // The deeper hole wins: a row with nothing under it is short a measure
+  // before it is short a department.
+  it("defers to the empty marker when there is nothing under the row at all", () => {
+    const roots = withParents(group("goal", 1, []), group("l2", 2, ["goal"]), group("l3", 3, ["goal", "l2"]));
+    const l3 = roots[0].children[0].children[0];
+    expect(emptyObjective(l3)).toBe(true);
+    expect(deploymentGap(l3)).toBe(false);
+  });
+});
+
+describe("emptyObjective", () => {
+  it("is true for a department branch with no measure against it", () => {
+    const roots = buildCascadeTree([
+      group("goal", 1, []),
+      group("l2", 2, ["goal"]),
+      group("l3", 3, ["goal", "l2"]),
+      group("branch", 4, ["goal", "l2", "l3"], { orgUnitId: "org-auto" } as Partial<GroupRow>),
+    ]);
+    expect(emptyObjective(roots[0].children[0].children[0].children[0])).toBe(true);
+  });
+
+  /*
+   * Children rather than Control Items. An Objective that carries no measure
+   * of its own but has departments beneath it is measured - in the branches -
+   * and nagging about it would bury the rows that really are bare.
+   */
+  it("is false for an Objective whose measurement lives in its branches", () => {
+    const roots = buildCascadeTree([
+      group("goal", 1, []),
+      group("l2", 2, ["goal"]),
+      group("l3", 3, ["goal", "l2"]),
+      group("branch", 4, ["goal", "l2", "l3"], { orgUnitId: "org-auto" } as Partial<GroupRow>),
+    ]);
+    expect(emptyObjective(roots[0].children[0].children[0])).toBe(false);
+  });
+
+  it("is false for an Objective rendering inline, which carries its one measure", () => {
+    const roots = buildCascadeTree([
+      group("goal", 1, []),
+      group("l2", 2, ["goal"]),
+      item("only", 3, ["goal", "l2"], { objectiveId: "l3", firstOfObjective: true }),
+    ]);
+    expect(emptyObjective(roots[0].children[0].children[0])).toBe(false);
   });
 });

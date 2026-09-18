@@ -1120,12 +1120,30 @@ blank would read as "we scored nothing" rather than "nobody has told us".
 The rule is `components/sheet/quarter-figures.ts`, tested in
 `lib/calc/quarter-figures.test.ts`.
 
-The one thing this page insists on showing is the gap: most Objectives in a
-given Ki have no Level 4 branch yet, and rather than rendering nothing under
-them, the page says so plainly — "— nothing yet ladders in here —". A blank
-cascade is exactly as visible as a full one, which is the actual point of
-building it: the absence of alignment is the thing a slide deck hides and
-this page cannot.
+The one thing this page insists on showing is the gap: most **Level 3
+Objectives** in a given Ki have no department branch yet, and rather than
+rendering nothing under them, the page says so plainly — "— nothing yet ladders
+in here —", printed below the block it is describing. A blank cascade is exactly
+as visible as a full one, which is the actual point of building it: the absence
+of alignment is the thing a slide deck hides and this page cannot.
+
+The claim is made only where it can be true, which took a UAT report to get
+right. A department branch ladders from a **Level 3** Objective and from
+nowhere else (`addDepartmentBranch` refuses the rest), so a Level 2 cannot
+answer the question — its deployment is the Level 3s listed beneath it — and a
+Level 4 branch can never answer anything but "no", Level 4 being the floor. The
+first version asked only "does this row have a Level 4 child?" and so printed
+the line under a department branch, above that branch's own measures. It also
+never printed it under an Objective held to a single measure, which is the
+shape most of them have, so the page was quiet about most of the gaps it exists
+to show.
+
+Two companions to the same rule. An Objective with nothing under it at all —
+no measure, nothing deployed — says "— nothing measured against this yet —"
+instead: what it is missing first is a measure, not a department. And in
+**Company** view, or under any filter, the page makes no deployment claim at
+all, because the Level 4 rows that would answer it have not been loaded or have
+been filtered away; a gap there would describe the toggle rather than the plan.
 
 #### Narrowing it
 
