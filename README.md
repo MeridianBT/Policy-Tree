@@ -697,7 +697,17 @@ page. Horizontal room is the constraint the whole view exists to work inside.
 
 The row spans that remain do real drawing: a Level 2 deploying into four Level
 3s spans those four, and without the span one Objective and three empty rows is
-what a reader sees, which is a different claim entirely. The browser does the
+what a reader sees, which is a different claim entirely.
+
+They do a second job now. A Control Item row carries *its Objective's*
+statement as its name — every one of that Objective's rows does — so an
+Objective held to three measures printed the same sentence three times down the
+column this view can least afford to waste. The statement is printed once and
+spans the measures it is held to, which is the sheet's own rule (there the
+first row carries the name and the rest hang off a `└`) done better by a table.
+The owner badge stays with the measure rather than the statement, because that
+is whose it is: those three Control Items can answer to three different org
+units, and one badge over the block would claim otherwise. The browser does the
 height arithmetic, and `thead` repeats itself on a second printed page for free.
 
 Level 4 never appears. A department branch belongs to the division that owns

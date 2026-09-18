@@ -309,19 +309,47 @@ function MeasureCells({
     );
   }
 
+  /*
+   * The statement is printed once for its Objective and spans the measures it
+   * is held to; a row it does not start leaves the column alone.
+   *
+   * Which means the strong rule dividing the Company half from the Deployed
+   * half cannot live on the statement cell - on a spanned-over row that cell is
+   * not emitted and the rule would break. It goes on whichever cell opens the
+   * side.
+   */
+  const named = measure.statementSpan > 0;
+
   return (
     <>
-      <Td span={span} indent={indent} className={`${edge} leading-snug`}>
+      {named && (
+        <Td
+          data-statement
+          span={measure.statementSpan}
+          indent={indent}
+          className={`${edge} leading-snug`}
+        >
+          <RichText text={measure.statement} />
+        </Td>
+      )}
+      <Td span={span} className={`${named ? "" : edge} text-ink-muted`}>
         <span className="flex items-baseline gap-1.5">
           <span className="min-w-0">
-            <RichText text={measure.statement} />
+            {measure.unmeasured ? (
+              // The gap the cascade also prints: a policy written down before
+              // anybody decided what would measure it.
+              <span className="text-ink-faint italic">not measured yet</span>
+            ) : (
+              measure.measuredAs
+            )}
           </span>
           {/*
-            Who is accountable, badged exactly as the sheet badges it in the
-            Measures column - same border, same size, same "In charge:" title.
-            Inline rather than a column of its own: a column would cost width
-            this view cannot spare to repeat a four-letter code, and the sheet
-            already establishes that the badge belongs beside the name.
+            Who is accountable, badged exactly as the sheet badges it - same
+            border, same size, same "In charge:" title - and beside the measure
+            rather than the statement, because that is whose it is: one spanned
+            statement can cover three Control Items answering to three different
+            org units. The sheet makes the same split, printing the name once
+            and a badge on every row.
           */}
           {measure.dicCode && (
             <span
@@ -332,15 +360,6 @@ function MeasureCells({
             </span>
           )}
         </span>
-      </Td>
-      <Td span={span} className="text-ink-muted">
-        {measure.unmeasured ? (
-          // The gap the cascade also prints: a policy written down before
-          // anybody decided what would measure it.
-          <span className="text-ink-faint italic">not measured yet</span>
-        ) : (
-          measure.measuredAs
-        )}
       </Td>
       {figures === "QUARTERS" ? (
         quartersFor(measure, kiStartYear, today).map((quarter) => (
@@ -475,15 +494,20 @@ function Td({
   className = "",
   span = 1,
   indent,
+  // Marks the cell that carries an Objective's statement, so `ui-check` can
+  // count them against the rows rather than grep the page for text.
+  "data-statement": dataStatement,
 }: {
   children?: React.ReactNode;
   className?: string;
   span?: number;
   indent?: number;
+  "data-statement"?: boolean;
 }) {
   return (
     <td
       rowSpan={span}
+      data-statement={dataStatement ? "" : undefined}
       style={indent === undefined ? undefined : { paddingLeft: indent }}
       className={`border-b border-rule py-1 pr-2 ${indent === undefined ? "pl-2" : ""} ${className}`}
     >

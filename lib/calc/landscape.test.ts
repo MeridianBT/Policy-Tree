@@ -462,3 +462,100 @@ describe("the four quarters at one number each", () => {
     expect(figures.every((q) => q.value === null)).toBe(true);
   });
 });
+
+
+/*
+ * One statement per Objective, spanning its measures.
+ *
+ * A Control Item row carries its *Objective's* statement as its name - all of
+ * them do - so a view that prints `row.name` per row writes the same sentence
+ * three times down the one column this layout can least afford to waste. The
+ * sheet prints it once and hangs the rest off a `└`; here the cell spans.
+ */
+describe("one statement per Objective", () => {
+  it("prints a three-measure Objective's statement once, spanning its rows", () => {
+    const rows = [
+      group("goal", 1, []),
+      group("l2", 2, ["goal"], { controlItemIds: ["a", "b", "c"] } as Partial<GroupRow>),
+      item("a", 2, ["goal", "l2"], { objectiveId: "l2", objectiveItemCount: 3, name: "Service experience" }),
+      item("b", 2, ["goal", "l2"], {
+        objectiveId: "l2",
+        objectiveItemCount: 3,
+        firstOfObjective: false,
+        name: "Service experience",
+        measuredAs: "Hours sold",
+      }),
+      item("c", 2, ["goal", "l2"], {
+        objectiveId: "l2",
+        objectiveItemCount: 3,
+        firstOfObjective: false,
+        name: "Service experience",
+        measuredAs: "Billable hours",
+      }),
+    ];
+
+    const [goal] = buildLandscape(rows);
+    const left = goal.objectives[0].left;
+    expect(left.map((measure) => measure.statementSpan)).toEqual([3, 0, 0]);
+    // Every measure keeps its own row and its own everything else.
+    expect(left.map((measure) => measure.measuredAs)).toEqual(["Units", "Hours sold", "Billable hours"]);
+    expect(left.map((measure) => measure.id)).toEqual(["a", "b", "c"]);
+  });
+
+  it("spans a single measure's statement over the whole block, as its cells already do", () => {
+    const rows: SheetRowModel[] = [group("goal", 1, []), item("l2", 2, ["goal"])];
+    for (let index = 0; index < 4; index++) rows.push(item(`l3-${index}`, 3, ["goal", "l2"]));
+
+    const [goal] = buildLandscape(rows);
+    const objective = goal.objectives[0];
+    expect(objective.rows).toBe(4);
+    // Agrees with leftSpan, or the statement column and the ones beside it
+    // would be different heights and the table would reflow.
+    expect(objective.left[0].statementSpan).toBe(objective.leftSpan);
+    expect(objective.left[0].statementSpan).toBe(4);
+  });
+
+  /*
+   * The case that proves a run is an Objective rather than a side: the
+   * right-hand column is built from several Level 3s, and a span that ran to
+   * the end of the side would put one statement over another Objective's
+   * measures - a false claim about who is held to what.
+   */
+  it("starts a new statement at each Objective down the deployed column", () => {
+    const rows = [
+      group("goal", 1, []),
+      item("l2", 2, ["goal"]),
+      group("l3a", 3, ["goal", "l2"], { controlItemIds: ["x", "y"] } as Partial<GroupRow>),
+      item("x", 3, ["goal", "l2", "l3a"], { objectiveId: "l3a", objectiveItemCount: 2, name: "Used vehicles" }),
+      item("y", 3, ["goal", "l2", "l3a"], {
+        objectiveId: "l3a",
+        objectiveItemCount: 2,
+        firstOfObjective: false,
+        name: "Used vehicles",
+      }),
+      item("z", 3, ["goal", "l2"], { objectiveId: "l3b", name: "Finance penetration" }),
+    ];
+
+    const [goal] = buildLandscape(rows);
+    const right = goal.objectives[0].right;
+    expect(right.map((measure) => measure.statementSpan)).toEqual([2, 0, 1]);
+    expect(right.map((measure) => measure.statement)).toEqual([
+      "Used vehicles",
+      "Used vehicles",
+      "Finance penetration",
+    ]);
+  });
+
+  it("carries the Objective's id through, including on an Objective with no measure", () => {
+    const [goal] = buildLandscape([
+      group("goal", 1, []),
+      item("measured", 2, ["goal"], { objectiveId: "l2a" }),
+      group("l2b", 2, ["goal"]),
+    ]);
+    expect(goal.objectives[0].left[0].objectiveId).toBe("l2a");
+    const bare = goal.objectives[1].left[0];
+    expect(bare.unmeasured).toBe(true);
+    expect(bare.objectiveId).toBe("l2b");
+    expect(bare.statementSpan).toBe(1);
+  });
+});

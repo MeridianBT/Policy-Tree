@@ -175,6 +175,13 @@ Excel export, which is the data rather than the layout.
   rows is what the reader sees, which is a different and untrue statement. No
   connector lines to maintain, no absolute positioning to drift, and the
   browser does the height arithmetic.
+- **A statement is printed once and spans its measures.** Every Control Item
+  row carries its Objective's statement as its name, so printing per row said
+  the same sentence three times in the column with the least room to spare. The
+  sheet solves it by naming the first row and hanging the rest off a `└`; a
+  table spans the cell instead, which is the same idea with nothing left over.
+  The owner badge sits with the measure, not the spanned statement — three
+  Control Items under one Objective can answer to three different org units.
 - **The empty half is the finding.** Measured on the live plan: 59 Level 2
   Objectives, 9 of which deploy to Level 3 at all, and 7 Level 3 measures in
   the whole company. The right-hand column is blank on fifty rows. That is

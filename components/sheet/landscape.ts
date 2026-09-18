@@ -55,6 +55,22 @@ export interface LandscapeMeasure {
   id: string;
   /** The Objective's statement - what the sheet prints in Measures. */
   statement: string;
+  /**
+   * The Objective this measure is held against. Several measures share one,
+   * which is the whole reason `statementSpan` exists.
+   */
+  objectiveId: string;
+  /**
+   * Rows this measure's statement covers, or 0 when the statement belongs to a
+   * measure above it and this row leaves the column alone.
+   *
+   * A Control Item row carries *its Objective's* statement as its name - every
+   * one of the Objective's rows does, see `lib/sheet/query.ts` - so printing
+   * each row's statement writes the same sentence three times down the column
+   * this view can least afford to waste. The sheet prints it once and hangs the
+   * rest off a `└`; a table can do better and span the cell.
+   */
+  statementSpan: number;
   /** How it is measured. Empty on an Objective with nothing against it. */
   measuredAs: string;
   code: string | null;
@@ -188,12 +204,14 @@ export function buildLandscape(
     for (const child of root.children) {
       if (child.row.level !== 2) continue;
 
-      const left = ownMeasures(child, 2, period);
-      const right = child.children
+      const ownLeft = ownMeasures(child, 2, period);
+      const ownRight = child.children
         .filter((grandchild) => grandchild.row.level === 3)
         .flatMap((grandchild) => ownMeasures(grandchild, 3, period));
 
-      const rows = Math.max(left.length, right.length, 1);
+      const rows = Math.max(ownLeft.length, ownRight.length, 1);
+      const left = spanStatements(ownLeft, rows);
+      const right = spanStatements(ownRight, rows);
       objectives.push({
         left,
         right,
@@ -225,6 +243,33 @@ export function buildLandscape(
  * children also include the Objectives deployed from it, and counting those as
  * its own measures would print a Level 3 statement in the Level 2 column.
  */
+/**
+ * One statement per Objective, spanning the measures it is held to.
+ *
+ * Consecutive runs rather than a lookup by id, because two Objectives are never
+ * interleaved here: the left-hand side is one Objective's own measures and the
+ * right is a `flatMap` over its Level 3s, so a run *is* an Objective. That is
+ * the assumption which would break quietly if either side ever learned to
+ * interleave, so it is stated rather than left to be discovered.
+ *
+ * Filtering does not disturb it - `matchRows` drops whole rows, so what is left
+ * of an Objective is still contiguous.
+ */
+function spanStatements(measures: LandscapeMeasure[], rows: number): LandscapeMeasure[] {
+  // One measure keeps the whole-block rule the side spans use, so the statement
+  // cell and the cells beside it stay the same height.
+  if (measures.length === 1) return [{ ...measures[0], statementSpan: rows }];
+
+  return measures.map((measure, index) => {
+    if (index > 0 && measures[index - 1].objectiveId === measure.objectiveId) {
+      return { ...measure, statementSpan: 0 };
+    }
+    let span = 1;
+    while (measures[index + span]?.objectiveId === measure.objectiveId) span++;
+    return { ...measure, statementSpan: span };
+  });
+}
+
 function ownMeasures(node: CascadeNode, level: number, period: LandscapePeriod): LandscapeMeasure[] {
   if (node.row.kind === "CONTROL_ITEM") {
     return [measureFrom(node.row as ControlItemRow, period)];
@@ -243,6 +288,8 @@ function ownMeasures(node: CascadeNode, level: number, period: LandscapePeriod):
     {
       id: group.id,
       statement: group.statement,
+      objectiveId: group.id,
+      statementSpan: 1,
       measuredAs: "",
       code: null,
       dicCode: null,
@@ -274,6 +321,10 @@ function measureFrom(row: ControlItemRow, period: LandscapePeriod): LandscapeMea
   return {
     id: row.id,
     statement: row.name,
+    objectiveId: row.objectiveId,
+    // Filled in by `spanStatements` once the side is assembled, which is the
+    // only place that can see how many measures share this Objective.
+    statementSpan: 1,
     measuredAs: row.measuredAs,
     code: row.code,
     dicCode: row.dicCode,

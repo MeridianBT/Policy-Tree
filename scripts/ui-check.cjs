@@ -2021,12 +2021,44 @@ async function theCompanyReadsAcrossThePage(browser) {
     "and Print view, which would hand back the portrait sheet",
   );
 
-  // Who holds the target, badged beside the statement exactly as the sheet
-  // badges it. A slide naming a number and not its owner is the reason it is
-  // there at all.
+  // Who holds the target, badged beside the measure exactly as the sheet badges
+  // it. A slide naming a number and not its owner is the reason it is there at
+  // all.
+  const badges = await page.locator('table td span[title^="In charge:"]').count();
+  check(badges > 0, "every measure still carries its owner badge", `${badges} badges`);
+
+  /*
+   * One statement per Objective, spanning its measures.
+   *
+   * A Control Item row carries its Objective's statement as its name, so a view
+   * that prints it per row writes the same sentence three times down the column
+   * it can least afford to waste. Counting cells against rows is what catches a
+   * regression here; counting the badges alongside proves the owner did not go
+   * with it, since a spanned statement can cover measures with different ones.
+   */
+  const statements = await page.evaluate(() => {
+    const cells = [...document.querySelectorAll("td[data-statement]")];
+    return {
+      cells: cells.length,
+      spanned: cells.filter((cell) => Number(cell.getAttribute("rowspan") ?? 1) > 1).length,
+      rows: document.querySelectorAll("tbody tr").length,
+      // The symptom itself: the same statement printed on the row below its own.
+      repeats: cells.filter((cell) => {
+        const row = cell.closest("tr");
+        const next = row?.nextElementSibling?.querySelector("td[data-statement]");
+        return Boolean(next) && next.textContent.trim() === cell.textContent.trim();
+      }).length,
+    };
+  });
+  check(statements.spanned > 0, "a statement spans the measures it is held to", `${statements.spanned} spanned`);
+  check(statements.repeats === 0, "and no statement is printed twice running", `${statements.repeats} repeats`);
+  // Not inside the statement cell: a spanned statement can cover three Control
+  // Items answering to three different org units, so one badge up there would
+  // be a claim the plan does not make.
   check(
-    (await page.locator('table td span[title^="In charge:"]').count()) > 0,
-    "every measure still carries its owner badge",
+    (await page.locator('td[data-statement] span[title^="In charge:"]').count()) === 0,
+    "the owner badge stayed with the measure rather than the statement",
+    `${badges} badges, ${statements.cells} statements`,
   );
 
   /*
