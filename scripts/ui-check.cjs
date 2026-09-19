@@ -2452,6 +2452,84 @@ async function theSlidePrints(browser) {
   await page.close();
 }
 
+
+/**
+ * The context bar follows the scroll.
+ *
+ * Reported as a frozen frame, and it very nearly was: it read the *first
+ * rendered* row rather than the first visible one, and with twelve rows of
+ * overscan that is most of a screen. So it named a Goal the reader had left
+ * behind, changing only once they had scrolled far enough for the overscan to
+ * catch up - which looks exactly like a bar that has stuck.
+ *
+ * No unit test could see this. It needs a real scroll container with a real
+ * virtualiser in it, which is what this file is for.
+ */
+async function theContextBarFollowsTheScroll(browser) {
+  console.log("\nThe context bar says where you are");
+  const page = await browser.newPage({ viewport: { width: 1500, height: 900 } });
+  await signIn(page);
+  await page.waitForTimeout(1500);
+
+  const scroller = () =>
+    page.evaluate(() => {
+      const el = [...document.querySelectorAll("div")].find(
+        (candidate) => candidate.scrollHeight > candidate.clientHeight + 200 && candidate.clientHeight > 300,
+      );
+      return el ? { top: Math.round(el.scrollTop), height: el.scrollHeight } : null;
+    });
+  const trail = async () => (await page.locator("[data-context-bar]").innerText()).trim();
+
+  const shape = await scroller();
+  check(Boolean(shape), "the sheet scrolls at all", JSON.stringify(shape));
+
+  const first = await trail();
+  check(first.length > 0 && first !== "—", "and names the Goal you are in", first);
+
+  // A quarter of the way down is well past the overscan that used to hide the
+  // change, and far enough to be in a different Goal on the seeded plan.
+  const seen = new Set([first]);
+  for (const fraction of [0.25, 0.5, 0.75, 0.95]) {
+    await page.evaluate((f) => {
+      const el = [...document.querySelectorAll("div")].find(
+        (candidate) => candidate.scrollHeight > candidate.clientHeight + 200 && candidate.clientHeight > 300,
+      );
+      if (el) el.scrollTop = el.scrollHeight * f;
+    }, fraction);
+    await page.waitForTimeout(500);
+    seen.add(await trail());
+  }
+  check(seen.size > 2, "and changes as you scroll through the plan", [...seen].join(" | "));
+
+  const last = await trail();
+  check(
+    last !== first,
+    "the foot of the sheet is not still showing the first Goal",
+    `${first} -> ${last}`,
+  );
+
+  // It used to carry a "Position" caption in the frozen block while the
+  // breadcrumb sat in the scrolling part beside it, so scrolling right left
+  // the caption standing over the row labels with nothing after it.
+  check(!/Position/.test(last), "and carries no caption of its own", last);
+
+  await page.evaluate(() => {
+    const el = [...document.querySelectorAll("div")].find(
+      (candidate) => candidate.scrollWidth > candidate.clientWidth + 200,
+    );
+    if (el) el.scrollLeft = 600;
+  });
+  await page.waitForTimeout(400);
+  const box = await page.locator("[data-context-bar] > div").boundingBox();
+  check(
+    Boolean(box) && box.x < 40,
+    "and stays put when the sheet is scrolled sideways",
+    box ? `x=${Math.round(box.x)}` : "not found",
+  );
+
+  await page.close();
+}
+
 (async () => {
   const browser = await chromium.launch({
     executablePath: process.env.PLAYWRIGHT_CHROMIUM || undefined,
@@ -2486,6 +2564,7 @@ async function theSlidePrints(browser) {
     await theRegisterShowsWhatIsMissing(browser);
     await theCompanyReadsAcrossThePage(browser);
     await theToolbarShares(browser);
+    await theContextBarFollowsTheScroll(browser);
     await theSlidePrints(browser);
   } finally {
     await browser.close();

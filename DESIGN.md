@@ -82,6 +82,18 @@ mode. The grid is tight on purpose.
   column header names the Goal and Objectives the topmost visible row belongs
   to. It does the job a sticky header does — telling you where you are
   when you have scrolled past the heading — without lying about the mechanism.
+
+  Two things it got wrong for a while, both reported as "it looks frozen".
+  It read the first *rendered* row rather than the first *visible* one, and
+  with twelve rows of overscan that is most of a screen: the bar went on naming
+  a Goal the reader had scrolled out of, catching up only much later. It now
+  takes the first row whose end is past the scroll offset plus the chrome
+  standing over it — a row hidden behind the column header is not the row
+  somebody is looking at. And it sat in the scrolling half of the row with only
+  a "Position" caption frozen to the left, so scrolling sideways slid the
+  breadcrumb away and left a word attached to nothing. The breadcrumb is the
+  frozen part now, and the caption is gone: a line reading *Customer › Service
+  experience* does not need to be told it is a position.
 - **Group rows** — a Goal, and any Objective with something under it, sit
   inline in the row stream as headers, indented one step per level, each with a
   disclosure control. An Objective carrying one Control Item and nothing else

@@ -37,6 +37,16 @@ import { cellKey, displayFor, isDirty, seedInput, type CellEditState } from "./e
 import { isSingleCell, parseClipboardGrid, planPaste, type PasteCell } from "./paste";
 import { BandLegend } from "./BandLegend";
 
+/**
+ * The sticky chrome standing over the rows: the column header, then the
+ * context bar under it. Measured rather than guessed - 24px and 21px at the
+ * sheet's type sizes - and used for two things that must agree: where the
+ * context bar hangs, and which row it is allowed to call the top one.
+ */
+const HEADER_HEIGHT_PX = 24;
+const CONTEXT_BAR_HEIGHT_PX = 21;
+const STICKY_CHROME_PX = HEADER_HEIGHT_PX + CONTEXT_BAR_HEIGHT_PX;
+
 const GROUP_ROW_HEIGHT = 28;
 
 /*
@@ -291,9 +301,24 @@ export function SheetGrid({
     estimateSize: (index) =>
       visible[index].kind === "CONTROL_ITEM" ? controlItemHeight : GROUP_ROW_HEIGHT,
     overscan: 12,
+    /*
+     * The row under the top edge - not the first one rendered.
+     *
+     * `getVirtualItems()` starts twelve rows early, because that is what the
+     * overscan is for, and reading its first entry named whatever Goal was
+     * twelve rows above the fold. On a full sheet that is most of a screen, so
+     * the bar sat on "Profit and Growth" long after the reader had scrolled
+     * into the next Goal and looked, reasonably, like a frozen frame.
+     *
+     * The edge is the scroll offset plus the chrome standing over it: a row
+     * hidden behind the column header is not the row somebody is looking at.
+     */
     onChange: (instance) => {
-      const first = instance.getVirtualItems()[0];
-      if (first) setTopRowIndex(first.index);
+      const items = instance.getVirtualItems();
+      if (items.length === 0) return;
+      const edge = (instance.scrollOffset ?? 0) + STICKY_CHROME_PX;
+      const first = items.find((item) => item.end > edge) ?? items[items.length - 1];
+      setTopRowIndex(first.index);
     },
   });
 
@@ -763,17 +788,32 @@ function ColumnHeader({
   );
 }
 
+/**
+ * Where you are, once the headings have scrolled off the top.
+ *
+ * It sits *inside* the frozen columns rather than beside them, which is two
+ * fixes in one. It used to carry a "Position" caption in the frozen block with
+ * the breadcrumb in the scrolling part beside it - so scrolling right slid the
+ * breadcrumb away and left the caption standing alone over the row labels,
+ * a word belonging to nothing. Now the breadcrumb is the frozen part, and it
+ * stays put however far right the reader has scrolled. The caption goes: a
+ * line reading "Profit and Growth › Service experience" under the column
+ * header does not need to be told it is a position.
+ */
 function ContextBar({ context }: { context: string[] }) {
+  const trail = context.length ? context.join("  ›  ") : "—";
   return (
-    <div className="sticky top-[26px] z-20 flex border-b border-rule bg-paper-sunken">
+    <div
+      data-context-bar
+      className="sticky z-20 flex border-b border-rule bg-paper-sunken"
+      style={{ top: HEADER_HEIGHT_PX }}
+    >
       <div
-        className="sticky left-0 z-20 shrink-0 truncate border-r border-rule-strong bg-paper-sunken px-2 py-0.5 text-[10px] uppercase tracking-wide text-ink-faint"
+        className="sticky left-0 z-20 shrink-0 truncate border-r border-rule-strong bg-paper-sunken px-2 py-0.5 text-[11px] text-ink-muted"
         style={{ width: "calc(var(--label-width) + var(--measure-width))" }}
+        title={trail}
       >
-        Position
-      </div>
-      <div className="truncate px-2 py-0.5 text-[11px] text-ink-muted">
-        {context.length ? context.join("  ›  ") : "—"}
+        {trail}
       </div>
     </div>
   );
