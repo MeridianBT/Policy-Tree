@@ -154,7 +154,7 @@ export function CompanySheet({
               be a control whose only effect is to be ignored. */}
           {orientation === "PORTRAIT" && (
             <Segmented
-              label="View"
+              label="Levels"
               value={expanded ? "L4" : "L3"}
               onChange={(value) => {
                 if ((value === "L4") !== expanded) toggleExpanded();

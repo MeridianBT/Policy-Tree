@@ -75,6 +75,24 @@ async function confirmDelete(page, goneText) {
   }
 }
 
+/**
+ * Choose a division.
+ *
+ * It used to be a native select; it is the same popover picker as Business
+ * unit and Department now, so choosing is open-then-click. One helper, because
+ * five checks do it and five copies of the open-then-click would be five
+ * things to fix the next time the control moves.
+ */
+async function chooseDivision(page, code) {
+  await page.locator("button", { hasText: /^Division/ }).first().click();
+  await page.waitForTimeout(300);
+  await page
+    .locator('[role="option"]', { hasText: code ? new RegExp(`^${code}\\b`) : /^All divisions$/ })
+    .first()
+    .click();
+  await page.waitForTimeout(300);
+}
+
 async function signIn(page) {
   await page.goto(`${BASE}/login`);
   await page.fill('input[name="email"]', EMAIL);
@@ -293,8 +311,7 @@ async function departmentChipsDoNotRepeatTheDivision(browser) {
     all.slice(0, 3).join(" | "),
   );
 
-  const division = page.locator("label", { hasText: "Division" }).locator("select");
-  await division.selectOption("AUTO");
+  await chooseDivision(page, "AUTO");
   await page.waitForTimeout(3000);
   const scoped = await chips();
   check(scoped.includes("PRD — Product"), "and drops it once AUTO is chosen", scoped.join(" | "));
@@ -962,9 +979,11 @@ async function theCascadeCanBeNarrowed(browser) {
   );
 
   // Division: one division's work, the departments beneath it included.
-  const division = page.locator("label", { hasText: "Division" }).locator("select");
-  check((await division.count()) === 1, "the toolbar has a Division picker");
-  await division.selectOption("OX");
+  check(
+    (await page.locator("button", { hasText: /^Division/ }).count()) === 1,
+    "the toolbar has a Division picker",
+  );
+  await chooseDivision(page, "OX");
   await page.waitForTimeout(2500);
   const inOx = await dics();
   check(
@@ -1393,7 +1412,7 @@ async function outputsCarryTheFilters(browser) {
   );
 
   // Narrow it the way somebody preparing a division's review would.
-  await page.locator("label", { hasText: "Division" }).first().locator("select").selectOption("OX");
+  await chooseDivision(page, "OX");
   await page.waitForTimeout(2000);
   const narrowed = await links();
   check(
@@ -1424,7 +1443,7 @@ async function outputsCarryTheFilters(browser) {
   );
 
   // Search travels too, and is the one that is not a list.
-  await page.locator("label", { hasText: "Division" }).first().locator("select").selectOption("");
+  await chooseDivision(page, "");
   await page.waitForTimeout(1500);
   const search = page.locator('input[placeholder*="Find"], input[type="search"]').first();
   if (await search.count()) {
@@ -1661,8 +1680,7 @@ async function severalControlItemsUnderOneMeasure(browser) {
   await signIn(page);
 
   // The measure sits in one division, and narrowing to it keeps the walk short.
-  const division = page.locator("label", { hasText: "Division" }).locator("select");
-  await division.selectOption("OX");
+  await chooseDivision(page, "OX");
   await page.waitForTimeout(3000);
 
   /*
@@ -2530,6 +2548,69 @@ async function theContextBarFollowsTheScroll(browser) {
   await page.close();
 }
 
+
+/**
+ * The filter bar says what each of its groups controls.
+ *
+ * Four segmented groups sat in this bar unlabelled - nine identically weighted
+ * pills - while the pickers standing beside them carried their names in plain
+ * sight. The labels existed as `aria-label`, so a screen reader was better
+ * served than somebody looking at it, which is the wrong way round.
+ *
+ * And Division was a native select between two popovers doing the same job,
+ * sizing itself to its longest option: 253px, the widest control in a bar that
+ * was already wrapping. The three are one kind of control now.
+ */
+async function theFilterBarSaysWhatItDoes(browser) {
+  console.log("\nThe filter bar says what each group controls");
+  const page = await browser.newPage({ viewport: { width: 1500, height: 900 } });
+  await signIn(page);
+  await page.waitForTimeout(1500);
+
+  const bar = page.locator("div.flex.flex-wrap.items-center.gap-2.border").first();
+  const text = (await bar.innerText()).replace(/\s+/g, " ");
+  for (const label of ["Reads", "Levels", "Display", "Columns", "Quarter"]) {
+    check(text.includes(label), `the bar names its ${label} group`, text.slice(0, 80));
+  }
+
+  /*
+   * One row at this width. It used to take two: four labels were added and the
+   * bar still got shorter, because the Division picker paid for them. Measured
+   * rather than asserted - a wrapped toolbar is the thing this was fixing.
+   */
+  const height = Math.round((await bar.boundingBox()).height);
+  check(height < 50, "and fits one row at 1500px", `${height}px`);
+
+  // Three pickers, one shape.
+  const pickers = await page.evaluate(() =>
+    [...document.querySelectorAll('button[aria-haspopup="listbox"]')].map((b) =>
+      b.textContent.trim().replace(/\s+/g, " "),
+    ),
+  );
+  for (const label of ["Business unit", "Division", "Department"]) {
+    check(
+      pickers.some((p) => p.startsWith(label)),
+      `${label} is a picker like the others`,
+      pickers.join(" | "),
+    );
+  }
+
+  // A single picker names its choice on the button and closes when you choose.
+  await chooseDivision(page, "OX");
+  const chosen = await page.locator("button", { hasText: /^Division/ }).first().innerText();
+  check(/OX/.test(chosen), "the Division picker names the division on its button", chosen);
+  check(
+    (await page.locator('[role="listbox"]').count()) === 0,
+    "and closes on the choice, having nothing left to offer",
+  );
+
+  await chooseDivision(page, "");
+  const cleared = await page.locator("button", { hasText: /^Division/ }).first().innerText();
+  check(!/OX/.test(cleared), "and All divisions puts it back", cleared);
+
+  await page.close();
+}
+
 (async () => {
   const browser = await chromium.launch({
     executablePath: process.env.PLAYWRIGHT_CHROMIUM || undefined,
@@ -2564,6 +2645,7 @@ async function theContextBarFollowsTheScroll(browser) {
     await theRegisterShowsWhatIsMissing(browser);
     await theCompanyReadsAcrossThePage(browser);
     await theToolbarShares(browser);
+    await theFilterBarSaysWhatItDoes(browser);
     await theContextBarFollowsTheScroll(browser);
     await theSlidePrints(browser);
   } finally {

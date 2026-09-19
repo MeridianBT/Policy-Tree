@@ -719,7 +719,7 @@ export function SheetScreen({
             which landscape draws. */}
         {!landscape && (
           <Segmented
-            label="Display mode"
+            label="Display"
             value={displayMode}
             onChange={setDisplayMode}
             options={DISPLAY_MODES}
@@ -786,16 +786,23 @@ export function SheetScreen({
             onChange={(businessUnits) => setFilters((previous) => ({ ...previous, businessUnits }))}
           />
         )}
+        {/* The same kind of control as the two either side of it. As a native
+            select it sized itself to its longest option - 253px measured, the
+            widest thing in a bar that was already wrapping - to do the job its
+            neighbours do in a third of that. */}
         {hasDepartments && (
-          <Select
+          <MultiSelect
             label="Division"
-            value={divisionScope}
-            options={[
-              { value: "", label: "All divisions" },
-              ...divisionOptions.map((dic) => ({ value: dic.code, label: dicOptionLabel(dic, null) })),
-            ]}
-            onChange={(value) => {
-              setDivisionScope(value);
+            single
+            allLabel="All divisions"
+            selected={divisionScope ? [divisionScope] : []}
+            options={divisionOptions.map((dic) => ({
+              value: dic.code,
+              label: dicOptionLabel(dic, null),
+              short: dic.code,
+            }))}
+            onChange={(values) => {
+              setDivisionScope(values[0] ?? "");
               // A stale department pick from a different division would sit
               // there silently narrowing the sheet to nothing.
               setFilters((previous) => ({ ...previous, dics: [] }));
@@ -821,7 +828,7 @@ export function SheetScreen({
         <SearchBox
           label="Find"
           value={filters.search}
-          placeholder="statement, measure, code"
+          placeholder="measure or code"
           title="Matches a statement, a measure's name, what it measures, its code or its department. A matched statement brings its whole branch."
           onChange={(search) => setFilters((previous) => ({ ...previous, search }))}
         />

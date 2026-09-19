@@ -28,7 +28,7 @@
 
 import { useCallback, useEffect, useMemo, useState, useTransition } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { MultiSelect, SearchBox, Segmented, Select } from "@/components/ui/primitives";
+import { MultiSelect, SearchBox, Segmented } from "@/components/ui/primitives";
 import { RichText } from "@/components/ui/RichText";
 import { RationalePanel } from "@/components/rationale/RationalePanel";
 import { dicOptionLabel } from "@/components/sheet/dic-label";
@@ -228,14 +228,17 @@ export function RationaleRegister({
             />
           )}
           {divisionOptions.length > 1 && (
-            <Select
+            <MultiSelect
               label="Division"
-              value={divisionCode}
-              options={[
-                { value: "", label: "All divisions" },
-                ...divisionOptions.map((dic) => ({ value: dic.code, label: dicOptionLabel(dic, null) })),
-              ]}
-              onChange={chooseDivision}
+              single
+              allLabel="All divisions"
+              selected={divisionCode ? [divisionCode] : []}
+              options={divisionOptions.map((dic) => ({
+                value: dic.code,
+                label: dicOptionLabel(dic, null),
+                short: dic.code,
+              }))}
+              onChange={(values) => chooseDivision(values[0] ?? "")}
             />
           )}
           <SearchBox

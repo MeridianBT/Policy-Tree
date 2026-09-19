@@ -14,7 +14,40 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Check, ChevronDown, Search, X } from "lucide-react";
 
+/**
+ * A row of mutually exclusive choices, under a label that says what they
+ * choose between.
+ *
+ * The label is visible, and that is the point of it. Four of these sit in the
+ * sheet's toolbar - Reads, Levels, Display, Columns - and unlabelled they were
+ * nine identically weighted pills with nothing saying which dimension each
+ * group controlled, while the `Select`s standing next to them carried their
+ * names in plain sight. The `aria-label` stays on the radiogroup, so the
+ * accessible name does not depend on the visible one.
+ */
 export function Segmented<T extends string>({
+  value,
+  options,
+  onChange,
+  label,
+  /** For the rare group whose meaning is already in the words. */
+  hideLabel = false,
+}: {
+  value: T;
+  options: Array<{ value: T; label: string; hint?: string }>;
+  onChange: (value: T) => void;
+  label: string;
+  hideLabel?: boolean;
+}) {
+  return (
+    <span className="flex items-center gap-1.5 text-[11px] text-ink-muted">
+      {!hideLabel && label}
+      <SegmentedButtons value={value} options={options} onChange={onChange} label={label} />
+    </span>
+  );
+}
+
+function SegmentedButtons<T extends string>({
   value,
   options,
   onChange,
@@ -389,24 +422,65 @@ export function MenuLink({
   );
 }
 
+/**
+ * A picker hanging off a button: several choices, or exactly one.
+ *
+ * `single` is the same control holding one value instead of a list - picking
+ * closes it, and the first row is the "all" choice rather than a Clear footer.
+ * It exists because Division sat between Business unit and Department as a
+ * native `<select>`, which sizes itself to its longest option: 253px measured,
+ * the widest control in a toolbar that was already wrapping onto three lines,
+ * for one of three controls doing the same job in a different shape.
+ *
+ * One component rather than two, because a second would be this popover
+ * written again - the measuring, the dismissal, the edge it hangs from - and
+ * the copy that is not looked at every day is the one that drifts. The name
+ * is the price of that, and this comment is the receipt.
+ */
 export function MultiSelect({
   label,
   selected,
   options,
   onChange,
   renderOption,
+  single = false,
+  allLabel = "All",
 }: {
   label: string;
   selected: string[];
-  options: Array<{ value: string; label: string }>;
+  options: Array<{
+    value: string;
+    label: string;
+    /**
+     * What a `single` picker puts on its button once this is chosen. The full
+     * label belongs in the panel, where there is room to read it; on the
+     * button it would give back the width this control exists to save - a
+     * chosen "OX — Ownership Experience" is as wide as the native select it
+     * replaced.
+     */
+    short?: string;
+  }>;
   onChange: (values: string[]) => void;
   renderOption?: (value: string, label: string) => ReactNode;
+  /** Holds one choice rather than a list. */
+  single?: boolean;
+  /** The row that clears a single picker - "All divisions" and the like. */
+  allLabel?: string;
 }) {
   // Opening, dismissal and the edge it hangs from are `usePanel`'s - the same
   // behaviour the Share menu has, defined once.
-  const { open, alignRight, ref, button, toggle: togglePanel } = usePanel();
+  const { open, setOpen, alignRight, ref, button, toggle: togglePanel } = usePanel();
 
   function toggle(value: string) {
+    if (single) {
+      onChange(selected[0] === value ? [] : [value]);
+      // A single choice is made in one click, so the panel has nothing left to
+      // offer - leaving it open would be a list of alternatives to the thing
+      // just chosen.
+      setOpen(false);
+      button.current?.focus();
+      return;
+    }
     onChange(selected.includes(value) ? selected.filter((v) => v !== value) : [...selected, value]);
   }
 
@@ -423,14 +497,23 @@ export function MultiSelect({
         } hover:bg-paper-sunken`}
       >
         {label}
-        {selected.length > 0 && <span className="num text-[10px]">({selected.length})</span>}
+        {selected.length > 0 && (
+          <span className="num text-[10px]">
+            {single
+              ? `(${(() => {
+                  const chosen = options.find((option) => option.value === selected[0]);
+                  return chosen?.short ?? chosen?.label ?? selected[0];
+                })()})`
+              : `(${selected.length})`}
+          </span>
+        )}
         <ChevronDown size={11} />
       </button>
 
       {open && (
         <div
           role="listbox"
-          aria-multiselectable
+          aria-multiselectable={single ? undefined : true}
           className={`absolute top-full z-50 mt-1 max-h-72 overflow-auto rounded-sm border border-rule-strong bg-paper py-1 shadow-lg ${
             alignRight ? "right-0" : "left-0"
           }`}
@@ -438,6 +521,27 @@ export function MultiSelect({
         >
           {options.length === 0 && (
             <p className="px-2 py-1 text-[11px] text-ink-faint">Nothing to filter on.</p>
+          )}
+          {/* The way out, at the top where a single picker's "no choice" row
+              belongs - the multi one clears from a footer instead, because
+              there it is an action on a list rather than one of the choices. */}
+          {single && options.length > 0 && (
+            <button
+              type="button"
+              role="option"
+              aria-selected={selected.length === 0}
+              onClick={() => {
+                onChange([]);
+                setOpen(false);
+                button.current?.focus();
+              }}
+              className="flex w-full items-center gap-2 border-b border-rule px-2 py-1 text-left text-[11px] hover:bg-paper-sunken"
+            >
+              <span className="flex size-3.5 shrink-0 items-center justify-center border border-rule-strong">
+                {selected.length === 0 && <Check size={10} />}
+              </span>
+              <span className="truncate">{allLabel}</span>
+            </button>
           )}
           {options.map((option) => {
             const isSelected = selected.includes(option.value);
@@ -457,7 +561,7 @@ export function MultiSelect({
               </button>
             );
           })}
-          {selected.length > 0 && (
+          {!single && selected.length > 0 && (
             <button
               type="button"
               onClick={() => onChange([])}

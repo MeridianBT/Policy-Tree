@@ -31,7 +31,7 @@
  */
 import { useCallback, useMemo, useState, useTransition } from "react";
 import { EvaluationSymbol } from "@/components/sheet/EvaluationSymbol";
-import { Segmented, Select, MultiSelect } from "@/components/ui/primitives";
+import { Segmented, MultiSelect } from "@/components/ui/primitives";
 import { dicOptionLabel } from "@/components/sheet/dic-label";
 import { matchRows, EMPTY_FILTERS, type SheetFilters } from "@/components/sheet/filters";
 import { fetchSheet } from "@/lib/sheet/actions";
@@ -172,17 +172,17 @@ export function CascadeView({ model: initialModel }: { model: SheetModel }) {
             />
           )}
           {divisionOptions.length > 1 && (
-            <Select
+            <MultiSelect
               label="Division"
-              value={divisionCode}
-              options={[
-                { value: "", label: "All divisions" },
-                ...divisionOptions.map((dic) => ({
-                  value: dic.code,
-                  label: dicOptionLabel(dic, null),
-                })),
-              ]}
-              onChange={chooseDivision}
+              single
+              allLabel="All divisions"
+              selected={divisionCode ? [divisionCode] : []}
+              options={divisionOptions.map((dic) => ({
+                value: dic.code,
+                label: dicOptionLabel(dic, null),
+                short: dic.code,
+              }))}
+              onChange={(values) => chooseDivision(values[0] ?? "")}
             />
           )}
 

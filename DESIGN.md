@@ -149,6 +149,23 @@ the other way: a field with a magnifier in it is a search box without being
 told, so the visible label comes off — but it moves to `aria-label` rather than
 being deleted, because a screen reader has no magnifier to see.
 
+**Every group in the bar carries a visible label, and one job gets one kind of
+control.** Four segmented groups sat here unlabelled — nine identically
+weighted pills, nothing saying which dimension each chose between — while the
+pickers beside them carried their names in plain sight. The labels existed as
+`aria-label`, which left a screen reader better served than somebody looking at
+the screen. They are visible now: *Reads*, *Levels*, *Display*, *Columns*.
+("View" became "Levels" on the way: beside "Display" it read as a synonym of
+it, and the levels are what it chooses between.)
+
+Division was the other half of the same fault. Business unit and Department are
+popover pickers; Division between them was a native `<select>`, which sizes
+itself to its longest option — 253px measured, the widest control in a bar that
+was already wrapping onto two rows at 1500px. All three are the same picker
+now, in a single-choice mode, and the bar holds one row down to 1500 *despite*
+gaining four labels: the width they cost came out of the control that had been
+spending it.
+
 Anything that opens over the page - the filter panels, the Share menu, the
 account menu - goes through one `usePanel` hook: same dismissal (pointer,
 focus, Escape, resize), same measurement of which edge to hang from. Two
