@@ -807,32 +807,16 @@ async function theYearSwitcherChangesTheYear(browser) {
     return { ...info, draft: await page.locator("text=DRAFT YEAR").count() };
   };
 
-  /*
-   * The switcher lives in the account menu now, so every use of it opens that
-   * first. Pressing Go navigates, which closes the panel again - hence a
-   * helper rather than one call at the top.
-   */
-  const openAccount = async () => {
-    if ((await page.locator('[role="group"]').count()) === 0) {
-      await page.locator('nav button[aria-haspopup="dialog"]').first().click();
-      await page.waitForTimeout(400);
-    }
-  };
-
   const switcher = page.locator('select[aria-label="Which year to work on"]');
-  await openAccount();
   if ((await switcher.count()) === 0) {
     check(false, "the signed-in user can switch year at all");
     await page.close();
     return;
   }
 
-  await page.keyboard.press("Escape");
-  await page.waitForTimeout(300);
   const live = await state();
   check(live.rows > 0 && live.draft === 0, "the live year opens with a plan on it", `${live.ki}, ${live.rows} rows`);
 
-  await openAccount();
   await switcher.selectOption({ label: "104KI" });
   await page.locator("button", { hasText: /^Go$/ }).click();
   await page.waitForTimeout(4000);
@@ -867,7 +851,6 @@ async function theYearSwitcherChangesTheYear(browser) {
   // The switcher returns the reader to the page they were on, not to the sheet.
   await page.goto(`${BASE}/cascade`);
   await page.waitForTimeout(3000);
-  await openAccount();
   await page.locator("button", { hasText: /^Go$/ }).click();
   await page.waitForTimeout(4000);
   check(
@@ -879,7 +862,6 @@ async function theYearSwitcherChangesTheYear(browser) {
   // Put the session back on the live year for whatever runs next.
   await page.goto(`${BASE}/sheet`);
   await page.waitForTimeout(2500);
-  await openAccount();
   await switcher.selectOption({ index: 0 });
   await page.locator("button", { hasText: /^Go$/ }).click();
   await page.waitForTimeout(4000);
@@ -2344,17 +2326,67 @@ async function theToolbarShares(browser) {
     onCascade.join(" "),
   );
 
-  // The account block is one control now, and the year switcher lives inside
-  // it without losing its redirect.
+  /*
+   * The account menu holds what is about you; the bar holds what you work
+   * under. The year switcher was tried inside the menu and taken back out -
+   * the sheet below it means a different year depending on where it is set,
+   * and that is not something to put behind a click.
+   */
+  check(
+    (await page.locator('nav select[name="kiId"]').count()) === 1,
+    "the year switcher is in the bar, not behind a click",
+  );
+  /*
+   * Read with the panel shut. The account panel renders *inside* the nav, so
+   * an open one puts its own My entries and Settings into `nav a` - which is
+   * how this assertion first failed, on a page that was perfectly correct.
+   */
+  check(
+    (await page.evaluate(() =>
+      [...document.querySelectorAll("nav a")]
+        .filter((a) => !a.closest('[role="group"]'))
+        .map((a) => a.textContent.trim()),
+    )).every((label) => !/^(My entries|Admin|Settings)$/.test(label)),
+    "the reading row is the four screens about the plan",
+  );
+
   await page.locator('nav button[aria-haspopup="dialog"]').first().click();
   await page.waitForTimeout(400);
   const account = await page.locator('[role="group"]').innerText();
   check(/Sign out/.test(account), "the account menu holds Sign out", account.replace(/\n/g, " · "));
   check(/SUPER_ADMIN/.test(account), "and says who you are signed in as");
+  check(/My entries/.test(account), "and My entries, which is yours rather than the plan's");
+  check(/Settings/.test(account), "and Settings, renamed from Admin");
   check(
-    (await page.locator('[role="group"] select[name="kiId"]').count()) === 1,
-    "and carries the year switcher",
+    (await page.locator('[role="group"] select[name="kiId"]').count()) === 0,
+    "and does not also carry the year switcher",
   );
+  /*
+   * The bell and the count are two halves of one fact, so they are asserted
+   * against each other rather than against the seed: whoever is signed in,
+   * the button says something is due exactly when the menu shows a number.
+   * A bell with nothing behind it - or figures owed with no bell - is the
+   * failure, and either would look fine on its own.
+   */
+  const due = await page.evaluate(() => {
+    const button = document.querySelector('nav button[aria-haspopup="dialog"]');
+    const entries = [...document.querySelectorAll('[role="group"] a')].find((a) =>
+      a.textContent.includes("My entries"),
+    );
+    return {
+      // sr-only text, which is what carries the count to a screen reader.
+      announced: /due this month/.test(button?.textContent ?? ""),
+      count: Number((entries?.textContent ?? "").replace(/[^0-9]/g, "") || 0),
+    };
+  });
+  check(
+    due.announced === (due.count > 0),
+    "the bell appears exactly when figures are due",
+    `${due.count} due, bell ${due.announced ? "shown" : "absent"}`,
+  );
+
+  await page.keyboard.press("Escape");
+  await page.waitForTimeout(250);
 
   await page.close();
 }

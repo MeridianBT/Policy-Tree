@@ -234,6 +234,7 @@ export function Menu({
   width = PANEL_WIDTH_PX,
   panelRole = "menu",
   onOpenChange,
+  labelClassName,
   buttonClassName = "flex items-center gap-1 rounded-sm border border-rule bg-paper px-2 py-1 text-[11px] text-ink hover:bg-paper-sunken",
 }: {
   label: string;
@@ -249,6 +250,11 @@ export function Menu({
    */
   panelRole?: "menu" | "group";
   buttonClassName?: string;
+  /**
+   * Applied to the label text alone. The account menu hides its name below
+   * `sm`, where a nav bar has no room for it and the icons say enough.
+   */
+  labelClassName?: string;
   /**
    * Told when the panel opens and closes. A caller whose panel has more than
    * one state - the Share menu turns into a send form - needs to know when it
@@ -297,7 +303,7 @@ export function Menu({
         className={buttonClassName}
       >
         {icon}
-        {label}
+        <span className={labelClassName}>{label}</span>
         <ChevronDown size={11} />
       </button>
 
@@ -317,7 +323,12 @@ export function Menu({
   );
 }
 
-const MENU_ITEM_CLASS =
+/**
+ * One row in a panel. Exported because the account menu's rows are a link, a
+ * link and a form rather than menu items, and a second set of paddings beside
+ * this one would drift from it the first time either changed.
+ */
+export const MENU_ITEM_CLASS =
   "flex w-full items-center gap-2 px-2 py-1.5 text-left text-[11px] text-ink hover:bg-paper-sunken focus:bg-paper-sunken focus:outline-none";
 
 /** One action in a `Menu`. */

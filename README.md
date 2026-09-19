@@ -448,7 +448,7 @@ application roles.
 
 Sign-in is **invite-only**. Holding a Microsoft account in the company tenant
 is not by itself permission to use this application: an admin creates the
-account first (Admin → Users, leaving the password blank), and an unrecognised
+account first (Settings → People, leaving the password blank), and an unrecognised
 Microsoft user is refused with "ask an admin for access" rather than being
 provisioned automatically. That refusal is deliberately a different message
 from a wrong password — the person has signed in correctly and would otherwise
@@ -609,12 +609,12 @@ colleague is correspondence and belongs in the record.
 | `/cascade` | A read-only, one-page alignment map from every Company Goal down to the Department work laddering into it, narrowable by view, business unit and division — see below |
 | `/rationale` | **Definitions** on the menu. The register: what each measure counts and why its target is that number, one block per measure, with the same filters the sheet uses and a **Nothing recorded** worklist preset. The one later screen that is written to as well as read — see below |
 | `/insights` | The month-end review, anchored on one month: how much of it has reported and who owes the rest, what is below target ranked by direction of travel, and the biggest movers either way — see below |
-| `/my-entries` | Keyboard-driven monthly entry for everything the signed-in user owns, with an outstanding count |
+| `/my-entries` | Keyboard-driven monthly entry for everything the signed-in user owns, with an outstanding count. Reached from the account menu, which rings a bell when anything is due |
 | `/control-item/[id]` | Trend chart with every version overlaid, stored cells including formulas as typed, the full audit trail, and this measure's definition and rationale |
 | `/print/company` | A3 landscape, print-only |
 | `/print/division/[code]` | The same, pre-scoped to one division |
 | `/print/slide` | The Across view on a page the size of a PowerPoint slide (13.33in × 7.5in). Print to PDF and drop it on a slide — see below |
-| `/admin` | Five sections, one at a time and addressable (`?section=people`): **Year** (Ki setup, version locking, emptying a year, copy-from-previous-Ki), **Structure** (workbook upload), **Organisation** (divisions, departments, business units), **People**, **Evaluation** (the band scale) |
+| `/admin` | **Settings** on the menu, in the account menu rather than the nav row. Five sections, one at a time and addressable (`?section=people`): **Year** (Ki setup, version locking, emptying a year, copy-from-previous-Ki), **Structure** (workbook upload), **Organisation** (divisions, departments, business units), **People**, **Evaluation** (the band scale) |
 | `/symbols` | Symbol rendering check for a platform you are deploying to. **Not on the menu** — a deployment check, not something a director needs. Reachable by typing it, like `/division/[code]` |
 | `/api/export` | Excel download of the sheet as filtered (`?division=CODE` for a Level 4 sheet, `?version=ID` to pin the target basis, plus the filter parameters below) |
 | `/api/template` | The upload template for a Ki (`?ki=ID`, required) |
@@ -751,7 +751,7 @@ year would be worse than useless.
 
 ### Emptying a year
 
-Admin → *Empty year* on any Ki that is not current. It removes every Goal,
+Settings → *Empty year* on any Ki that is not current. It removes every Goal,
 Objective, Control Item and stored figure for that year; the year
 itself and its six plan versions survive, so it is immediately ready to be
 built again or copied into.
@@ -906,7 +906,7 @@ continuation: the server derives both from the parent (a Goal takes a Level 2
 Objective, a Level 2 Objective takes a Level 3), so the only decision left is
 what to call the new row.
 
-The sheet is now the **only** place the structure is edited by hand. Admin used
+The sheet is now the **only** place the structure is edited by hand. Settings used
 to carry a "structure builder" — a form with Kind, Level and a parent dropdown —
 and it is gone. It asked for three things the sheet derives, its own Control
 Item form had been broken for some time (it never sent a business unit, so every
@@ -1084,7 +1084,7 @@ the Division has not already said. With no division chosen they read
 code is never dropped, only shortened, and only inside its own division:
 department names repeat across divisions — Network Development is both AUTO-ND
 and PSP-ND — so a list spanning divisions needs the codes to tell them apart.
-Shortening is also checked rather than assumed, since Admin → Departments takes
+Shortening is also checked rather than assumed, since Settings → Departments takes
 any code an admin types: a code that does not begin with its division's is left
 whole (`components/sheet/dic-label.ts`).
 
@@ -1096,7 +1096,7 @@ Division and Department filters already do, one screen closer to the numbers.
 
 #### Managing the pick list
 
-Divisions are seeded; Departments are not fixed — Admin → Departments lets an
+Divisions are seeded; Departments are not fixed — Settings → Departments lets an
 ADMIN add one under an existing division (a code and a name) or remove one,
 which is what populates the Department picker everywhere else on the sheet. Removing
 a department never cascades: Postgres's default behaviour on an optional
@@ -1407,7 +1407,7 @@ the two halves, and `lib/calc/search.test.ts` round-trips them: a serialiser and
 a parser drift silently otherwise, and the symptom would be a link that looks
 right and a file that quietly holds everything.
 
-### Admin in five sections
+### Settings in five sections
 
 Eight panels on one page had become two screens of masonry, and the two-column
 layout made the reading order zig-zag between groups with nothing to do with
@@ -1437,7 +1437,7 @@ because the button that produced it can be a screen and a half down a section.
 
 There was a way out of the plan and no way in: `copyStructure` carries next
 year's shape but no values, and the paste handler takes 500 clipboard cells at
-a time. **Admin → Upload a workbook** takes a whole spreadsheet, and because a
+a time. **Settings → Upload a workbook** takes a whole spreadsheet, and because a
 file can change hundreds of rows at once the design is mostly about the powers
 it refuses to take.
 
@@ -1610,8 +1610,10 @@ The app shell changes with it. The desktop frame is a fixed-height layout with
 its own scrolling panes — right for a seventeen-column grid, wrong for a phone,
 where the browser chrome moves and the keyboard takes half the viewport — so
 below `sm` the page scrolls the way every other page on a phone does. The nav's
-links collapse behind a single menu from one shared list, so somebody arriving
-cold from a reminder is never stranded on the page they landed on.
+four reading links collapse behind a single menu from one shared list, and My
+entries and Settings live in the account menu, which shows at every width as
+icons alone once there is no room for a name — so somebody arriving cold from a
+reminder is never stranded on the page they landed on.
 
 **The sheet is deliberately not part of this.** Seventeen columns belong on a
 large screen, and pretending otherwise would produce something unusable on both.

@@ -69,7 +69,7 @@ The demo dataset's fourteen accounts are listed in
 
 | Email | Role | Worth signing in as, to see |
 |---|---|---|
-| `admin@example.com` | ADMIN | Everything: structure editing at all four levels, the Admin panel |
+| `admin@example.com` | ADMIN | Everything: structure editing at all four levels, the Settings screens |
 | `auto.lead@example.com` | OWNER · AUTO division | A division lead — can key their own departments, can only add at Level 4 |
 | `dealer.lead@example.com` | OWNER · AUTO-SALES dept | The same role scoped to one department, so noticeably narrower |
 | `viewer@example.com` | VIEWER | Read-only. No entry screen, no edit controls, no reminders |
@@ -130,7 +130,7 @@ the stored cell including any formula as typed, the full history of who changed
 what and when, and a **Definition** tab carrying the same definition and log the
 register shows — the one editable thing on an otherwise read-only page.
 
-**7 · Admin** — `/admin`
+**7 · Settings** — `/admin` (the account menu, top right)
 
 Ki setup, version locking, the evaluation scale, users and departments. Try
 removing a department that still has data: it refuses outright and tells you
@@ -142,7 +142,7 @@ Three tabs — the sheet as rendered, the same figures in long format for
 pivoting, and the evaluation bands in force. Numbers are written as numbers,
 never as pre-formatted strings. Narrow the sheet first and the file comes out
 narrowed the same way: the filters travel with the link, and so do Print
-view's. To go the other way, **Admin › Structure › Upload a workbook** hands
+view's. To go the other way, **Settings › Structure › Upload a workbook** hands
 out a *Download template* for the year you are uploading into.
 
 ## Check it works

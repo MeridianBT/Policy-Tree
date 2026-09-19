@@ -3,7 +3,6 @@ import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/auth/session";
 import { signOut } from "@/lib/auth/config";
 import { KiSwitcher } from "./KiSwitcher";
-import { activeKiId } from "@/lib/ki/active";
 import { NavLink } from "./NavLink";
 import { AccountMenu } from "./AccountMenu";
 
@@ -13,19 +12,21 @@ export default async function AppLayout({ children }: { children: React.ReactNod
 
   // A VIEWER has nothing to key in, so the outstanding badge is not theirs.
   const outstanding = user.role === "VIEWER" ? 0 : await countOutstanding(user.id);
-  // Only ever set when somebody has pointed themselves at a year that is not
-  // live; `activeKiId` returns nothing at all otherwise, roles included.
-  const drafting = Boolean(await activeKiId());
 
-  // One list, rendered as a row on a desktop and inside the menu on a phone,
-  // so the two can never drift apart.
+  /*
+   * The four screens the plan is read through, in one list rendered twice - the
+   * row on a desktop, the menu on a phone - so the two can never drift apart.
+   *
+   * My entries and Settings are deliberately not here. They are about you and
+   * your account rather than about the company's plan, and they sit in the
+   * account menu with the rest of that. It is the same list split by what the
+   * screen is *about*, not a shorter one.
+   */
   const links = [
     { href: "/sheet", label: "Company sheet" },
     { href: "/cascade", label: "Cascade" },
     { href: "/rationale", label: "Definitions" },
     { href: "/insights", label: "Insights" },
-    { href: "/my-entries", label: "My entries" },
-    ...(user.role === "SUPER_ADMIN" ? [{ href: "/admin", label: "Admin" }] : []),
     // "/symbols" is deliberately absent. It renders each evaluation symbol
     // through every candidate font so a substitution on a new platform is
     // visible rather than assumed - a deployment check, not something a
@@ -56,17 +57,11 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         <details className="relative sm:hidden">
           <summary className="cursor-pointer list-none rounded-sm border border-rule px-2 py-1 text-[11px] text-ink-muted">
             Menu
-            {outstanding > 0 && (
-              <span className="num ml-1 rounded-sm bg-ink px-1 text-[10px] text-paper">{outstanding}</span>
-            )}
           </summary>
           <div className="absolute left-0 top-full z-50 mt-1 w-56 border border-rule-strong bg-paper py-1 text-[12px] shadow-lg">
             {links.map((link) => (
               <Link key={link.href} href={link.href} className="block px-3 py-2 hover:bg-paper-sunken">
                 {link.label}
-                {link.href === "/my-entries" && outstanding > 0 && (
-                  <span className="num ml-1 rounded-sm bg-ink px-1 text-[10px] text-paper">{outstanding}</span>
-                )}
               </Link>
             ))}
           </div>
@@ -76,30 +71,31 @@ export default async function AppLayout({ children }: { children: React.ReactNod
           {links.map((link) => (
             <NavLink key={link.href} href={link.href}>
               {link.label}
-              {link.href === "/my-entries" && outstanding > 0 && (
-                <span className="num ml-1 rounded-sm bg-ink px-1 text-[10px] text-paper">{outstanding}</span>
-              )}
             </NavLink>
           ))}
         </div>
 
         {/*
-          One control for the account, rather than five things in a row. The
-          DRAFT YEAR badge is the one thing that must stay visible whatever is
-          collapsed - working in a year nobody else is looking at is the mistake
-          the switcher makes possible - so the switcher goes inside and its
-          warning rides on the button.
+          The year switcher stays in the bar and everything about the account
+          collapses. The switcher is a control somebody sets and then works
+          under - the sheet below means a different year depending on it, and
+          its DRAFT YEAR badge is the warning against exactly that - so it is
+          the one thing here that must not cost a click to see. It was tried
+          inside the menu and taken back out.
         */}
         <div className="ml-auto flex items-center gap-2 text-[11px] text-ink-muted">
+          {(user.role === "SUPER_ADMIN" || user.role === "EXECUTIVE") && (
+            <span className="hidden sm:inline">
+              <KiSwitcher />
+            </span>
+          )}
           <AccountMenu
             name={user.name}
             role={user.role}
             orgUnitCode={user.orgUnitCode}
             email={user.email}
-            drafting={drafting}
-            yearSwitcher={
-              user.role === "SUPER_ADMIN" || user.role === "EXECUTIVE" ? <KiSwitcher /> : undefined
-            }
+            outstanding={outstanding}
+            adminHref={user.role === "SUPER_ADMIN" ? "/admin" : undefined}
             signOut={
               <form action={endSession}>
                 <button

@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * Admin. Five panels, no wizardry: Ki and version locking, the structure
+ * Settings. Five panels, no wizardry: Ki and version locking, the structure
  * builder, copy-from-previous-Ki, the evaluation scale, and users.
  */
 
@@ -89,7 +89,7 @@ export function AdminScreen({
 
   return (
     <div className="min-h-0 flex-1 overflow-auto p-4">
-      <h1 className="text-[15px] font-semibold">Admin</h1>
+      <h1 className="text-[15px] font-semibold">Settings</h1>
 
       {/* Sticky, because the button that produced it can be a screen and a half
           down a section: feedback that scrolls away is feedback nobody sees. */}

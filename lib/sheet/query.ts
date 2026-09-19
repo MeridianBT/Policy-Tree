@@ -28,7 +28,7 @@ export async function loadCurrentKi() {
   const ki =
     (await prisma.ki.findFirst({ where: { isCurrent: true } })) ??
     (await prisma.ki.findFirst({ orderBy: { startDate: "desc" } }));
-  if (!ki) throw new Error("No Ki has been set up. Run the seed or use Admin › Ki setup.");
+  if (!ki) throw new Error("No Ki has been set up. Run the seed or use Settings › Year.");
   return ki;
 }
 

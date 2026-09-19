@@ -115,7 +115,7 @@ export async function canEditStructureAt(
  *
  * The year is a separate axis from the level and the lock, and the rule on it
  * is narrow: a *prior* year is the record of what happened, and only a
- * SUPER_ADMIN may touch it. The sanctioned way to do so is Admin -> Empty
+ * SUPER_ADMIN may touch it. The sanctioned way to do so is Settings -> Empty
  * year, which has its own two guards.
  *
  * Everything from the current year forward is open to whoever the level and

@@ -468,7 +468,7 @@ async function measureNodeDeletion(
  * exactly the history-rewrite that lib/entries/save.ts refuses outright.
  *
  * Locked means locked here too, for every role including SUPER_ADMIN. The one
- * sanctioned way to destroy a closed year is Admin -> Empty year, which is
+ * sanctioned way to destroy a closed year is Settings -> Empty year, which is
  * about the year rather than one row and carries its own two guards.
  */
 async function lockedVersionsHolding(controlItemIds: string[]): Promise<string[]> {

@@ -145,11 +145,33 @@ somebody's panel opens off the side of the screen.
 
 **The nav marks where you are.** Seven identical links was a list, not a map.
 The active state is the visible half and `aria-current="page"` is the other.
-The account block - name, role, org unit, year switcher, sign out - collapses
-behind one button for the same reason the actions do, with one exception: the
-DRAFT YEAR warning rides on the button rather than going inside it. Everything
-else there is consulted once a session; "you are keying into a year nobody else
-is looking at" has to be true on the screen at the moment somebody types.
+
+**The nav row is split by what a screen is about.** The four screens the plan is
+read through - Company sheet, Cascade, Definitions, Insights - stay in the row.
+My entries and Settings are about you and your account rather than about the
+company's plan, so they sit in the account menu with the name, the role and the
+way out. Splitting by subject rather than by frequency is what keeps the row
+legible: a reader scanning it is choosing a view of the plan, and nothing else
+is competing for the glance.
+
+Two things refuse to collapse with them.
+
+The **year switcher** stays in the bar. It was tried in the account menu and
+taken straight back out: it is a control somebody sets and then works under -
+the sheet below it means a different year depending on where it is set - and its
+DRAFT YEAR badge is the warning against exactly the mistake it makes possible.
+A warning that costs a click is not a warning. Everything else in that menu is
+consulted once a session.
+
+The **outstanding count** does collapse, but leaves a bell behind. The number
+used to sit beside My entries in the row; moving the link into the menu would
+have taken the nudge with it, and a badge nobody sees until they open something
+is not a badge. So the bell rides on the account button and the number waits
+inside it - quiet on the ordinary day when nothing is due, and still a prompt
+when something is. It is plain ink: the five evaluation symbols carry this
+application's entire colour budget, and a red bell would be a second vocabulary
+for urgency. The count travels in the button's accessible name, because a glyph
+on its own tells a screen reader nothing.
 
 ## Which way the plan reads
 

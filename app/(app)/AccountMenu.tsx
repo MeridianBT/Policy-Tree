@@ -1,63 +1,84 @@
 "use client";
 
-import { Menu } from "@/components/ui/primitives";
+import Link from "next/link";
+import { Bell, CircleUser, ClipboardList, Settings } from "lucide-react";
+import { Menu, MENU_ITEM_CLASS } from "@/components/ui/primitives";
 
 /**
- * Who you are signed in as, and the two things you can do about it.
+ * Who you are signed in as, and the screens that are about you rather than
+ * about the plan.
  *
- * The nav's right-hand side held five separate things - name, role, org unit,
- * the year switcher and Sign out - which is most of a toolbar spent on
- * something a reader consults once a session. Behind one button naming the
- * person, it costs a click and gives the width back to the pages.
+ * The nav row is for the four screens people move between while reading the
+ * plan. My entries is where you key your own figures and Settings is where you
+ * set the place up: both are yours rather than the company's, and they sit here
+ * with the account they belong to.
  *
- * The year switcher and the sign-out form are passed in rather than built
- * here: both are server components carrying server actions, and a client
- * component can hold them as children without turning them into client code.
- * That is the whole reason this file is thin.
+ * The year switcher is deliberately *not* here. It is a control somebody sets
+ * and then works under - the sheet beneath it means something different
+ * depending on it - and that belongs in the bar where it can be seen without a
+ * click. It was tried in this menu and taken back out.
  *
- * `group` rather than `menu`: what is inside is two forms, and announcing a
- * menu would promise menu items that are not there.
+ * `group` rather than `menu`: what is inside is two links and a form, and
+ * announcing a menu would promise menu items that are not all there.
  */
 export function AccountMenu({
   name,
   role,
   orgUnitCode,
   email,
-  yearSwitcher,
+  outstanding = 0,
+  adminHref,
   signOut,
-  drafting,
 }: {
   name: string;
   role: string;
   orgUnitCode?: string | null;
   email?: string | null;
-  /** The Ki switcher, when this person is allowed one. */
-  yearSwitcher?: React.ReactNode;
+  /** Figures this person owes for the open month. */
+  outstanding?: number;
+  /** Set only for somebody who may open Settings. */
+  adminHref?: string;
   signOut: React.ReactNode;
-  /** Whether this person is pointed at a year that is not the live one. */
-  drafting?: boolean;
 }) {
   /*
-   * The one thing that must not go behind a click.
+   * A bell, not a number.
    *
-   * Everything else here is consulted once a session, but "you are keying into
-   * a year nobody else is looking at" has to be true on the screen at the
-   * moment somebody types a figure - which is the mistake the year switcher
-   * makes possible in the first place. So the switcher collapses and its
-   * warning does not.
+   * The count used to sit beside My entries in the nav row, and moving the link
+   * in here would have taken the nudge with it - a badge nobody sees until they
+   * open a menu is not a badge. So the bell rides on the button and the number
+   * waits inside, which keeps the bar quiet on the ordinary day when nothing is
+   * due.
+   *
+   * Plain ink, deliberately: the five evaluation symbols carry this
+   * application's entire colour budget, and a red bell would be a second
+   * vocabulary for urgency. The count travels in the button's accessible name,
+   * because a glyph on its own tells a screen reader nothing.
    */
-  const badge = drafting ? (
-    <span
-      className="rounded-sm border px-1 py-0.5 text-[10px] font-medium"
-      style={{ color: "#B3261E", borderColor: "#B3261E" }}
-      title="You are not looking at the live year. Nobody else sees this."
-    >
-      DRAFT YEAR
+  const icon = (
+    <span className="flex items-center gap-1">
+      {outstanding > 0 && (
+        <>
+          <Bell size={12} aria-hidden />
+          <span className="sr-only">
+            {outstanding} {outstanding === 1 ? "figure" : "figures"} due this month
+          </span>
+        </>
+      )}
+      <CircleUser size={13} aria-hidden />
     </span>
-  ) : undefined;
+  );
 
   return (
-    <Menu label={name} icon={badge} title={email ?? undefined} panelRole="group" width={240}>
+    <Menu
+      label={name}
+      icon={icon}
+      title={email ?? undefined}
+      panelRole="group"
+      width={240}
+      // A phone has no room for a name beside the icons, and the icons are the
+      // part that has to stay: this is the only way to My entries at that width.
+      labelClassName="hidden sm:inline"
+    >
       <div className="px-2 py-1.5 text-[11px] text-ink-muted">
         <div className="truncate text-ink">{name}</div>
         <div className="truncate">
@@ -67,12 +88,27 @@ export function AccountMenu({
         {email && <div className="truncate text-ink-faint">{email}</div>}
       </div>
 
-      {yearSwitcher && (
-        <div className="border-t border-rule px-2 py-1.5">
-          <div className="mb-1 text-[10px] uppercase tracking-wide text-ink-faint">Year</div>
-          {yearSwitcher}
-        </div>
-      )}
+      <div className="border-t border-rule py-0.5">
+        {/*
+          No `aria-current` on these. The nav marks the page you are on with
+          exactly one mark, and a second one inside an open panel would be a
+          second answer to "where am I".
+        */}
+        <Link href="/my-entries" className={MENU_ITEM_CLASS}>
+          <ClipboardList size={12} />
+          <span className="min-w-0 flex-1">My entries</span>
+          {outstanding > 0 && (
+            <span className="num rounded-sm bg-ink px-1 text-[10px] text-paper">{outstanding}</span>
+          )}
+        </Link>
+
+        {adminHref && (
+          <Link href={adminHref} className={MENU_ITEM_CLASS}>
+            <Settings size={12} />
+            <span className="min-w-0 flex-1">Settings</span>
+          </Link>
+        )}
+      </div>
 
       <div className="border-t border-rule px-2 py-1.5">{signOut}</div>
     </Menu>

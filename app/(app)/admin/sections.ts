@@ -1,5 +1,5 @@
 /**
- * Admin, in five sections rather than one scroll.
+ * Settings, in five sections rather than one scroll.
  *
  * Eight panels on one page came to two screens of masonry, and the two-column
  * layout made the reading order zig-zag between groups with nothing to do with

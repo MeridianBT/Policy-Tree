@@ -380,7 +380,7 @@ function buildReference(
   };
 
   write(`Upload template — ${model.kiCode}`, true);
-  write("Fill in the Upload sheet and send it back through Admin › Structure › Upload a workbook.");
+  write("Fill in the Upload sheet and send it back through Settings › Structure › Upload a workbook.");
   write("Preview first: it writes nothing until you press Apply, and says what it would do.");
   row += 1;
 
