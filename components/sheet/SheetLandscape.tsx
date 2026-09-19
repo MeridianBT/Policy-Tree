@@ -69,11 +69,35 @@ const GEOMETRY = {
   },
 } as const;
 
+/*
+ * The same columns on paper, rebalanced towards the words.
+ *
+ * A slide is 318mm wide where a laptop is about 400, and the column that pays
+ * for the difference is the one holding a measurement method: at 10% of a
+ * 13-inch page, "Grams CO2 per km" beside its owner badge wrapped onto four
+ * lines and took the row count with it - twelve rows to a slide where the
+ * arithmetic promised thirty-five. The figures give the width up instead,
+ * because a number is four characters wide however much room it is given.
+ *
+ * Both still sum to 100, which the Goal heading's colSpan depends on.
+ */
+const PRINT_GEOMETRY = {
+  PERIOD: {
+    left: [23, 16, 6, 6, 3.5],
+    right: [18, 13, 5.5, 5.5, 3.5],
+  },
+  QUARTERS: {
+    left: [19, 16, 5, 5, 5, 5],
+    right: [13, 13, 4.75, 4.75, 4.75, 4.75],
+  },
+} as const;
+
 export function SheetLandscape({
   model,
   filters,
   period = "KI",
   figures = "PERIOD",
+  forPrint = false,
 }: {
   model: SheetModel;
   filters: SheetFilters;
@@ -81,6 +105,15 @@ export function SheetLandscape({
   period?: LandscapePeriod;
   /** One figure block for that period, or all four quarters at one number each. */
   figures?: LandscapeFigures;
+  /**
+   * Laid out for paper rather than for a scrolling pane.
+   *
+   * A prop rather than a stylesheet reaching in from the print route: the
+   * scrolling shell, the sticky header and the slide count are this component's
+   * own decisions, and undoing them from outside by class name is the coupling
+   * that breaks the next time one of them is renamed.
+   */
+  forPrint?: boolean;
 }) {
   /*
    * `matchRows` unchanged, so a business unit or a division means here exactly
@@ -94,7 +127,7 @@ export function SheetLandscape({
   );
   const fit = useMemo(() => landscapeFit(goals), [goals]);
 
-  const geometry = GEOMETRY[figures];
+  const geometry = (forPrint ? PRINT_GEOMETRY : GEOMETRY)[figures];
   const columnsPerSide = geometry.left.length;
   const columnCount = columnsPerSide * 2;
 
@@ -115,9 +148,20 @@ export function SheetLandscape({
   }
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col border border-rule-strong bg-paper">
-      <div className="min-h-0 flex-1 overflow-auto">
-        <table className="w-full border-collapse text-[11px]">
+    <div
+      className={`border border-rule-strong bg-paper ${forPrint ? "" : "flex min-h-0 flex-1 flex-col"}`}
+    >
+      <div className={forPrint ? "" : "min-h-0 flex-1 overflow-auto"}>
+        {/*
+          On paper the type is set in points, because the page is a physical
+          size rather than a viewport: 8.5pt keeps a measurement method like
+          "% BEV, PHEV and hybrid" on one line in a column that is 10% of a
+          13-inch slide, where 11px wrapped it onto three and took the row
+          count with it.
+        */}
+        <table
+          className={`w-full border-collapse ${forPrint ? "text-[8.5pt] leading-tight" : "text-[11px]"}`}
+        >
           <colgroup>
             {[...geometry.left, ...geometry.right].map((width, index) => (
               <col key={index} style={{ width: `${width}%` }} />
@@ -130,16 +174,23 @@ export function SheetLandscape({
             names the columns. Sticky, because a wall chart is read by
             scrolling down it on screen even though it prints in one piece.
           */}
-          <thead className="sticky top-0 z-10 bg-paper-band-strong">
+          <thead className={`bg-paper-band-strong ${forPrint ? "" : "sticky top-0 z-10"}`}>
             <tr>
+              {/*
+                Named by the levels they hold and nothing else. The left side
+                carries the Goal heading *and* its Level 2 Objectives, so
+                "Level 1-2" is the accurate label; the earlier "Company" and
+                "Deployed" were a second vocabulary for the ladder the sheet
+                already names by number.
+              */}
               <Th colSpan={columnsPerSide} className="border-b-0 text-ink">
-                Company · Level 2
+                Level 1-2
               </Th>
               <Th
                 colSpan={columnsPerSide}
                 className="border-b-0 border-l border-l-rule-strong text-ink"
               >
-                Deployed · Level 3
+                Level 3
               </Th>
             </tr>
             <tr>
@@ -248,10 +299,21 @@ export function SheetLandscape({
       <div className="flex flex-wrap items-center justify-between gap-2 border-t border-rule bg-paper-sunken px-3 py-1 text-[11px] text-ink-muted">
         <span className="num">
           {fit.measures} {fit.measures === 1 ? "measure" : "measures"} · {fit.rows}{" "}
-          {fit.rows === 1 ? "row" : "rows"} ·{" "}
-          <span className={fit.slides > 1 ? "text-ink" : undefined}>
-            {fit.slides} {fit.slides === 1 ? "slide" : "slides"} at 16:9
-          </span>
+          {fit.rows === 1 ? "row" : "rows"}
+          {/*
+            The slide count is advice to somebody deciding whether to filter.
+            On the printed page it is meta-information about a screen the
+            reader is not looking at, so it goes; the deployed count stays,
+            because that one is about the plan.
+          */}
+          {!forPrint && (
+            <>
+              {" · "}
+              <span className={fit.slides > 1 ? "text-ink" : undefined}>
+                {fit.slides} {fit.slides === 1 ? "slide" : "slides"} at 16:9
+              </span>
+            </>
+          )}
           {fit.deployed === 0
             ? " · nothing deployed to Level 3"
             : ` · ${fit.deployed} deployed to Level 3`}

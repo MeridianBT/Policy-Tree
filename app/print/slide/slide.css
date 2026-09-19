@@ -1,0 +1,50 @@
+/*
+ * The company on one 16:9 slide.
+ *
+ * Not a .pptx. A PowerPoint slide is 13.333in x 7.5in, so a page that size
+ * prints to a PDF that drops into a deck at exactly the right proportions -
+ * which is the whole of what the .pptx export was wanted for, without the
+ * dependency it would have cost. See README, "Sharing a view".
+ *
+ * Its own stylesheet rather than a variant of print.css because `@page` is
+ * document-wide: a route cannot hold two page sizes, so the A3 sheet and the
+ * 16:9 slide cannot share a file.
+ */
+
+@page {
+  size: 13.333in 7.5in;
+  margin: 10mm;
+}
+
+/*
+ * The app shell sizes the body to the viewport and scrolls its panes, which is
+ * right for a dense grid on screen and wrong for a page that has to flow onto
+ * paper. Undone here for the same reason and in the same way print.css does it
+ * - `:has` carries the specificity of its argument, so this wins whichever
+ * order the stylesheets load in.
+ */
+body:has(.print-slide) {
+  height: auto;
+  overflow: visible;
+  background: #fff;
+}
+
+.print-slide {
+  /* The slide minus its margins. */
+  width: 318.7mm;
+  background: #fff;
+}
+
+@media print {
+  .no-print { display: none !important; }
+  html, body { background: #fff; }
+  .print-slide { width: auto; }
+  /*
+   * The five evaluation symbols carry the entire colour budget of this
+   * application; a slide that drops them is a slide of numbers with the
+   * judgement taken out.
+   */
+  html { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  thead { display: table-header-group; }
+  tr { break-inside: avoid; }
+}

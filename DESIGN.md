@@ -116,6 +116,41 @@ mode. The grid is tight on purpose.
   sheet (that is the whole point of scoping to a department); a disabled
   icon would read as a bug to fix, not as a boundary to respect.
 
+## The toolbar, and what collapses
+
+Two kinds of control share the strip above the sheet, and they do not deserve
+the same room.
+
+**Filters stay on show.** Business unit, Division, Department, the period and
+the view toggles are adjusted ten times in a sitting, and a filter behind a
+click is a filter people stop using — which is worse than a crowded toolbar,
+because the alternative is reading the wrong rows.
+
+**Actions collapse.** Export, email, print and the slide view are used once a
+sitting if at all, and four labelled links across the header were spending the
+width the filters need. They sit behind one **Share** menu.
+
+The Share button keeps its word beside its icon. A bare glyph is a guess for
+anybody who has not used the application before, and icon-plus-word is still
+narrower than the links it replaced. The same argument settles the search box
+the other way: a field with a magnifier in it is a search box without being
+told, so the visible label comes off — but it moves to `aria-label` rather than
+being deleted, because a screen reader has no magnifier to see.
+
+Anything that opens over the page - the filter panels, the Share menu, the
+account menu - goes through one `usePanel` hook: same dismissal (pointer,
+focus, Escape, resize), same measurement of which edge to hang from. Two
+implementations would drift, and the way they drift is invisible until
+somebody's panel opens off the side of the screen.
+
+**The nav marks where you are.** Seven identical links was a list, not a map.
+The active state is the visible half and `aria-current="page"` is the other.
+The account block - name, role, org unit, year switcher, sign out - collapses
+behind one button for the same reason the actions do, with one exception: the
+DRAFT YEAR warning rides on the button rather than going inside it. Everything
+else there is consulted once a session; "you are keying into a year nobody else
+is looking at" has to be true on the screen at the moment somebody types.
+
 ## Which way the plan reads
 
 One toggle, **Down** and **Across**, on the company sheet only.

@@ -3,6 +3,9 @@ import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/auth/session";
 import { signOut } from "@/lib/auth/config";
 import { KiSwitcher } from "./KiSwitcher";
+import { activeKiId } from "@/lib/ki/active";
+import { NavLink } from "./NavLink";
+import { AccountMenu } from "./AccountMenu";
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const user = await getCurrentUser();
@@ -10,6 +13,9 @@ export default async function AppLayout({ children }: { children: React.ReactNod
 
   // A VIEWER has nothing to key in, so the outstanding badge is not theirs.
   const outstanding = user.role === "VIEWER" ? 0 : await countOutstanding(user.id);
+  // Only ever set when somebody has pointed themselves at a year that is not
+  // live; `activeKiId` returns nothing at all otherwise, roles included.
+  const drafting = Boolean(await activeKiId());
 
   // One list, rendered as a row on a desktop and inside the menu on a phone,
   // so the two can never drift apart.
@@ -77,34 +83,39 @@ export default async function AppLayout({ children }: { children: React.ReactNod
           ))}
         </div>
 
+        {/*
+          One control for the account, rather than five things in a row. The
+          DRAFT YEAR badge is the one thing that must stay visible whatever is
+          collapsed - working in a year nobody else is looking at is the mistake
+          the switcher makes possible - so the switcher goes inside and its
+          warning rides on the button.
+        */}
         <div className="ml-auto flex items-center gap-2 text-[11px] text-ink-muted">
-          {(user.role === "SUPER_ADMIN" || user.role === "EXECUTIVE") && (
-            <span className="hidden sm:inline">
-              <KiSwitcher />
-            </span>
-          )}
-          <span className="hidden sm:inline" title={user.email}>
-            {user.name} · {user.role}
-            {user.orgUnitCode ? ` · ${user.orgUnitCode}` : ""}
-          </span>
-          <form action={endSession}>
-            <button type="submit" className="rounded-sm border border-rule px-2 py-1 hover:bg-paper-sunken">
-              Sign out
-            </button>
-          </form>
+          <AccountMenu
+            name={user.name}
+            role={user.role}
+            orgUnitCode={user.orgUnitCode}
+            email={user.email}
+            drafting={drafting}
+            yearSwitcher={
+              user.role === "SUPER_ADMIN" || user.role === "EXECUTIVE" ? <KiSwitcher /> : undefined
+            }
+            signOut={
+              <form action={endSession}>
+                <button
+                  type="submit"
+                  className="w-full rounded-sm border border-rule px-2 py-1 text-left text-[11px] text-ink hover:bg-paper-sunken"
+                >
+                  Sign out
+                </button>
+              </form>
+            }
+          />
         </div>
       </nav>
 
       <div className="flex min-h-0 flex-1 flex-col">{children}</div>
     </div>
-  );
-}
-
-function NavLink({ href, children }: { href: string; children: React.ReactNode }) {
-  return (
-    <Link href={href} className="rounded-sm px-2 py-1 text-ink-muted hover:bg-paper-sunken">
-      {children}
-    </Link>
   );
 }
 

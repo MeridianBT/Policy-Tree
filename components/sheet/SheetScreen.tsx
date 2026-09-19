@@ -11,7 +11,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { Download, Pencil, Printer } from "lucide-react";
+import { Pencil } from "lucide-react";
 import type { SheetModel } from "@/lib/sheet/types";
 import { Button, MultiSelect, SearchBox, Segmented, Select } from "@/components/ui/primitives";
 import {
@@ -23,6 +23,7 @@ import {
 } from "./SheetGrid";
 import { viewToParams } from "./filters";
 import { SheetLandscape } from "./SheetLandscape";
+import { ShareMenu } from "./ShareMenu";
 import type { LandscapeFigures, LandscapePeriod, SheetOrientation } from "./landscape";
 import { cellKey, retireSaved, type CellEditState } from "./entry-state";
 import { canEnterFigures, type EditingUser } from "./permissions";
@@ -185,6 +186,40 @@ export function SheetScreen({
   const allCondensed = condensedQuarters.length === ALL_QUARTERS.length;
 
   /*
+   * The same two pieces of state, read the way landscape means them.
+   *
+   * `condensedQuarters` says how much the sheet folds its months up; every
+   * quarter folded is "show me quarter totals, not months", and landscape
+   * takes that as "four quarters rather than one figure". Reusing it means the
+   * answer carries across the Down/Across switch instead of each view keeping
+   * its own opinion about the same question. A partial fold - one quarter
+   * condensed on the sheet - is not a landscape state at all, so it reads as
+   * the period figure.
+   *
+   * `onlyQuarter` names the period when there is one figure block. With four
+   * quarters on screen it has nothing to narrow, so it is pinned to the Ki
+   * total rather than left to imply the columns came from somewhere else.
+   */
+  const landscapeFigures: LandscapeFigures = allCondensed ? "QUARTERS" : "PERIOD";
+  const landscapePeriod: LandscapePeriod =
+    landscapeFigures === "QUARTERS" ? "KI" : (onlyQuarter ?? "KI");
+  /*
+   * Which period is on screen, said in the title.
+   *
+   * A slide is pasted into a deck and read months later with no controls
+   * beside it, so the heading has to carry what the toolbar knows. "Company
+   * sheet - across the page" beside a single column of figures is exactly the
+   * thing that gets mistaken for the full year.
+   */
+  const landscapePeriodLabel =
+    landscapeFigures === "QUARTERS"
+      ? "Four quarters"
+      : landscapePeriod === "KI"
+        ? "Full year"
+        : landscapePeriod;
+
+
+  /*
    * What Export and Print are handed.
    *
    * `effectiveFilters` rather than `filters`, so a Division chosen with no
@@ -206,6 +241,19 @@ export function SheetScreen({
     if (allCondensed) params.set("columns", "quarters");
     return params;
   }, [outputParams, allCondensed]);
+
+  /*
+   * The slide takes the Across view's own two choices with it: which period
+   * the single figure block holds, and whether there are four of them. Without
+   * them the printed slide would be the year total whatever the screen said,
+   * which is the mistake the Across title exists to prevent.
+   */
+  const slideParams = useMemo(() => {
+    const params = new URLSearchParams(outputParams);
+    if (landscapeFigures === "QUARTERS") params.set("columns", "quarters");
+    else if (landscapePeriod !== "KI") params.set("quarter", landscapePeriod);
+    return params;
+  }, [outputParams, landscapeFigures, landscapePeriod]);
 
   const narrowed =
     effectiveFilters.businessUnits.length > 0 ||
@@ -574,39 +622,6 @@ export function SheetScreen({
   const columnsMode: string =
     condensedQuarters.length === 0 ? "MONTHS" : allCondensed ? "QUARTERS" : "MIXED";
 
-  /*
-   * The same two pieces of state, read the way landscape means them.
-   *
-   * `condensedQuarters` says how much the sheet folds its months up; every
-   * quarter folded is "show me quarter totals, not months", and landscape
-   * takes that as "four quarters rather than one figure". Reusing it means the
-   * answer carries across the Down/Across switch instead of each view keeping
-   * its own opinion about the same question. A partial fold - one quarter
-   * condensed on the sheet - is not a landscape state at all, so it reads as
-   * the period figure.
-   *
-   * `onlyQuarter` names the period when there is one figure block. With four
-   * quarters on screen it has nothing to narrow, so it is pinned to the Ki
-   * total rather than left to imply the columns came from somewhere else.
-   */
-  const landscapeFigures: LandscapeFigures = allCondensed ? "QUARTERS" : "PERIOD";
-  const landscapePeriod: LandscapePeriod =
-    landscapeFigures === "QUARTERS" ? "KI" : (onlyQuarter ?? "KI");
-  /*
-   * Which period is on screen, said in the title.
-   *
-   * A slide is pasted into a deck and read months later with no controls
-   * beside it, so the heading has to carry what the toolbar knows. "Company
-   * sheet - across the page" beside a single column of figures is exactly the
-   * thing that gets mistaken for the full year.
-   */
-  const landscapePeriodLabel =
-    landscapeFigures === "QUARTERS"
-      ? "Four quarters"
-      : landscapePeriod === "KI"
-        ? "Full year"
-        : landscapePeriod;
-
   const toggleQuarter = useCallback((quarter: QuarterCode) => {
     setCondensedQuarters((previous) =>
       previous.includes(quarter)
@@ -677,25 +692,22 @@ export function SheetScreen({
           />
         )}
         <span className="mx-1 h-4 w-px bg-rule" aria-hidden />
-        {exportHref && (
-          <a
-            href={outputUrl(exportHref, exportParams)}
-            className="flex items-center gap-1 rounded-sm border border-rule bg-paper px-2 py-1 text-[11px] text-ink hover:bg-paper-sunken"
-            title={outputTitle}
-          >
-            <Download size={12} /> Export to Excel
-          </a>
-        )}
-        {printHref && !landscape && (
-          <Link
-            href={outputUrl(printHref, printParams)}
-            target="_blank"
-            className="flex items-center gap-1 rounded-sm border border-rule bg-paper px-2 py-1 text-[11px] text-ink hover:bg-paper-sunken"
-            title={outputTitle}
-          >
-            <Printer size={12} /> Print view
-          </Link>
-        )}
+        {/*
+          Every way out of this view, behind one control. Print view stays out
+          of it in Across for the reason it always has: it renders the portrait
+          sheet, and handing that back from here would not be what is on
+          screen. The slide view is the one that matches Across, and is offered
+          from both.
+        */}
+        <ShareMenu
+          exportUrl={exportHref ? outputUrl(exportHref, exportParams) : undefined}
+          printUrl={printHref && !landscape ? outputUrl(printHref, printParams) : undefined}
+          slideUrl={outputUrl("/print/slide", slideParams)}
+          shareParams={exportParams.toString()}
+          viewTitle={title}
+          periodLabel={landscape ? landscapePeriodLabel : "full year"}
+          outputTitle={outputTitle}
+        />
         </div>
       </header>
 

@@ -18,15 +18,32 @@
 
 import type { ReminderMessage } from "./message";
 
+/**
+ * A file travelling with a message.
+ *
+ * Graph will carry an attachment inline in `sendMail` up to about 3 MB; past
+ * that it needs an upload session, which is a different shape of call. The
+ * caller checks the size and decides what to do about it - this interface
+ * stays the simple one, because the thing that actually gets sent from this
+ * application is a spreadsheet of a few hundred kilobytes.
+ */
+export interface MailAttachment {
+  filename: string;
+  contentType: string;
+  content: ArrayBuffer;
+}
+
 export interface Mailer {
-  send(message: ReminderMessage): Promise<void>;
+  send(message: ReminderMessage, attachments?: readonly MailAttachment[]): Promise<void>;
 }
 
 /** Collects instead of sending. Used by dry runs and by tests. */
 export class RecordingMailer implements Mailer {
   readonly sent: ReminderMessage[] = [];
-  async send(message: ReminderMessage): Promise<void> {
+  readonly attached: Array<readonly MailAttachment[]> = [];
+  async send(message: ReminderMessage, attachments: readonly MailAttachment[] = []): Promise<void> {
     this.sent.push(message);
+    this.attached.push(attachments);
   }
 }
 
@@ -74,7 +91,7 @@ export class GraphMailer implements Mailer {
     return this.token;
   }
 
-  async send(message: ReminderMessage): Promise<void> {
+  async send(message: ReminderMessage, attachments: readonly MailAttachment[] = []): Promise<void> {
     const from = process.env.REMINDER_FROM!;
     const token = await this.getToken();
 
@@ -91,11 +108,23 @@ export class GraphMailer implements Mailer {
             subject: message.subject,
             body: { contentType: "HTML", content: message.html },
             toRecipients: [{ emailAddress: { address: message.to } }],
+            ...(attachments.length > 0 && {
+              attachments: attachments.map((attachment) => ({
+                "@odata.type": "#microsoft.graph.fileAttachment",
+                name: attachment.filename,
+                contentType: attachment.contentType,
+                contentBytes: Buffer.from(attachment.content).toString("base64"),
+              })),
+            }),
           },
-          // These are notifications, not correspondence. Keeping them out of
-          // the shared mailbox's Sent Items stops it filling with hundreds of
-          // copies nobody will ever read.
-          saveToSentItems: false,
+          /*
+           * A reminder is a notification and does not belong in the shared
+           * mailbox's Sent Items - hundreds of copies nobody will read. A
+           * message somebody sent on purpose, with a file attached, is
+           * correspondence: it belongs in the record, and `share_log` keeping
+           * its own row is not a reason for the mailbox to forget it.
+           */
+          saveToSentItems: attachments.length > 0,
         }),
       },
     );

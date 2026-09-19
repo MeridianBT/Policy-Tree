@@ -807,16 +807,32 @@ async function theYearSwitcherChangesTheYear(browser) {
     return { ...info, draft: await page.locator("text=DRAFT YEAR").count() };
   };
 
+  /*
+   * The switcher lives in the account menu now, so every use of it opens that
+   * first. Pressing Go navigates, which closes the panel again - hence a
+   * helper rather than one call at the top.
+   */
+  const openAccount = async () => {
+    if ((await page.locator('[role="group"]').count()) === 0) {
+      await page.locator('nav button[aria-haspopup="dialog"]').first().click();
+      await page.waitForTimeout(400);
+    }
+  };
+
   const switcher = page.locator('select[aria-label="Which year to work on"]');
+  await openAccount();
   if ((await switcher.count()) === 0) {
     check(false, "the signed-in user can switch year at all");
     await page.close();
     return;
   }
 
+  await page.keyboard.press("Escape");
+  await page.waitForTimeout(300);
   const live = await state();
   check(live.rows > 0 && live.draft === 0, "the live year opens with a plan on it", `${live.ki}, ${live.rows} rows`);
 
+  await openAccount();
   await switcher.selectOption({ label: "104KI" });
   await page.locator("button", { hasText: /^Go$/ }).click();
   await page.waitForTimeout(4000);
@@ -851,6 +867,7 @@ async function theYearSwitcherChangesTheYear(browser) {
   // The switcher returns the reader to the page they were on, not to the sheet.
   await page.goto(`${BASE}/cascade`);
   await page.waitForTimeout(3000);
+  await openAccount();
   await page.locator("button", { hasText: /^Go$/ }).click();
   await page.waitForTimeout(4000);
   check(
@@ -862,6 +879,7 @@ async function theYearSwitcherChangesTheYear(browser) {
   // Put the session back on the live year for whatever runs next.
   await page.goto(`${BASE}/sheet`);
   await page.waitForTimeout(2500);
+  await openAccount();
   await switcher.selectOption({ index: 0 });
   await page.locator("button", { hasText: /^Go$/ }).click();
   await page.waitForTimeout(4000);
@@ -1355,16 +1373,35 @@ async function outputsCarryTheFilters(browser) {
   await signIn(page);
   await page.waitForTimeout(1500);
 
-  const links = () =>
-    page.evaluate(() => {
+  /*
+   * Export and Print moved into the Share menu, so reading their URLs means
+   * opening it first. Worth the extra step rather than reaching into React
+   * state: what is asserted here is the href a reader would actually follow.
+   */
+  const openShare = async () => {
+    if ((await page.locator('[role="menuitem"]').count()) === 0) {
+      await page.locator("button", { hasText: /^Share$/ }).first().click();
+      await page.waitForTimeout(400);
+    }
+  };
+  const links = async () => {
+    await openShare();
+    const found = await page.evaluate(() => {
       const find = (text) =>
-        [...document.querySelectorAll("a")].find((a) => a.textContent.trim().includes(text));
+        [...document.querySelectorAll('[role="menuitem"]')].find((a) =>
+          a.textContent.trim().includes(text),
+        );
       const href = (a) => (a ? a.getAttribute("href") : null);
       return {
         exportHref: href(find("Export to Excel")),
         printHref: href(find("Print view")),
+        slideHref: href(find("Slide view")),
       };
     });
+    await page.keyboard.press("Escape");
+    await page.waitForTimeout(250);
+    return found;
+  };
 
   const plain = await links();
   check(
@@ -1515,9 +1552,12 @@ async function theUploadPreviewWritesNothing(browser) {
   const page = await browser.newPage({ viewport: { width: 1500, height: 950 } });
   await signIn(page);
 
+  // Export lives in the Share menu now.
+  await page.locator("button", { hasText: /^Share$/ }).first().click();
+  await page.waitForTimeout(400);
   const [download] = await Promise.all([
     page.waitForEvent("download"),
-    page.click('a:has-text("Export to Excel")'),
+    page.click('[role="menuitem"]:has-text("Export to Excel")'),
   ]);
   const file = "/tmp/ui-check-round-trip.xlsx";
   await download.saveAs(file);
@@ -2016,9 +2056,27 @@ async function theCompanyReadsAcrossThePage(browser) {
     !/Departments/.test(landscape),
     "and the level toggle, because landscape is the company by definition",
   );
+  /*
+   * Print view is the portrait sheet, so Across does not offer it - the rule
+   * has not changed, only where it is enforced. The slide view is the one that
+   * matches what is on screen, and it is offered from both orientations.
+   */
+  await page.locator("button", { hasText: /^Share$/ }).first().click();
+  await page.waitForTimeout(400);
+  const shareItems = await page.evaluate(() =>
+    [...document.querySelectorAll('[role="menuitem"]')].map((el) => el.textContent.trim()),
+  );
+  await page.keyboard.press("Escape");
+  await page.waitForTimeout(250);
   check(
-    !/Print view/.test(landscape),
-    "and Print view, which would hand back the portrait sheet",
+    !shareItems.some((item) => item.includes("Print view")),
+    "Share offers no Print view here, which would hand back the portrait sheet",
+    shareItems.join(" · "),
+  );
+  check(
+    shareItems.some((item) => item.includes("Slide view")),
+    "but does offer the slide, which is what this view prints as",
+    shareItems.join(" · "),
   );
 
   // Who holds the target, badged beside the measure exactly as the sheet badges
@@ -2115,14 +2173,14 @@ async function theCompanyReadsAcrossThePage(browser) {
   const all = await rowsNow();
 
   // A filter has to move the slide count, or the number is decoration.
-  await page.locator("label", { hasText: "Find" }).locator("input").fill("motorcycle");
+  await page.locator('input[type="search"]').first().fill("motorcycle");
   await page.waitForTimeout(1200);
   const narrowed = await rowsNow();
   check(narrowed > 0 && narrowed < all, "Find narrows the bracket", `${all} -> ${narrowed}`);
   const after = await footer();
   check(after !== before, "and the slide count follows it", after);
 
-  await page.locator("label", { hasText: "Find" }).locator("input").fill("");
+  await page.locator('input[type="search"]').first().fill("");
   await page.waitForTimeout(1200);
 
   /*
@@ -2192,6 +2250,176 @@ async function theCompanyReadsAcrossThePage(browser) {
   await page.close();
 }
 
+
+/**
+ * The toolbar's actions behind one control, and the nav saying where you are.
+ *
+ * Four labelled links across the header were spending the width the filters
+ * need, so Export, email, Print and the slide view collapsed into a Share
+ * menu. Three things about that are worth asserting rather than assuming: the
+ * menu is reachable and dismissable by keyboard, it does not lose the filters
+ * on the way through, and the panel it opens stays on screen - which is the
+ * failure the filter panels already taught this file about.
+ */
+async function theToolbarShares(browser) {
+  console.log("\nOne Share menu, and a nav that says where you are");
+  const page = await browser.newPage({ viewport: { width: 1500, height: 900 } });
+  await signIn(page);
+
+  // The search field: a glyph in the box, no word beside it, and the label
+  // still announced. Dropping the accessible name to win a row of width would
+  // be a regression dressed as a tidy-up.
+  const search = page.locator('input[type="search"]').first();
+  check((await search.count()) === 1, "the toolbar still has its search box");
+  check(
+    (await search.getAttribute("aria-label")) === "Find",
+    "which keeps its name for a screen reader",
+    await search.getAttribute("aria-label"),
+  );
+  check(
+    !(await page.evaluate(() =>
+      [...document.querySelectorAll("label")].some((el) => el.textContent.trim() === "Find"),
+    )),
+    "and no longer spends a word of the toolbar saying so",
+  );
+
+  const items = async () =>
+    page.evaluate(() =>
+      [...document.querySelectorAll('[role="menuitem"]')].map((el) => el.textContent.trim()),
+    );
+
+  check((await items()).length === 0, "nothing is open to begin with");
+  await page.locator("button", { hasText: /^Share$/ }).first().click();
+  await page.waitForTimeout(400);
+  const open = await items();
+  check(
+    ["Export to Excel", "Email current view", "Print view", "Slide view (16:9)"].every((label) =>
+      open.some((item) => item.includes(label)),
+    ),
+    "Share holds every way out of the view",
+    open.join(" · "),
+  );
+
+  // A panel that will not go away is the classic menu bug; Escape is how a
+  // keyboard reader expects to leave.
+  await page.keyboard.press("Escape");
+  await page.waitForTimeout(300);
+  check((await items()).length === 0, "and Escape closes it again");
+
+  // The email panel is offered honestly: where mail is not configured it says
+  // so rather than presenting a Send button that does nothing.
+  await page.locator("button", { hasText: /^Share$/ }).first().click();
+  await page.waitForTimeout(300);
+  await page.locator('[role="menuitem"]', { hasText: "Email current view" }).click();
+  await page.waitForTimeout(1200);
+  const panel = await page.locator('[role="menu"]').innerText();
+  check(
+    /Mail is not set up/.test(panel) || /Email this view/.test(panel),
+    "Email either offers the form or says why it cannot",
+    panel.split("\n")[0],
+  );
+  await page.keyboard.press("Escape");
+  await page.waitForTimeout(300);
+
+  /*
+   * Where you are. Seven identical links was a list, not a map, and
+   * `aria-current` is the half of the fix a screen reader can hear.
+   */
+  const current = async () =>
+    page.evaluate(() =>
+      [...document.querySelectorAll('nav a[aria-current="page"]')].map((a) => a.textContent.trim()),
+    );
+  const onSheet = await current();
+  check(
+    onSheet.length === 1 && onSheet[0].includes("Company sheet"),
+    "the nav marks the page you are on",
+    onSheet.join(" "),
+  );
+  await page.goto(`${BASE}/cascade`);
+  await page.waitForTimeout(2500);
+  const onCascade = await current();
+  check(
+    onCascade.length === 1 && onCascade[0].includes("Cascade"),
+    "and moves the mark when you move",
+    onCascade.join(" "),
+  );
+
+  // The account block is one control now, and the year switcher lives inside
+  // it without losing its redirect.
+  await page.locator('nav button[aria-haspopup="dialog"]').first().click();
+  await page.waitForTimeout(400);
+  const account = await page.locator('[role="group"]').innerText();
+  check(/Sign out/.test(account), "the account menu holds Sign out", account.replace(/\n/g, " · "));
+  check(/SUPER_ADMIN/.test(account), "and says who you are signed in as");
+  check(
+    (await page.locator('[role="group"] select[name="kiId"]').count()) === 1,
+    "and carries the year switcher",
+  );
+
+  await page.close();
+}
+
+/**
+ * The slide route: the Across view on a page the size of a PowerPoint slide.
+ *
+ * What would go wrong quietly is the page losing the reader's choices on the
+ * way - printing the year total from a screen showing Q2 - so the assertions
+ * are about the period travelling, not about the pixels.
+ */
+async function theSlidePrints(browser) {
+  console.log("\nThe company prints onto a 16:9 slide");
+  const page = await browser.newPage({ viewport: { width: 1400, height: 900 } });
+  await signIn(page);
+
+  await page.goto(`${BASE}/print/slide`);
+  await page.waitForTimeout(2500);
+  const plain = await page.evaluate(() => ({
+    heading: document.querySelector("h1")?.textContent.trim() ?? "",
+    sub: document.querySelector("header p")?.textContent.trim() ?? "",
+    tables: document.querySelectorAll("table").length,
+    left: document.querySelector("thead th")?.textContent.trim() ?? "",
+  }));
+  check(plain.tables === 1, "the slide draws the bracket", `${plain.tables} tables`);
+  check(/full year/.test(plain.sub), "and names the period it is showing", plain.sub);
+  check(plain.left === "Level 1-2", "with the columns named by level", plain.left);
+
+  // The two choices the Across view makes have to survive the trip.
+  await page.goto(`${BASE}/print/slide?quarter=Q2`);
+  await page.waitForTimeout(2000);
+  const q2 = await page.evaluate(() => ({
+    sub: document.querySelector("header p")?.textContent.trim() ?? "",
+    headings: [...document.querySelectorAll("thead tr:last-child th")].map((el) =>
+      el.textContent.trim(),
+    ),
+  }));
+  check(/Q2/.test(q2.sub), "a quarter carries onto the slide", q2.sub);
+  check(q2.headings.includes("Q2 target"), "and into its figure headings", q2.headings.join(" "));
+
+  await page.goto(`${BASE}/print/slide?columns=quarters&bu=MC`);
+  await page.waitForTimeout(2000);
+  const filtered = await page.evaluate(() => ({
+    sub: document.querySelector("header p")?.textContent.trim() ?? "",
+    headings: [...document.querySelectorAll("thead tr:last-child th")].map((el) =>
+      el.textContent.trim(),
+    ),
+    // The slide count belongs to the screen, not to the printed page.
+    footer: document.querySelector("span.num")?.textContent ?? "",
+  }));
+  check(
+    ["Q1", "Q2", "Q3", "Q4"].every((q) => filtered.headings.includes(q)),
+    "four quarters carry too",
+    filtered.headings.join(" "),
+  );
+  check(/Motorcycles|filtered/.test(filtered.sub), "and the filter is named on the page", filtered.sub);
+  check(
+    !/slide at 16:9|slides at 16:9/.test(filtered.footer),
+    "the printed page drops the slide count, which is advice to a screen",
+    filtered.footer.replace(/\s+/g, " "),
+  );
+
+  await page.close();
+}
+
 (async () => {
   const browser = await chromium.launch({
     executablePath: process.env.PLAYWRIGHT_CHROMIUM || undefined,
@@ -2225,6 +2453,8 @@ async function theCompanyReadsAcrossThePage(browser) {
     await aRationaleCanBeRecorded(browser);
     await theRegisterShowsWhatIsMissing(browser);
     await theCompanyReadsAcrossThePage(browser);
+    await theToolbarShares(browser);
+    await theSlidePrints(browser);
   } finally {
     await browser.close();
   }

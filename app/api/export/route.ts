@@ -1,15 +1,15 @@
 /**
  * Excel download. Authenticated like every other read: any signed-in user may
  * export what they are allowed to see on screen.
+ *
+ * The workbook itself is built by `lib/export/for-view.ts`, which the Share
+ * menu's email action also calls - what is downloaded and what is attached to
+ * a message have to be the same file, so they are built in the same place.
  */
 
 import { NextResponse } from "next/server";
-import { prisma } from "@/lib/db";
-import { getCurrentUser, orgUnitSubtree } from "@/lib/auth/session";
-import { activeKiId } from "@/lib/ki/active";
-import { loadSheet } from "@/lib/sheet/query";
-import { matchRows, paramsToView } from "@/components/sheet/filters";
-import { buildWorkbook } from "@/lib/export/workbook";
+import { getCurrentUser } from "@/lib/auth/session";
+import { UnknownDivision, workbookFilename, workbookForView } from "@/lib/export/for-view";
 
 export const dynamic = "force-dynamic";
 
@@ -18,69 +18,18 @@ export async function GET(request: Request) {
   if (!user) return new NextResponse("Sign in to export.", { status: 401 });
 
   const params = new URL(request.url).searchParams;
-  const division = params.get("division");
-  const versionId = params.get("version");
 
-  const view = paramsToView(params);
-  let levels = view.levels ?? [1, 2, 3];
-  let orgUnitIds: string[] | undefined;
-  let title = "Company sheet — Levels 1 to 3";
-  let filename = "company-sheet";
-
-  if (division) {
-    const orgUnit = await prisma.orgUnit.findUnique({ where: { code: division.toUpperCase() } });
-    if (!orgUnit) return new NextResponse("No such division.", { status: 404 });
-    levels = [4];
-    orgUnitIds = await orgUnitSubtree(orgUnit.id);
-    title = `${orgUnit.code} — ${orgUnit.name} · Level 4`;
-    filename = `${orgUnit.code.toLowerCase()}-sheet`;
+  try {
+    const workbook = await workbookForView(params);
+    return new NextResponse(workbook.buffer, {
+      headers: {
+        "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        "Content-Disposition": `attachment; filename="${workbookFilename(workbook)}"`,
+        "Cache-Control": "no-store",
+      },
+    });
+  } catch (error) {
+    if (error instanceof UnknownDivision) return new NextResponse("No such division.", { status: 404 });
+    throw error;
   }
-
-  /*
-   * The year the caller is working on, not whichever is marked current.
-   *
-   * This had the same fault fetchSheet did: with no Ki named it fell through to
-   * `isCurrent`, so somebody on next year's draft pressed Export and was handed
-   * the live year's workbook - under a screen still reading DRAFT YEAR. It is
-   * worse here than on the sheet, because a file leaves the building.
-   */
-  const model = await loadSheet({
-    levels,
-    orgUnitIds,
-    targetVersionId: versionId,
-    kiId: params.get("ki") ?? (await activeKiId()),
-  });
-
-  const pinned = versionId ? model.versions.find((version) => version.id === versionId) : null;
-  const basisLabel = pinned ? `Target: ${pinned.code}` : "Target: latest forecast";
-
-  /*
-   * The file carries what the screen was showing.
-   *
-   * It used to carry everything regardless, so a reader who had narrowed the
-   * sheet to one division exported all ninety measures and had to narrow it
-   * again in Excel - or did not notice, and circulated the wrong thing. The
-   * filters arrive in the query and are applied with `matchRows`, the same
-   * function the sheet itself uses, so the file cannot disagree with the view
-   * it was taken from.
-   */
-  const filtered = { ...model, rows: matchRows(model.rows, view) };
-  const narrowed = filtered.rows.length !== model.rows.length;
-
-  const workbook = await buildWorkbook({
-    model: filtered,
-    title: narrowed ? `${title} · filtered` : title,
-    basisLabel,
-  });
-
-  const stamp = new Date().toISOString().slice(0, 10);
-  const safeKi = model.kiCode.replace(/\s+/g, "-").toLowerCase();
-
-  return new NextResponse(workbook, {
-    headers: {
-      "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-      "Content-Disposition": `attachment; filename="${filename}-${safeKi}-${stamp}.xlsx"`,
-      "Cache-Control": "no-store",
-    },
-  });
 }

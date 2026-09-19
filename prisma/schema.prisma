@@ -141,6 +141,8 @@ model AppUser {
   entriesUpdated Entry[]           @relation("EntryUpdatedBy")
   auditEntries   EntryAudit[]      @relation("AuditChangedBy")
   reminders      ReminderLog[]     @relation("ReminderRecipient")
+  sharesSent     ShareLog[]        @relation("ShareSender")
+  sharesReceived ShareLog[]        @relation("ShareRecipient")
   notesWritten   ControlItemNote[] @relation("NoteAuthor")
   notesWithdrawn ControlItemNote[] @relation("NoteRetractedBy")
 
@@ -176,6 +178,36 @@ model ReminderLog {
   @@unique([userId, period])
   @@index([period])
   @@map("reminder_log")
+}
+
+/// A view of the plan mailed out of the application.
+///
+/// The one thing here that leaves the building carrying figures, so it is the
+/// one thing worth a record of its own: who sent which view to whom, and
+/// whether the workbook went with it. `reminder_log` exists for the same
+/// reason on the other side of the mail path.
+///
+/// The recipient is an `AppUser` rather than an address. Sending is offered
+/// only to people who already have accounts - the product is invite-only, and
+/// a free-text address field would quietly end that.
+model ShareLog {
+  id              String   @id @default(cuid())
+  senderId        String   @map("sender_id")
+  recipientId     String   @map("recipient_id")
+  /// The querystring the view was taken from - filters, period, version. What
+  /// was sent is reconstructable from it.
+  params          String
+  /// Whether the workbook travelled, or only the link.
+  attached        Boolean  @default(false)
+  /// Bytes of the attachment, when there was one.
+  attachmentBytes Int?     @map("attachment_bytes")
+  sentAt          DateTime @default(now()) @map("sent_at")
+
+  sender    AppUser @relation("ShareSender", fields: [senderId], references: [id], onDelete: Cascade)
+  recipient AppUser @relation("ShareRecipient", fields: [recipientId], references: [id], onDelete: Cascade)
+
+  @@index([senderId, sentAt])
+  @@map("share_log")
 }
 
 /// A named snapshot of the plan for a Ki: OB, PRB, 1QFC, 2QFC, 3QFC, ACT.

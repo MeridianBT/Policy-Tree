@@ -593,6 +593,13 @@ so it can only send as that one shared mailbox. Have the mailbox picked before
 the conversation. Reminders are sent with `saveToSentItems: false`, so the
 shared mailbox does not fill with hundreds of copies nobody reads.
 
+**It is no longer only the 6am run that needs this.** The Share menu's "Email
+current view" sends through the same permission and the same mailbox, so
+without it that button reports plainly that mail is not set up rather than
+failing silently — but somebody will press it on day one. Messages a person
+sent deliberately *are* saved to Sent Items, unlike reminders: a file sent to a
+colleague is correspondence and belongs in the record.
+
 ## Screens
 
 | Route | What it is |
@@ -606,6 +613,7 @@ shared mailbox does not fill with hundreds of copies nobody reads.
 | `/control-item/[id]` | Trend chart with every version overlaid, stored cells including formulas as typed, the full audit trail, and this measure's definition and rationale |
 | `/print/company` | A3 landscape, print-only |
 | `/print/division/[code]` | The same, pre-scoped to one division |
+| `/print/slide` | The Across view on a page the size of a PowerPoint slide (13.33in × 7.5in). Print to PDF and drop it on a slide — see below |
 | `/admin` | Five sections, one at a time and addressable (`?section=people`): **Year** (Ki setup, version locking, emptying a year, copy-from-previous-Ki), **Structure** (workbook upload), **Organisation** (divisions, departments, business units), **People**, **Evaluation** (the band scale) |
 | `/symbols` | Symbol rendering check for a platform you are deploying to. **Not on the menu** — a deployment check, not something a director needs. Reachable by typing it, like `/division/[code]` |
 | `/api/export` | Excel download of the sheet as filtered (`?division=CODE` for a Level 4 sheet, `?version=ID` to pin the target basis, plus the filter parameters below) |
@@ -1310,6 +1318,46 @@ that direction-aware achievement keeps one definition. The page costs one
 query: everything on it is derived from the same `loadSheet({ levels: [1, 2, 3,
 4] })` model the sheet and Cascade already use.
 
+### Sharing a view
+
+Everything that takes a view out of the application sits behind one **Share**
+button in the sheet's header. Four labelled links across the top spent the
+width the filters need, and the filters are what somebody adjusts ten times an
+hour; the actions are used once a sitting.
+
+| Item | What it does |
+|---|---|
+| **Export to Excel** | The workbook, filtered exactly as the screen is. Unchanged, just moved |
+| **Email current view** | Sends a colleague a link to this view with the workbook attached |
+| **Print view** | The A3 sheet. Portrait only — it renders the down-the-page sheet, and offering it from Across would hand back a page that is not what is on screen |
+| **Slide view (16:9)** | A page the size of a PowerPoint slide |
+
+**The slide view is a print page, not a `.pptx`.** A PowerPoint slide is
+13.333in x 7.5in, so a page that size prints to a PDF that drops onto a slide at
+exactly the right proportions — which is all the `.pptx` export was wanted for,
+without the dependency it would have cost (see "Deliberately not built"). It
+renders the same `SheetLandscape` the Across view does rather than a print-only
+copy of it, with the columns rebalanced towards the words: a measurement method
+like "Grams CO2 per km" needs more of a 13-inch page than it does of a laptop,
+and a figure needs no more however much it is given. The period and the
+four-quarters choice travel in the link, so a slide taken from a screen showing
+Q2 is a slide of Q2.
+
+**Email current view** sends to **somebody who already has an account** — chosen
+from a list, never typed as an address, because the product is invite-only and a
+free-text field would end that quietly. The message names the sender, the view
+and its period, carries a link that reopens it, and attaches the workbook the
+Export button would have downloaded — the same builder, so what lands in the
+inbox is what was on the screen. Two limits are stated rather than discovered:
+Graph carries an attachment of about 3 MB inline, and past that the link goes on
+its own and the message says so; and where the tenant has not granted the
+`Mail.Send` permission the panel says that plainly instead of offering a Send
+button that does nothing.
+
+Every send writes a `share_log` row — who sent which view to whom, and whether
+the workbook went with it. This is the one feature that moves the plan's figures
+outside the application, and the question afterwards is always that one.
+
 ### Exporting to Excel
 
 **"Export to Excel" downloads the sheet as it is on screen** — the same rows,
@@ -1333,9 +1381,10 @@ formatting path to drift from the first.
 
 #### The filters travel with the output
 
-Both **Export to Excel** and **Print view** carry the toolbar's state in their
-link, and the far end applies it with `matchRows` — the sheet's own filtering
-function, not a second implementation per destination. Neither used to: a
+**Export to Excel**, **Print view**, the **slide view** and the workbook an
+email attaches all carry the toolbar's state in their link, and the far end
+applies it with `matchRows` — the sheet's own filtering function, not a second
+implementation per destination. Neither used to: a
 reader who had narrowed to one division exported all ninety measures and had to
 narrow it again in Excel, or did not notice and circulated the wrong thing.
 
@@ -1725,11 +1774,14 @@ current Ki, so run it on a development database and re-seed afterwards.
 
 ## Deliberately not built
 
-A PowerPoint export of the landscape company view (specified and deferred: it
-needs `pptxgenjs`, which pulls a transitive package named `https` — one
-maintainer, no repository, shadowing a Node builtin's name — and that is a
-conversation to have with IT before it lands rather than after. The view itself
-is sized and counted for 16:9 so a screenshot works meanwhile), gap analysis
+A `.pptx` file of the landscape company view (still deferred, and now with a
+substitute: it needs `pptxgenjs`, which pulls a transitive package named `https`
+— one maintainer, no repository, shadowing a Node builtin's name — and that is a
+conversation to have with IT before it lands rather than after. **`/print/slide`
+covers the use**: a page the size of a PowerPoint slide, printed to PDF and
+dropped onto one. What is still missing is an editable table in the deck rather
+than a picture of one, which is the only thing the library would buy), gap
+analysis
 and countermeasure text (deferred by design — `control_item_note`
 now has the place for it: a third value in `NoteKind`, beside DEFINITION and
 RATIONALE, rather than a third table. Nothing is built), approval workflow, notifications, chat integrations, weighted
