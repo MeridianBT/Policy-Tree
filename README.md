@@ -609,7 +609,7 @@ colleague is correspondence and belongs in the record.
 | `/cascade` | A read-only, one-page alignment map from every Company Goal down to the Department work laddering into it, narrowable by view, business unit and division — see below |
 | `/rationale` | **Definitions** on the menu. The register: what each measure counts and why its target is that number, one block per measure, with the same filters the sheet uses and a **Nothing recorded** worklist preset. The one later screen that is written to as well as read — see below |
 | `/insights` | The month-end review, anchored on one month: how much of it has reported and who owes the rest, what is below target ranked by direction of travel, and the biggest movers either way — see below |
-| `/my-entries` | Keyboard-driven monthly entry for everything the signed-in user owns, with an outstanding count. Reached from the account menu, which rings a bell when anything is due |
+| `/my-entries` | Keyboard-driven monthly entry for everything the signed-in user owns, with an outstanding count. Reached from the account menu, which rings a bell when anything is due. Keys the live year, or a prior one when an admin has switched back to it — see "Running more than one year" |
 | `/control-item/[id]` | Trend chart with every version overlaid, stored cells including formulas as typed, the full audit trail, and this measure's definition and rationale |
 | `/print/company` | A3 landscape, print-only |
 | `/print/division/[code]` | The same, pre-scoped to one division |
@@ -748,6 +748,23 @@ possible.
 Month-end reminders deliberately ignore all of this and always use the current
 Ki. A scheduler has no cookie and no person, and chasing people about a draft
 year would be worse than useless.
+
+**`/my-entries` follows the switcher backwards and not forwards**, which is the
+one place the choice is not honoured outright. It keys *actuals* — figures for
+months that have already happened — so a year that has not started has nothing
+to key, and following the switcher there would offer a screenful of boxes for
+numbers nobody can know yet. Backwards is the opposite: a prior year has
+actuals, and the only people who can reach one are the only people allowed to
+write there (`selectableKis` offers a past year to a SUPER_ADMIN alone, and
+`canEditInKi` refuses everybody else). So a past year is followed, a draft year
+is not, and **the screen says which year it is keying** whenever that is not
+the year the switcher names — a page that quietly disagrees with the control
+above it is worse than one that explains.
+
+The count in the account menu comes through the same resolver
+(`keyingKi` in `lib/entries/query.ts`). It has to: a badge counting one year
+beside a screen that opens another is the failure this rule exists to prevent,
+and it is exactly what two independent `isCurrent` lookups produced.
 
 ### Emptying a year
 

@@ -322,6 +322,18 @@ describe("buildReminderMessage", () => {
     expect(message.html).not.toContain("com//my-entries");
   });
 
+  /*
+   * A chase is about one month, and it is read whenever the recipient gets to
+   * their mail - often days later, sometimes in the month after. Without the
+   * period the link opened on whatever that screen defaulted to, which is not
+   * necessarily the month the message had just listed.
+   */
+  it("carries the month it is chasing, so a mail read late still lands on it", () => {
+    const message = buildReminderMessage(recipient, context);
+    expect(message.html).toContain("/my-entries?period=2026-04");
+    expect(message.text).toContain("/my-entries?period=2026-04");
+  });
+
   it("escapes html in a measure name, so a stray angle bracket cannot break the mail", () => {
     const message = buildReminderMessage(
       {

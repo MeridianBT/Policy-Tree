@@ -8,7 +8,9 @@
 
 import { prisma } from "@/lib/db";
 import { dateToPeriod, kiStartYearOf, kiMonths, periodToDate, type PeriodKey } from "@/lib/domain/period";
-import { orgUnitSubtree } from "@/lib/auth/permissions";
+import { isPriorYear, orgUnitSubtree } from "@/lib/auth/permissions";
+import { activeKiId } from "@/lib/ki/active";
+import { kiToKeyInto } from "./keying";
 import type { Unit } from "@/lib/calc/types";
 import { controlItemLabel } from "@/lib/calc/item-label";
 
@@ -45,6 +47,36 @@ export function openMonth(kiStartYear: number, today = new Date()): PeriodKey {
   return current;
 }
 
+/**
+ * The Ki this screen keys into, and whether that is the one the switcher shows.
+ *
+ * One resolver for both the rows and the nav's count, deliberately: a badge
+ * that counts one year while the screen it links to opens another is the exact
+ * failure this fixes, and two calls to `isCurrent` are how it got there.
+ *
+ * The rule itself is in `./keying.ts`, pure and tested; this is the part that
+ * has to ask the database.
+ */
+export async function keyingKi(): Promise<{
+  ki: { id: string; code: string; startDate: Date } | null;
+  /** The switcher's Ki, when this screen is deliberately not following it. */
+  insteadOf: string | null;
+}> {
+  const live =
+    (await prisma.ki.findFirst({ where: { isCurrent: true } })) ??
+    (await prisma.ki.findFirst({ orderBy: { startDate: "desc" } }));
+
+  const chosenId = await activeKiId();
+  if (!chosenId) return { ki: live, insteadOf: null };
+
+  const [chosen, chosenIsPrior] = await Promise.all([
+    prisma.ki.findUnique({ where: { id: chosenId } }),
+    isPriorYear(chosenId),
+  ]);
+  const { ki, followed } = kiToKeyInto({ live, chosen, chosenIsPrior });
+  return { ki, insteadOf: followed || !chosen ? null : chosen.code };
+}
+
 export async function outstandingForUser(
   userId: string,
   options?: {
@@ -72,9 +104,7 @@ export async function outstandingForUser(
 
   const personal = options?.scope === "personal";
 
-  const ki =
-    (await prisma.ki.findFirst({ where: { isCurrent: true } })) ??
-    (await prisma.ki.findFirst({ orderBy: { startDate: "desc" } }));
+  const { ki } = await keyingKi();
   if (!ki) return [];
 
   const kiStartYear = kiStartYearOf(dateToPeriod(ki.startDate));
@@ -178,11 +208,25 @@ export async function outstandingForUser(
   });
 }
 
-export async function currentKiMonths(): Promise<{ kiCode: string; months: PeriodKey[]; openMonth: PeriodKey }> {
-  const ki =
-    (await prisma.ki.findFirst({ where: { isCurrent: true } })) ??
-    (await prisma.ki.findFirst({ orderBy: { startDate: "desc" } }));
+export async function keyingKiMonths(): Promise<{
+  kiCode: string;
+  months: PeriodKey[];
+  openMonth: PeriodKey;
+  /** The switcher's Ki, when this screen is deliberately not following it. */
+  insteadOf: string | null;
+}> {
+  const { ki, insteadOf } = await keyingKi();
   if (!ki) throw new Error("No Ki has been set up.");
   const kiStartYear = kiStartYearOf(dateToPeriod(ki.startDate));
-  return { kiCode: ki.code, months: kiMonths(kiStartYear), openMonth: openMonth(kiStartYear) };
+  /*
+   * `openMonth` needs no help with a prior year: it clamps today into whatever
+   * Ki it is handed, so a year that has closed lands on its final month, which
+   * is where somebody correcting the record wants to start.
+   */
+  return {
+    kiCode: ki.code,
+    months: kiMonths(kiStartYear),
+    openMonth: openMonth(kiStartYear),
+    insteadOf,
+  };
 }

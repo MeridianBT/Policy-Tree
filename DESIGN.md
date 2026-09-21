@@ -185,6 +185,12 @@ is competing for the glance.
 
 Two things refuse to collapse with them.
 
+A control you work under is honoured everywhere it can mean something, and
+where it cannot, the screen says which year it fell back to instead of quietly
+disagreeing with the control above it. `/my-entries` is the only such place:
+it keys actuals, so it follows the switcher into a past year and holds the live
+one against a draft.
+
 The **year switcher** stays in the bar. It was tried in the account menu and
 taken straight back out: it is a control somebody sets and then works under -
 the sheet below it means a different year depending on where it is set - and its

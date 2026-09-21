@@ -37,12 +37,18 @@ export function MyEntries({
   kiCode,
   months,
   period,
+  insteadOf,
   canEdit,
 }: {
   rows: OutstandingEntry[];
   kiCode: string;
   months: string[];
   period: string;
+  /**
+   * The year the switcher points at, when this screen is deliberately not
+   * following it. Null in the ordinary case, including when they agree.
+   */
+  insteadOf?: string | null;
   canEdit: boolean;
 }) {
   const router = useRouter();
@@ -141,6 +147,18 @@ export function MyEntries({
           <p className="text-[11px] text-ink-muted">
             {kiCode} · {monthLabel(period)} {period.slice(0, 4)}
           </p>
+          {/*
+            Said out loud rather than left to be noticed. The switcher is in
+            the bar above this, and a screen keying a different year from the
+            one that control names is the kind of quiet disagreement somebody
+            only catches after they have typed thirty figures into it.
+          */}
+          {insteadOf && (
+            <p className="mt-0.5 text-[11px] text-ink-faint">
+              You are working on <span className="text-ink">{insteadOf}</span>. Actuals are keyed
+              against <span className="text-ink">{kiCode}</span>, the live year.
+            </p>
+          )}
         </div>
 
         <div className="flex items-center gap-3">

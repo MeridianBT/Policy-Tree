@@ -877,6 +877,32 @@ async function theYearSwitcherChangesTheYear(browser) {
   );
 
   // Put the session back on the live year for whatever runs next.
+  /*
+   * How far the switcher reaches - and where it deliberately stops.
+   *
+   * /my-entries keys *actuals*, and a year that has not started has no month
+   * whose actual could exist, so a draft year is the one place the switcher is
+   * not followed. What it must not do is disagree silently: the screen says
+   * which year it is keying, and the nav's count has to answer from that same
+   * year or the badge is a lie about the page it links to. Both used to resolve
+   * `isCurrent` independently, which is how they came apart.
+   */
+  await page.goto(`${BASE}/my-entries`);
+  await page.waitForTimeout(3000);
+  const onDraft = await page.evaluate(() => ({
+    body: document.body.innerText,
+    badge: document.querySelector('[role="group"], nav')?.textContent ?? "",
+  }));
+  check(
+    onDraft.body.includes(live.ki),
+    "a draft year keys the live year, which is where the actuals are",
+    onDraft.body.split("\n").slice(0, 3).join(" · "),
+  );
+  check(
+    /Actuals are keyed against/.test(onDraft.body),
+    "and the screen says so rather than disagreeing with the switcher in silence",
+  );
+
   await page.goto(`${BASE}/sheet`);
   await page.waitForTimeout(2500);
   await switcher.selectOption({ index: 0 });
@@ -888,6 +914,16 @@ async function theYearSwitcherChangesTheYear(browser) {
     "and goes back to the live year when asked",
     `${back.ki}, ${back.rows} rows`,
   );
+
+  // Back on the live year the explanation goes, because there is nothing left
+  // to explain.
+  await page.goto(`${BASE}/my-entries`);
+  await page.waitForTimeout(2500);
+  check(
+    !/Actuals are keyed against/.test(await page.evaluate(() => document.body.innerText)),
+    "and stops explaining once there is nothing to explain",
+  );
+
   await page.close();
 }
 

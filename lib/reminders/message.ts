@@ -46,7 +46,18 @@ export function buildReminderMessage(
   const when = periodTitle(context.period);
   const count = recipient.items.length;
   const noun = count === 1 ? "figure" : "figures";
-  const entriesUrl = `${context.appUrl.replace(/\/$/, "")}/my-entries`;
+  /*
+   * The link carries the month it is chasing.
+   *
+   * A reminder is about one period by construction - `reminder_log` is unique
+   * on (user, period) - and it is read whenever the recipient gets to their
+   * mail, which is often days later and sometimes in the following month. A
+   * bare /my-entries link then opens on whatever that screen defaults to,
+   * which is not necessarily the month the message just listed. Naming it
+   * costs nine characters and removes the one step between being chased and
+   * being able to answer.
+   */
+  const entriesUrl = `${context.appUrl.replace(/\/$/, "")}/my-entries?period=${context.period}`;
 
   const subject = `${when}: ${count} ${noun} still to key — ${context.kiCode}`;
 
