@@ -1635,6 +1635,36 @@ reminder is never stranded on the page they landed on.
 **The sheet is deliberately not part of this.** Seventeen columns belong on a
 large screen, and pretending otherwise would produce something unusable on both.
 
+### The frame, and the viewport it is measured against
+
+A tablet is where that shell was wrong, and it took a report from an iPad to
+find it: the nav row sat underneath Safari's tab bar, off the top of the screen,
+and could not be pulled back down.
+
+One CSS unit did it. Safari's `vh` is the *large* viewport — the page as it
+would be if the browser's chrome were collapsed — so a body of `height: 100vh`
+stands a tab bar taller than the screen it is on. The document scrolled by that
+difference, and because the body hides its own overflow and every pane inside
+scrolls separately, nothing the reader did scrolled it back. The frame is `svh`
+now (`app/layout.tsx`), the same measurement taken with the chrome showing,
+which is never taller than what you can see. `dvh` would also have fitted, but
+it changes as the chrome hides, and a virtualised grid re-measuring mid-scroll
+is a second bug in place of the first.
+
+Above `sm` the document itself is also pinned — `html { overflow: hidden }` in
+`app/globals.css` — so a rubber-band at the top of the grid has no page scroll
+to leak into. The print routes release both, the same way and for the same
+reason they already released the sized body (`app/print/print.css`).
+
+No browser check can catch a regression here: Chromium has no collapsible
+chrome, so `vh`, `svh` and `dvh` are all the same number under Playwright and a
+screen that is broken on an iPad passes every assertion in `check:ui`. So the
+units themselves are asserted in `tests/shell-viewport.test.ts`, against the
+source, and `check:ui` holds the rule they serve on three iPad profiles: the nav
+at the top of the document, the document not scrolling, and the panes inside it
+still scrolling — because a shell nailed down by making nothing scrollable would
+satisfy the first two and be useless.
+
 ## The evaluation symbols
 
 □ ◎ 〇 ▲ ■ carry the entire colour budget of the sheet; everything else stays
@@ -1672,7 +1702,7 @@ macOS Safari need a run on those platforms.
 ```bash
 npm run lint          # ESLint, zero warnings
 npm run typecheck     # tsc --noEmit
-npm test              # 417 tests, about seven seconds
+npm test              # 641 tests, about fifteen seconds
 npm run test:unit     # the pure modules only, no database needed
 npm run check:ui      # browser checks, against a running dev server
 ```
@@ -1682,11 +1712,16 @@ bug that was actually found rather than a hypothetical: a filter panel opening
 off the right edge of the window with no way to reach the options past it; a
 filter panel that would not close by pen, by touch, by tabbing past its last
 option, or when the window was resized under it; `/my-entries` unusable on the
-phone the month-end reminder is read on; and an edit form still holding the
+phone the month-end reminder is read on; an edit form still holding the
 previous measure's values after the pencil on a second one was clicked, under a
-heading naming the second. It runs at five window widths from a
-1024px laptop to 1920px, and on three phone profiles, and exits non-zero on the
-first failure.
+heading naming the second; and the nav hidden under an iPad's tab bar by a shell
+measured in `vh`. It runs at five window widths from a 1024px laptop to 1920px,
+and on three phone and three iPad profiles, and exits non-zero on the first
+failure. One check can be run on its own while it is being written:
+
+```bash
+UI_CHECK_ONLY=tablet npm run check:ui   # a substring of the check's name
+```
 
 `npm run build` runs the linter and the type checker itself, so a build is the
 single command that proves all three. The lint config
@@ -1806,7 +1841,9 @@ now has the place for it: a third value in `NoteKind`, beside DEFINITION and
 RATIONALE, rather than a third table. Nothing is built), approval workflow, notifications, chat integrations, weighted
 roll-up or contribution scoring between levels, initiatives or task tracking
 beneath Control Items, and mobile-optimised entry. The application is
-desktop-first and does not break on a tablet.
+desktop-first; a tablet is checked rather than assumed (three iPad profiles in
+`check:ui`, after one shipped with the nav off the top of the screen), and a
+phone gets `/my-entries` and the nav and nothing more.
 
 Microsoft sign-in used to be on this list and no longer is — see
 [Signing in with Microsoft](#signing-in-with-microsoft). What remains unbuilt

@@ -41,7 +41,14 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   }
 
   return (
-    <div className="flex min-h-screen flex-col sm:h-full">
+    /*
+     * `min-h-0` above `sm` is not decoration: the body there is exactly one
+     * `svh` tall and hides its overflow, so a minimum height of anything more
+     * would push the bottom of this column out of sight. Below `sm` the page
+     * scrolls, and the minimum is what stops a short screen from leaving the
+     * footer of the layout floating halfway up.
+     */
+    <div className="flex min-h-dvh flex-col sm:h-full sm:min-h-0">
       <nav className="flex shrink-0 items-center gap-3 border-b border-rule-strong bg-paper px-3 py-1.5 sm:gap-4">
         <Link href="/sheet" className="shrink-0 text-[13px] font-semibold">
           Hoshin Kanri

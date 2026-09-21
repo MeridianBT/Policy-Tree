@@ -70,6 +70,15 @@ mode. The grid is tight on purpose.
 
 ## Layout plan
 
+- **A frame one screen tall, measured against the screen you can see.** Every
+  sticky thing below depends on the shell being exactly as tall as the window
+  and hiding its own overflow, so that the panes inside it scroll and the
+  document never does. Which measurement of "the window" is not a detail: an
+  iPad reported the nav sitting underneath Safari's tab bar, because `vh` is the
+  viewport as it would be with the browser's chrome collapsed and a body that
+  size stands taller than the screen it is on. The frame is `svh` — the same
+  measurement taken with the chrome showing — and above `sm` the document itself
+  is pinned, so that nothing can carry the nav off the top whatever started it.
 - **Frozen left column block** — two columns, both sticky, bounded on the right
   with `--rule-strong`: **Measures** carries the measure's name and its DIC
   badge, and **Control Item** carries the measurement method — what the figure

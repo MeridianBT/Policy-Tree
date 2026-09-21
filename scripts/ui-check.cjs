@@ -2647,43 +2647,139 @@ async function theFilterBarSaysWhatItDoes(browser) {
   await page.close();
 }
 
+/**
+ * The nav stays on the screen on a tablet.
+ *
+ * Reported from an iPad: the nav row was underneath Safari's tab bar, off the
+ * top of the screen, and could not be pulled back down. The shell was sized in
+ * `vh` - Safari's *large* viewport, the page as it would be with the chrome
+ * collapsed - so the body stood a tab bar taller than the screen, the document
+ * scrolled by the difference, and a body that hides its own overflow gave the
+ * reader no way to scroll it back.
+ *
+ * Be honest about what this can and cannot see. Chromium has no collapsible
+ * chrome, so `vh` and `svh` are the same number here and the unit itself is
+ * asserted in tests/shell-viewport.test.ts instead. What this holds is the rule
+ * the unit serves, and which any number of other changes could break: above
+ * `sm` the document does not scroll, the nav is at the top of it, and the panes
+ * inside still do scroll - because a shell nailed down by making nothing
+ * scrollable would pass the first two and be useless.
+ */
+async function theNavStaysOnATablet(browser) {
+  console.log("\nThe nav stays on the screen on a tablet");
+  for (const name of ["iPad (gen 7)", "iPad (gen 7) landscape", "iPad Mini"]) {
+    const context = await browser.newContext({ ...devices[name] });
+    const page = await context.newPage();
+    await signIn(page);
+
+    const measure = () =>
+      page.evaluate(() => {
+        const nav = document.querySelector("nav");
+        const box = nav.getBoundingClientRect();
+        const root = document.documentElement;
+        // The pane the sheet scrolls in: the tallest thing with its own scroll.
+        const panes = [...document.querySelectorAll("div")]
+          .filter((el) => el.scrollHeight - el.clientHeight > 4 && getComputedStyle(el).overflowY !== "visible");
+        return {
+          navTop: Math.round(box.top),
+          navBottom: Math.round(box.bottom),
+          pageScroll: Math.round(window.scrollY),
+          documentOverflow: root.scrollHeight - root.clientHeight,
+          sideways: root.scrollWidth - window.innerWidth,
+          bodyHeight: Math.round(document.body.getBoundingClientRect().height),
+          window: window.innerHeight,
+          paneScroll: panes.length ? Math.max(...panes.map((el) => el.scrollTop)) : null,
+          panes: panes.length,
+        };
+      });
+
+    const before = await measure();
+
+    // Everything a reader does that could move the document: drag the page,
+    // and scroll the grid hard enough to run out of rows.
+    await page.evaluate(() => window.scrollBy(0, 400));
+    const pane = page.locator("div.overflow-auto").first();
+    await pane.hover().catch(() => {});
+    await page.mouse.wheel(0, 3000);
+    await page.waitForTimeout(600);
+    const after = await measure();
+
+    const problems = [];
+    if (before.navTop !== 0) problems.push(`nav starts ${before.navTop}px from the top`);
+    if (before.documentOverflow > 1)
+      problems.push(`the document is ${before.documentOverflow}px taller than the window`);
+    if (Math.abs(before.bodyHeight - before.window) > 1)
+      problems.push(`the body is ${before.bodyHeight}px in a ${before.window}px window`);
+    if (before.sideways > 1) problems.push(`${before.sideways}px of horizontal overflow`);
+    if (after.navTop !== 0) problems.push(`scrolling moved the nav to ${after.navTop}px`);
+    if (after.pageScroll !== 0) problems.push(`the document scrolled to ${after.pageScroll}px`);
+    if (after.panes === 0) problems.push("nothing inside the frame scrolls at all");
+    else if (!(after.paneScroll > 0)) problems.push("the sheet's own pane did not scroll");
+
+    check(problems.length === 0, name, problems.join("; "));
+    await context.close();
+  }
+}
+
+/*
+ * Every check, in the order they run. A list rather than a run of `await`s so
+ * that one can be run on its own while it is being written:
+ *
+ *   UI_CHECK_ONLY=tablet npm run check:ui
+ *
+ * The filter is a substring of the function's name and defaults to all of
+ * them, so the gate is still the whole list.
+ */
+const CHECKS = [
+  panelsStayOnScreen,
+  panelsDismiss,
+  theMonthEndReview,
+  anObjectiveReadsAsOneStatement,
+  severalControlItemsUnderOneMeasure,
+  adminIsInSections,
+  outputsCarryTheFilters,
+  theTemplateDownloads,
+  theUploadPreviewWritesNothing,
+  pagesDoNotOverflow,
+  myEntriesOnAPhone,
+  theUatWording,
+  oneQuarterAtATime,
+  addingAMeasureLandsAgainstItsRow,
+  thePrintPageIsOneDocument,
+  theToolbarFinds,
+  collapsingSurvivesTheScopeToggle,
+  theMeasuresColumnResizes,
+  comparingVersionsFitsItsRow,
+  theYearSwitcherChangesTheYear,
+  theCascadeCanBeNarrowed,
+  aRowCanBeAddedBeforeItIsMeasured,
+  theRowButtonsAreInOrder,
+  theFormFollowsThePencil,
+  departmentChipsDoNotRepeatTheDivision,
+  aRationaleCanBeRecorded,
+  theRegisterShowsWhatIsMissing,
+  theCompanyReadsAcrossThePage,
+  theToolbarShares,
+  theFilterBarSaysWhatItDoes,
+  theContextBarFollowsTheScroll,
+  theSlidePrints,
+  theNavStaysOnATablet,
+];
+
 (async () => {
+  const only = process.env.UI_CHECK_ONLY;
+  const running = only
+    ? CHECKS.filter((fn) => fn.name.toLowerCase().includes(only.toLowerCase()))
+    : CHECKS;
+  if (only && running.length === 0) {
+    console.error(`No check matches ${only}. Names: ${CHECKS.map((fn) => fn.name).join(", ")}`);
+    process.exit(2);
+  }
   const browser = await chromium.launch({
     executablePath: process.env.PLAYWRIGHT_CHROMIUM || undefined,
   });
   try {
-    await panelsStayOnScreen(browser);
-    await panelsDismiss(browser);
-    await theMonthEndReview(browser);
-    await anObjectiveReadsAsOneStatement(browser);
-    await severalControlItemsUnderOneMeasure(browser);
-    await adminIsInSections(browser);
-    await outputsCarryTheFilters(browser);
-    await theTemplateDownloads(browser);
-    await theUploadPreviewWritesNothing(browser);
-    await pagesDoNotOverflow(browser);
-    await myEntriesOnAPhone(browser);
-    await theUatWording(browser);
-    await oneQuarterAtATime(browser);
-    await addingAMeasureLandsAgainstItsRow(browser);
-    await thePrintPageIsOneDocument(browser);
-    await theToolbarFinds(browser);
-    await collapsingSurvivesTheScopeToggle(browser);
-    await theMeasuresColumnResizes(browser);
-    await comparingVersionsFitsItsRow(browser);
-    await theYearSwitcherChangesTheYear(browser);
-    await theCascadeCanBeNarrowed(browser);
-    await aRowCanBeAddedBeforeItIsMeasured(browser);
-    await theRowButtonsAreInOrder(browser);
-    await theFormFollowsThePencil(browser);
-    await departmentChipsDoNotRepeatTheDivision(browser);
-    await aRationaleCanBeRecorded(browser);
-    await theRegisterShowsWhatIsMissing(browser);
-    await theCompanyReadsAcrossThePage(browser);
-    await theToolbarShares(browser);
-    await theFilterBarSaysWhatItDoes(browser);
-    await theContextBarFollowsTheScroll(browser);
-    await theSlidePrints(browser);
+    for (const run of running) await run(browser);
   } finally {
     await browser.close();
   }

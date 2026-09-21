@@ -38,6 +38,29 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
+/*
+ * Above `sm` the document itself does not scroll. Every pane that holds more
+ * than fits scrolls inside the frame, and the nav is meant to stay where it is
+ * put.
+ *
+ * Saying so out loud is what fixes an iPad. The body is sized to the viewport
+ * (see app/layout.tsx), but a body that hides its overflow does not stop the
+ * *document* around it from being dragged - so a rubber-band at the top of a
+ * grid, or a chrome height's worth of mismatch between one viewport
+ * measurement and another, carried the nav up under Safari's tab bar and left
+ * it there. Pinning the root element means there is no scroll for anything to
+ * leak into, whatever started it.
+ *
+ * The print routes escape this, the same way they escape the body sizing. See
+ * app/print/print.css.
+ */
+@media (min-width: 40rem) {
+  html {
+    overflow: hidden;
+    overscroll-behavior: none;
+  }
+}
+
 /* Numbers are typography: tabular figures so columns align on the decimal. */
 .num {
   font-family: var(--font-num);

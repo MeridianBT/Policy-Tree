@@ -21,8 +21,10 @@
  * right for a dense grid on screen and wrong for a page that has to flow onto
  * paper. Undone here for the same reason and in the same way print.css does it
  * - `:has` carries the specificity of its argument, so this wins whichever
- * order the stylesheets load in.
+ * order the stylesheets load in. The root element is pinned above `sm` too
+ * (globals.css, for the sake of an iPad's nav), so it is released here as well.
  */
+html:has(.print-slide),
 body:has(.print-slide) {
   height: auto;
   overflow: visible;

@@ -26,7 +26,13 @@
  * and was breaking hydration on every print page. `:has` carries the
  * specificity of its argument, so this beats the shell's utility classes
  * whichever order the stylesheets load in.
+ *
+ * The root element has to come with it. globals.css pins `html` above `sm` so
+ * that nothing can scroll the app's nav off the top of an iPad, and a pinned
+ * root would clip this sheet at one screen however tall the body under it was
+ * allowed to grow.
  */
+html:has(.print-sheet),
 body:has(.print-sheet) {
   height: auto;
   overflow: visible;
